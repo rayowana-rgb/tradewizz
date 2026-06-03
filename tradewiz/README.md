@@ -1,44 +1,69 @@
 # TradeWiz
 
-A clean stock screening & analysis mobile app. Android-first (Flutter).
+A clean stock screening & analysis mobile app. **iOS-first** (Android supported),
+built with Flutter. TradeWiz is the mobile evolution of an existing Telegram
+stock-screening bot — the backend API mirrors the bot's capabilities.
 
-## Features (v0 scaffold)
+## Features (current scaffold)
 
 - **Dashboard** — market summary header, summary cards, and top movers.
 - **Watchlist** — per-market watchlist with swipe-to-remove.
 - **Market selector** — switch between IDX, HKEX, KOSPI, KOSDAQ.
-- **AI Analysis** — placeholder page with planned features.
+- **AI Analysis** — enter a symbol + market, get a placeholder analysis result
+  and weekly forecast (wired through the repository/API layer).
 
-> Data is currently sample/placeholder. A real data source still needs wiring in.
+> Data is placeholder. The API client returns mocked JSON shaped like the real
+> backend so the UI is fully buildable/testable before the bot API is connected.
 
-## Structure
+## Architecture
+
+UI → **Repository** → **ApiClient** → backend.
 
 ```
 lib/
-  main.dart              # App + bottom-nav shell
-  theme.dart             # Clean Material 3 theme
+  main.dart                    # App + bottom-nav shell
+  theme.dart                   # Material 3 theme
   models/
-    market.dart          # Market enum (IDX, HKEX, KOSPI, KOSDAQ)
-    stock.dart           # Stock model + sample data
+    market.dart                # Market enum (IDX, HKEX, KOSPI, KOSDAQ)
+    stock.dart                 # Stock + sample data
+    analysis_result.dart       # AnalysisResult, WeeklyPrediction
+    screener_result.dart       # ScreenerResult, ScreenerMatch
+    watchlist_item.dart        # WatchlistItem (persistable)
+  services/
+    api_client.dart            # HTTP-ready client (stubbed transport)
+  repositories/
+    stock_repository.dart      # UI-facing data access
   pages/
     dashboard_page.dart
     watchlist_page.dart
-    ai_analysis_page.dart
+    ai_analysis_page.dart      # Form-driven analysis
   widgets/
     market_selector.dart
     stock_tile.dart
 ```
+
+### Planned API endpoints
+
+| Endpoint                   | Method | Returns            |
+| -------------------------- | ------ | ------------------ |
+| `/analyze/{symbol}`        | GET    | `AnalysisResult`   |
+| `/screen/{market}`         | GET    | `ScreenerResult`   |
+| `/predict_weekly/{symbol}` | GET    | `WeeklyPrediction` |
+
+To go live: replace `ApiClient._mockGet` with a real HTTP implementation
+(`http`/`dio`) pointing at `baseUrl`. Models already parse the target JSON shape.
 
 ## Run
 
 ```bash
 cd tradewiz
 flutter pub get
-flutter run        # connect an Android device/emulator
+flutter run        # iOS simulator or device (Android also supported)
 ```
 
 ## Next steps
 
-- Wire a real market data API.
+- Connect the real (migrated bot) backend.
 - Persist watchlist (e.g. shared_preferences / local DB).
-- Build out the AI Analysis features.
+- Surface `/screen/{market}` results in a screener view.
+- iOS polish: Cupertino touches where it improves UX.

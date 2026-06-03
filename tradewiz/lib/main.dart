@@ -46,7 +46,7 @@ class _HomeShellState extends State<HomeShell> {
     final pages = [
       DashboardPage(market: _market),
       WatchlistPage(market: _market),
-      const AiAnalysisPage(),
+      AiAnalysisPage(market: _market),
     ];
 
     final titles = ['Dashboard', 'Watchlist', 'AI Analysis'];

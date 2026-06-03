@@ -15,6 +15,7 @@ void main() {
     // Switch to the AI Analysis tab.
     await tester.tap(find.byIcon(Icons.auto_awesome_outlined));
     await tester.pumpAndSettle();
-    expect(find.text('Planned Features'), findsOneWidget);
+    expect(find.text('Analyze a Stock'), findsOneWidget);
+    expect(find.widgetWithText(TextFormField, 'Stock symbol'), findsOneWidget);
   });
 }
