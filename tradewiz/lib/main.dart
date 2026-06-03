@@ -1,0 +1,95 @@
+import 'package:flutter/material.dart';
+
+import 'models/market.dart';
+import 'pages/ai_analysis_page.dart';
+import 'pages/dashboard_page.dart';
+import 'pages/watchlist_page.dart';
+import 'theme.dart';
+import 'widgets/market_selector.dart';
+
+void main() {
+  runApp(const TradeWizApp());
+}
+
+class TradeWizApp extends StatelessWidget {
+  const TradeWizApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'TradeWiz',
+      debugShowCheckedModeBanner: false,
+      theme: buildTradeWizTheme(),
+      home: const HomeShell(),
+    );
+  }
+}
+
+/// Top-level shell holding the shared market selection and bottom navigation.
+class HomeShell extends StatefulWidget {
+  const HomeShell({super.key});
+
+  @override
+  State<HomeShell> createState() => _HomeShellState();
+}
+
+class _HomeShellState extends State<HomeShell> {
+  int _index = 0;
+  Market _market = Market.idx;
+
+  void _onMarketChanged(Market market) {
+    setState(() => _market = market);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final pages = [
+      DashboardPage(market: _market),
+      WatchlistPage(market: _market),
+      const AiAnalysisPage(),
+    ];
+
+    final titles = ['Dashboard', 'Watchlist', 'AI Analysis'];
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          titles[_index],
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 22),
+        ),
+        actions: [
+          if (_index != 2)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: MarketSelector(
+                selected: _market,
+                onChanged: _onMarketChanged,
+              ),
+            ),
+        ],
+      ),
+      body: SafeArea(child: pages[_index]),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _index,
+        onDestinationSelected: (i) => setState(() => _index = i),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.dashboard_outlined),
+            selectedIcon: Icon(Icons.dashboard),
+            label: 'Dashboard',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.star_outline),
+            selectedIcon: Icon(Icons.star),
+            label: 'Watchlist',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.auto_awesome_outlined),
+            selectedIcon: Icon(Icons.auto_awesome),
+            label: 'AI Analysis',
+          ),
+        ],
+      ),
+    );
+  }
+}
