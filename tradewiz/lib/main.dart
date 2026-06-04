@@ -5,6 +5,8 @@ import 'pages/ai_analysis_page.dart';
 import 'pages/dashboard_page.dart';
 import 'pages/screener_page.dart';
 import 'pages/watchlist_page.dart';
+import 'services/watchlist_scope.dart';
+import 'services/watchlist_store.dart';
 import 'theme.dart';
 import 'widgets/market_selector.dart';
 
@@ -12,16 +14,32 @@ void main() {
   runApp(const TradeWizApp());
 }
 
-class TradeWizApp extends StatelessWidget {
+class TradeWizApp extends StatefulWidget {
   const TradeWizApp({super.key});
 
   @override
+  State<TradeWizApp> createState() => _TradeWizAppState();
+}
+
+class _TradeWizAppState extends State<TradeWizApp> {
+  final WatchlistStore _watchlist = WatchlistStore();
+
+  @override
+  void dispose() {
+    _watchlist.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'TradeWiz',
-      debugShowCheckedModeBanner: false,
-      theme: buildTradeWizTheme(),
-      home: const HomeShell(),
+    return WatchlistScope(
+      store: _watchlist,
+      child: MaterialApp(
+        title: 'TradeWiz',
+        debugShowCheckedModeBanner: false,
+        theme: buildTradeWizTheme(),
+        home: const HomeShell(),
+      ),
     );
   }
 }

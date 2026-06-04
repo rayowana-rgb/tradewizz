@@ -2,16 +2,65 @@ import 'package:flutter/material.dart';
 
 import '../models/analysis_result.dart';
 import '../models/market.dart';
+import '../models/watchlist_item.dart';
 import '../repositories/stock_repository.dart';
+import '../services/watchlist_scope.dart';
 import '../theme.dart';
+
+/// Full-screen analysis route with a back button. Used when navigating from a
+/// screener match: prefills the symbol/market and auto-runs the analysis.
+class AnalysisDetailPage extends StatelessWidget {
+  const AnalysisDetailPage({
+    super.key,
+    required this.symbol,
+    required this.market,
+    this.repository,
+  });
+
+  final String symbol;
+  final Market market;
+  final StockRepository? repository;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          '$symbol · ${market.code}',
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ),
+      body: SafeArea(
+        child: AiAnalysisPage(
+          market: market,
+          initialSymbol: symbol,
+          autoRun: true,
+          repository: repository,
+        ),
+      ),
+    );
+  }
+}
 
 /// AI Analysis: enter a symbol + market, fetch a (placeholder) analysis result.
 class AiAnalysisPage extends StatefulWidget {
-  const AiAnalysisPage({super.key, this.market, this.repository});
+  const AiAnalysisPage({
+    super.key,
+    this.market,
+    this.repository,
+    this.initialSymbol,
+    this.autoRun = false,
+  });
 
   /// Optional market preselected from the app shell.
   final Market? market;
   final StockRepository? repository;
+
+  /// Symbol to prefill (e.g. when opened from a screener match).
+  final String? initialSymbol;
+
+  /// When true, runs the analysis automatically on first build.
+  final bool autoRun;
 
   @override
   State<AiAnalysisPage> createState() => _AiAnalysisPageState();
@@ -27,6 +76,17 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
   String? _error;
   AnalysisResult? _result;
   WeeklyPrediction? _prediction;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialSymbol != null) {
+      _symbolController.text = widget.initialSymbol!.trim().toUpperCase();
+    }
+    if (widget.autoRun && (widget.initialSymbol?.trim().isNotEmpty ?? false)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _submit());
+    }
+  }
 
   @override
   void dispose() {
@@ -79,6 +139,8 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
         if (_error != null) _ErrorCard(message: _error!),
         if (_result != null && !_loading) ...[
           _ResultCard(result: _result!),
+          const SizedBox(height: 12),
+          _SaveToWatchlistButton(result: _result!),
           if (_prediction != null) ...[
             const SizedBox(height: 16),
             _PredictionCard(prediction: _prediction!),
@@ -154,6 +216,54 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Adds the analyzed symbol to the shared watchlist (reflects saved state).
+class _SaveToWatchlistButton extends StatelessWidget {
+  const _SaveToWatchlistButton({required this.result});
+  final AnalysisResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    final store = WatchlistScope.of(context); // subscribes to changes
+    final saved = store.contains(result.symbol, result.market);
+
+    return SizedBox(
+      width: double.infinity,
+      child: saved
+          ? OutlinedButton.icon(
+              onPressed: null,
+              icon: const Icon(Icons.check),
+              label: const Text('Saved to Watchlist'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+            )
+          : FilledButton.tonalIcon(
+              icon: const Icon(Icons.star_outline),
+              label: const Text('Save to Watchlist'),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              onPressed: () {
+                WatchlistScope.read(context).add(
+                  WatchlistItem(
+                    symbol: result.symbol,
+                    name: result.symbol,
+                    market: result.market,
+                  ),
+                );
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                        '${result.symbol} added to ${result.market.code} watchlist'),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+            ),
     );
   }
 }

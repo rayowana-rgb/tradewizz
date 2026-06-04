@@ -1,30 +1,22 @@
 import 'package:flutter/material.dart';
 
 import '../models/market.dart';
-import '../models/stock.dart';
-import '../widgets/stock_tile.dart';
+import '../models/watchlist_item.dart';
+import '../services/watchlist_scope.dart';
 
-/// Watchlist for the selected market. Local state only (placeholder).
-class WatchlistPage extends StatefulWidget {
+/// Watchlist for the selected market, backed by the shared [WatchlistStore].
+class WatchlistPage extends StatelessWidget {
   const WatchlistPage({super.key, required this.market});
 
   final Market market;
 
   @override
-  State<WatchlistPage> createState() => _WatchlistPageState();
-}
-
-class _WatchlistPageState extends State<WatchlistPage> {
-  final Set<String> _removed = {};
-
-  @override
   Widget build(BuildContext context) {
-    final stocks = sampleStocks
-        .where((s) => s.market == widget.market && !_removed.contains(s.ticker))
-        .toList();
+    final store = WatchlistScope.of(context); // rebuilds on changes
+    final items = store.forMarket(market);
 
-    if (stocks.isEmpty) {
-      return _EmptyWatchlist(market: widget.market);
+    if (items.isEmpty) {
+      return _EmptyWatchlist(market: market);
     }
 
     return ListView(
@@ -33,9 +25,9 @@ class _WatchlistPageState extends State<WatchlistPage> {
         Card(
           child: Column(
             children: [
-              for (var i = 0; i < stocks.length; i++) ...[
+              for (var i = 0; i < items.length; i++) ...[
                 Dismissible(
-                  key: ValueKey(stocks[i].ticker),
+                  key: ValueKey('${items[i].market.code}:${items[i].symbol}'),
                   direction: DismissDirection.endToStart,
                   background: Container(
                     alignment: Alignment.centerRight,
@@ -44,10 +36,10 @@ class _WatchlistPageState extends State<WatchlistPage> {
                     child: const Icon(Icons.delete_outline, color: Colors.red),
                   ),
                   onDismissed: (_) =>
-                      setState(() => _removed.add(stocks[i].ticker)),
-                  child: StockTile(stock: stocks[i]),
+                      store.remove(items[i].symbol, items[i].market),
+                  child: _WatchlistTile(item: items[i]),
                 ),
-                if (i != stocks.length - 1)
+                if (i != items.length - 1)
                   const Divider(height: 1, indent: 72),
               ],
             ],
@@ -56,11 +48,49 @@ class _WatchlistPageState extends State<WatchlistPage> {
         const SizedBox(height: 16),
         Center(
           child: Text(
-            'Swipe left to remove · ${stocks.length} in watchlist',
+            'Swipe left to remove · ${items.length} in watchlist',
             style: const TextStyle(color: Colors.grey, fontSize: 12),
           ),
         ),
       ],
+    );
+  }
+}
+
+class _WatchlistTile extends StatelessWidget {
+  const _WatchlistTile({required this.item});
+  final WatchlistItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      leading: CircleAvatar(
+        backgroundColor: Theme.of(context).colorScheme.primary.withValues(
+              alpha: 0.1,
+            ),
+        child: Text(
+          item.symbol.characters.take(2).toString(),
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 13,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+        ),
+      ),
+      title: Text(
+        item.symbol,
+        style: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+      subtitle: Text(
+        item.name.isEmpty ? item.market.name : item.name,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: Text(
+        '${item.market.flag} ${item.market.code}',
+        style: const TextStyle(color: Colors.grey, fontSize: 12),
+      ),
     );
   }
 }

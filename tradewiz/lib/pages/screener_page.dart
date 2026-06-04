@@ -6,6 +6,7 @@ import '../models/screener_result.dart';
 import '../repositories/stock_repository.dart';
 import '../theme.dart';
 import '../widgets/category_badge.dart';
+import 'ai_analysis_page.dart';
 
 /// Screener page: runs `/screen/{market}` and lists tagged matches with
 /// market + category filters. iOS-first UX (pull-to-refresh, clean cards).
@@ -68,6 +69,17 @@ class _ScreenerPageState extends State<ScreenerPage> {
     _run();
   }
 
+  void _openAnalysis(ScreenerMatch match) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => AnalysisDetailPage(
+          symbol: match.symbol,
+          market: _market,
+        ),
+      ),
+    );
+  }
+
   List<ScreenerMatch> get _filtered {
     final matches = _result?.matches ?? [];
     if (_categoryFilter == null) return matches;
@@ -110,7 +122,10 @@ class _ScreenerPageState extends State<ScreenerPage> {
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
         itemCount: matches.length,
         separatorBuilder: (_, index) => const SizedBox(height: 12),
-        itemBuilder: (_, i) => _MatchCard(match: matches[i]),
+        itemBuilder: (_, i) => _MatchCard(
+          match: matches[i],
+          onTap: () => _openAnalysis(matches[i]),
+        ),
       ),
     );
   }
@@ -180,15 +195,19 @@ class _CategoryFilterBar extends StatelessWidget {
 }
 
 class _MatchCard extends StatelessWidget {
-  const _MatchCard({required this.match});
+  const _MatchCard({required this.match, this.onTap});
   final ScreenerMatch match;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final changeColor = match.isUp ? AppColors.up : AppColors.down;
     final sign = match.isUp ? '+' : '';
     return Card(
-      child: Padding(
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -246,6 +265,7 @@ class _MatchCard extends StatelessWidget {
               ),
             ],
           ],
+        ),
         ),
       ),
     );
