@@ -16,7 +16,12 @@ from .backtest import (
     DEFAULT_SIGNAL_TYPE,
     SIGNAL_TYPES,
 )
-from .engine import DEFAULT_LIMIT, MAX_LIMIT, AnalysisEngine
+from .engine import (
+    DEFAULT_LIMIT,
+    MAX_LIMIT,
+    AnalysisEngine,
+    default_min_value_traded,
+)
 from .models import (
     AnalysisResult,
     BacktestResult,
@@ -98,6 +103,12 @@ def screen(
     categories: Optional[str] = Query(
         None, description="Comma-separated category filter, e.g. bullish,scalping"
     ),
+    min_value_traded: Optional[float] = Query(
+        None,
+        ge=0.0,
+        description="Liquidity floor (turnover) in market currency. Omit for the "
+        "per-market default (~2B IDR); pass 0 to disable.",
+    ),
 ) -> ScreenerResult:
     """Screener results for a market.
 
@@ -105,14 +116,24 @@ def screen(
       - ``limit``: max matches (1..200, default 50).
       - ``min_score``: minimum score 0..100 (default 0).
       - ``categories``: comma-separated category filter (match must carry one).
+      - ``min_value_traded``: liquidity floor; omitted => per-market default,
+        0 => disabled.
 
-    Results are sorted by score desc, then change_percent desc.
+    Results are sorted by score desc, value_traded desc (liquidity tiebreaker),
+    then change_percent desc.
     """
+    parsed_market = _parse_market(market)
+    floor = (
+        default_min_value_traded(parsed_market)
+        if min_value_traded is None
+        else min_value_traded
+    )
     return engine.screen(
-        _parse_market(market),
+        parsed_market,
         limit=limit,
         min_score=min_score,
         categories=_parse_categories(categories),
+        min_value_traded=floor,
     )
 
 

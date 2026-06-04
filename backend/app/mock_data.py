@@ -122,6 +122,7 @@ def mock_screener_match(
     # Stable pseudo price/change derived from the seed.
     price = round(100 + (s % 9000) / 10.0, 2)
     change = round(((s % 21) - 10) * 0.3, 2)
+    volume = float((s % 9000) + 1000) * 1000
     return ScreenerMatch(
         symbol=sym,
         name=name or sym,
@@ -130,6 +131,7 @@ def mock_screener_match(
         price=price,
         change_percent=change,
         categories=cats,
+        value_traded=round(price * volume, 2),
     )
 
 
@@ -148,15 +150,19 @@ def mock_screen(market: Market) -> ScreenerResult:
         else:
             signal = "HOLD"
 
+        price = 1000 + i * 137.0
         matches.append(
             ScreenerMatch(
                 symbol=f"{market.value}{i + 1:02d}",
                 name=f"Sample {market.value} Co. {i + 1}",
                 score=float(score),
                 signal=signal,
-                price=1000 + i * 137.0,
+                price=price,
                 change_percent=(-1 if bearish else 1) * (i % 5 + 1) * 0.8,
                 categories=cats,
+                # Descending turnover so the liquidity tiebreaker is stable/
+                # observable in mock output too.
+                value_traded=round(price * (50_000 - i * 1000), 2),
             )
         )
 

@@ -78,6 +78,9 @@ class ScreenerMatch(BaseModel):
     price: float
     change_percent: float
     categories: List[ScreenerCategory] = []
+    # Daily turnover (close * volume) in the market's currency. Additive/
+    # backward-compatible; used as the liquidity tiebreaker + filter in ranking.
+    value_traded: float = 0.0
 
 
 class ScreenerResult(BaseModel):

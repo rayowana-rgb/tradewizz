@@ -141,6 +141,22 @@ fix the observed symptom (illiquid names dominating, blue chips buried) without
 reworking the scoring model. C is the deeper fix but should be a separate,
 test-backed change.
 
+### UPDATE 2026-06-05: Fixes A + B implemented & validated
+
+- `ScreenerMatch` gained an additive `value_traded` field (default 0.0).
+- Sort is now `(score, value_traded, change_percent)` desc (Fix A).
+- `/v1/screen` accepts `min_value_traded`; omitted => per-market default
+  (~2B IDR, FX-scaled via `default_min_value_traded`), `0` => disabled (Fix B).
+- Score / signal / category logic unchanged (regression test asserts the
+  uptrend fixture still scores 80; live 86-bucket unchanged).
+- **Live before/after `/v1/screen/IDX?limit=20`:** universe 956 -> 272 after
+  the floor; top-20 turnover went from shells (BLTZ=0, DNET=63M) to all multi-
+  billion IDR names (min 2.46B). Opt-out (`min_value_traded=0`) restores the
+  full 956 but still lifts liquid names via the tiebreaker.
+- Tests: +10 (tiebreaker order, liquidity filter, opt-out, per-market floor,
+  score-unchanged, contract). backend 159 passed, Flutter 28 passed.
+- C (continuous scoring) intentionally NOT implemented.
+
 ## 6. Evidence summary
 
 - Identical 86 = constant step-sum quantization (only 33 reachable scores);

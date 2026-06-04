@@ -38,6 +38,19 @@ logger = logging.getLogger("tradewiz.engine")
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 200
 
+# Default liquidity floor for /screen, in legacy IDR (matches bot9's
+# MIN_VALUE_IDR = 2B). Scaled per market by `default_min_value_traded`.
+DEFAULT_MIN_VALUE_TRADED_IDR = 2_000_000_000
+
+
+def default_min_value_traded(market: Market) -> float:
+    """Per-market default liquidity floor (2B IDR, FX-scaled for HKD/KRW)."""
+    if market is Market.HKEX:
+        return DEFAULT_MIN_VALUE_TRADED_IDR / 2000.0  # ~1M HKD
+    if market in (Market.KOSPI, Market.KOSDAQ):
+        return DEFAULT_MIN_VALUE_TRADED_IDR / 12.0  # ~167M KRW
+    return float(DEFAULT_MIN_VALUE_TRADED_IDR)  # IDX / default
+
 # Max concurrent per-symbol fetches during /screen (override via env).
 _SCREEN_WORKERS = int(os.environ.get("TRADEWIZ_SCREEN_WORKERS", "8"))
 
@@ -592,6 +605,7 @@ class AnalysisEngine:
         limit: int = DEFAULT_LIMIT,
         min_score: float = 0.0,
         categories: Optional[List[ScreenerCategory]] = None,
+        min_value_traded: float = 0.0,
     ) -> ScreenerResult:
         """Screen a market's symbol universe (or an explicit symbol list).
 
@@ -611,7 +625,8 @@ class AnalysisEngine:
 
         if not symbols:
             return self._finalize(
-                mock_data.mock_screen(market), limit, min_score, categories
+                mock_data.mock_screen(market), limit, min_score, categories,
+                min_value_traded,
             )
 
         # Screen symbols concurrently so a slow data source doesn't serialize
@@ -631,13 +646,16 @@ class AnalysisEngine:
 
         if not matches:
             return self._finalize(
-                mock_data.mock_screen(market), limit, min_score, categories
+                mock_data.mock_screen(market), limit, min_score, categories,
+                min_value_traded,
             )
 
         result = ScreenerResult(
             market=market, matches=matches, generated_at=_now_iso()
         )
-        return self._finalize(result, limit, min_score, categories)
+        return self._finalize(
+            result, limit, min_score, categories, min_value_traded
+        )
 
     def _screen_one(
         self, sym: str, market: Market, names: dict
@@ -660,6 +678,7 @@ class AnalysisEngine:
                 price=round(ind["close"], 2),
                 change_percent=round(change_pct, 2),
                 categories=cats,
+                value_traded=round(ind.get("value_traded") or 0.0, 2),
             )
         except Exception as exc:  # noqa: BLE001
             # Keep the universe fully populated; response stays 200 "live".
@@ -674,8 +693,14 @@ class AnalysisEngine:
         limit: int,
         min_score: float,
         categories: Optional[List[ScreenerCategory]],
+        min_value_traded: float = 0.0,
     ) -> ScreenerResult:
-        """Filter, sort (score desc, then change_percent desc), and paginate."""
+        """Filter, sort, and paginate.
+
+        Filters: ``min_score``, ``categories`` (match must carry one), and
+        ``min_value_traded`` (liquidity floor). Sort: score desc, then
+        value_traded desc (liquidity tiebreaker), then change_percent desc.
+        """
         limit = max(1, min(int(limit), MAX_LIMIT))
         wanted = set(categories or [])
 
@@ -683,10 +708,12 @@ class AnalysisEngine:
             m
             for m in result.matches
             if m.score >= min_score
+            and m.value_traded >= min_value_traded
             and (not wanted or wanted.intersection(m.categories))
         ]
         matches.sort(
-            key=lambda m: (m.score, m.change_percent), reverse=True
+            key=lambda m: (m.score, m.value_traded, m.change_percent),
+            reverse=True,
         )
         total = len(matches)  # filtered count BEFORE applying the limit
         result.matches = matches[:limit]

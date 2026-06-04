@@ -131,7 +131,11 @@ All under the `/v1` prefix.
   - `?min_score=` minimum score, `0..100` (default `0`).
   - `?categories=` comma-separated category filter (e.g. `bullish,scalping`);
     a match must carry at least one. Unknown names are ignored.
-  - Results are sorted by **score desc, then change_percent desc**.
+  - `?min_value_traded=` liquidity floor (turnover in market currency); omitted
+    => per-market default (~2B IDR, FX-scaled), `0` => disabled.
+  - Results are sorted by **score desc, then value_traded desc (liquidity
+    tiebreaker), then change_percent desc**.
+  - Each match includes `value_traded` (daily turnover).
   - Example: `/v1/screen/IDX?limit=20&min_score=70&categories=bullish,ara_hunter`
   - The response includes pagination metadata: `total_count` (matches after
     filtering, before the limit), `returned_count`, `limit`, `min_score`, and
