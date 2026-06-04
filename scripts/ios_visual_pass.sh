@@ -7,6 +7,10 @@
 # simulator runtime installed, and CocoaPods. This script checks them and
 # prints the fix commands if something is missing.
 #
+# Targets the iPhone 16 Plus simulator by default, resolved dynamically to its
+# UDID (override with SIM_NAME="iPhone 16 Pro"); falls back to any available
+# iPhone if the preferred one isn't installed.
+#
 # Usage: ./scripts/ios_visual_pass.sh [PORT]   (default 8000)
 set -euo pipefail
 set -m
@@ -42,6 +46,33 @@ fi
 
 echo "==> Toolchain looks OK."
 
+# --- Pick a simulator dynamically ------------------------------------------
+# Prefer iPhone 16 Plus; override with SIM_NAME="iPhone 16 Pro" etc. Falls back
+# to any available iPhone if the preferred one isn't installed.
+PREFERRED_SIM="${SIM_NAME:-iPhone 16 Plus}"
+
+# Find "<UDID> (Booted|Shutdown)" for a device name among available devices.
+sim_udid_for() {
+  local name="$1"
+  xcrun simctl list devices available 2>/dev/null \
+    | grep -F "${name} (" \
+    | head -n1 \
+    | grep -oE '[0-9A-Fa-f-]{36}' \
+    | head -n1
+}
+
+SIM_UDID="$(sim_udid_for "${PREFERRED_SIM}")"
+if [[ -z "${SIM_UDID}" ]]; then
+  echo "==> '${PREFERRED_SIM}' not found; picking the first available iPhone..."
+  FIRST_IPHONE="$(xcrun simctl list devices available 2>/dev/null \
+    | grep -oE 'iPhone [^(]*\(' | sed 's/ ($//' | head -n1 | sed 's/[[:space:]]*$//')"
+  [[ -n "${FIRST_IPHONE}" ]] || fail "No available iPhone simulators. Run: xcodebuild -downloadPlatform iOS"
+  PREFERRED_SIM="${FIRST_IPHONE}"
+  SIM_UDID="$(sim_udid_for "${PREFERRED_SIM}")"
+fi
+[[ -n "${SIM_UDID}" ]] || fail "Could not resolve a simulator UDID."
+echo "==> Using simulator: ${PREFERRED_SIM} (${SIM_UDID})"
+
 if [[ ! -d "${BACKEND}/.venv" ]]; then
   fail "${BACKEND}/.venv missing. cd backend && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt"
 fi
@@ -69,10 +100,16 @@ for i in $(seq 1 30); do
 done
 echo "==> Backend healthy."
 
-echo "==> Booting iOS Simulator..."
+echo "==> Booting ${PREFERRED_SIM} ..."
+# Boot if not already booted (idempotent).
+if ! xcrun simctl list devices 2>/dev/null | grep -F "${SIM_UDID}" | grep -q "(Booted)"; then
+  xcrun simctl boot "${SIM_UDID}" 2>/dev/null || true
+fi
 open -a Simulator || true
+# Give the simulator a moment to come up.
+xcrun simctl bootstatus "${SIM_UDID}" -b >/dev/null 2>&1 || sleep 5
 
-echo "==> flutter run against ${BASE_URL} (Ctrl-C to stop; backend stops too)"
+echo "==> flutter run on ${SIM_UDID} against ${BASE_URL} (Ctrl-C to stop; backend stops too)"
 cd "${APP}"
-flutter run -d iPhone \
+flutter run -d "${SIM_UDID}" \
   --dart-define=TRADEWIZ_API_BASE_URL="${BASE_URL}"

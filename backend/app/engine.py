@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Callable, List, Optional
 
@@ -32,6 +33,9 @@ logger = logging.getLogger("tradewiz.engine")
 # Screener pagination bounds.
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 200
+
+# Max concurrent per-symbol fetches during /screen (override via env).
+_SCREEN_WORKERS = int(os.environ.get("TRADEWIZ_SCREEN_WORKERS", "8"))
 
 # yfinance ticker suffix per market.
 MARKET_SUFFIX = {
@@ -327,36 +331,18 @@ class AnalysisEngine:
                 mock_data.mock_screen(market), limit, min_score, categories
             )
 
+        # Screen symbols concurrently so a slow data source doesn't serialize
+        # N timeouts. The cache's single-flight guard keeps this safe; failures
+        # fall back to deterministic per-symbol mock data (never dropped).
+        workers = min(len(symbols), _SCREEN_WORKERS)
         matches: List[ScreenerMatch] = []
-        for sym in symbols:
-            ticker = yf_symbol(sym, market)
-            try:
-                df = self._fetch(ticker, "1y", "1d")
-                ind = indicators.compute_all(df)
-                if ind.get("close") is None:
-                    raise ValueError("insufficient data")
-                cats = self.categorize(ind)
-                signal, score = self._signal_and_score(ind, cats)
-                change_pct = _daily_change_pct(df)
-                matches.append(
-                    ScreenerMatch(
-                        symbol=sym.upper(),
-                        name=names.get(sym.upper(), sym.upper()),
-                        score=score,
-                        signal=signal,
-                        price=round(ind["close"], 2),
-                        change_percent=round(change_pct, 2),
-                        categories=cats,
-                    )
-                )
-            except Exception as exc:  # noqa: BLE001
-                # Per-symbol failure: substitute deterministic mock data so the
-                # universe stays fully populated (don't drop the symbol). The
-                # response is still 200 "live" from the client's perspective.
-                logger.warning("screen mock-fallback for %s: %s", ticker, exc)
-                matches.append(
-                    mock_data.mock_screener_match(
-                        sym, market, names.get(sym.upper(), "")
+        if workers <= 1:
+            matches = [self._screen_one(s, market, names) for s in symbols]
+        else:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                matches = list(
+                    pool.map(
+                        lambda s: self._screen_one(s, market, names), symbols
                     )
                 )
 
@@ -369,6 +355,35 @@ class AnalysisEngine:
             market=market, matches=matches, generated_at=_now_iso()
         )
         return self._finalize(result, limit, min_score, categories)
+
+    def _screen_one(
+        self, sym: str, market: Market, names: dict
+    ) -> ScreenerMatch:
+        """Screen a single symbol; deterministic mock fallback on any failure."""
+        ticker = yf_symbol(sym, market)
+        try:
+            df = self._fetch(ticker, "1y", "1d")
+            ind = indicators.compute_all(df)
+            if ind.get("close") is None:
+                raise ValueError("insufficient data")
+            cats = self.categorize(ind)
+            signal, score = self._signal_and_score(ind, cats)
+            change_pct = _daily_change_pct(df)
+            return ScreenerMatch(
+                symbol=sym.upper(),
+                name=names.get(sym.upper(), sym.upper()),
+                score=score,
+                signal=signal,
+                price=round(ind["close"], 2),
+                change_percent=round(change_pct, 2),
+                categories=cats,
+            )
+        except Exception as exc:  # noqa: BLE001
+            # Keep the universe fully populated; response stays 200 "live".
+            logger.warning("screen mock-fallback for %s: %s", ticker, exc)
+            return mock_data.mock_screener_match(
+                sym, market, names.get(sym.upper(), "")
+            )
 
     @staticmethod
     def _finalize(
