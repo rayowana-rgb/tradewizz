@@ -1,10 +1,23 @@
-"""Contract tests: responses must match the Flutter app's expected JSON shape."""
+"""Contract tests: responses must match the Flutter app's expected JSON shape.
+
+The API engine is swapped for one whose fetcher always fails, so these tests
+exercise the deterministic mock-fallback path with no network (fast + stable).
+"""
 
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app import main
+from app.engine import AnalysisEngine
 
-client = TestClient(app)
+
+def _offline_fetch(ticker, period):
+    raise ConnectionError("no network in tests")
+
+
+# Force mock fallback for the whole API test module.
+main.engine = AnalysisEngine(fetcher=_offline_fetch)
+
+client = TestClient(main.app)
 
 CATEGORY_WIRE_NAMES = {
     "bullish",

@@ -1,9 +1,33 @@
 # TradeWiz Backend
 
-FastAPI backend for the TradeWiz mobile app. This is a skeleton that returns
-deterministic **mock JSON matching the Flutter app's models** exactly, so the
-app can talk to a real server before the screening engine (migrated from the
-Telegram bot) is wired in.
+FastAPI backend for the TradeWiz mobile app. It runs a real analysis engine
+(yfinance OHLCV + technical indicators) and **falls back to deterministic mock
+JSON** if data fetch/computation fails — so the API never hard-fails and the
+response shape always matches the Flutter app's models.
+
+## Analysis engine
+
+`app/engine.py` fetches daily OHLCV via **yfinance** and computes indicators in
+pure pandas/numpy (`app/indicators.py`): **RSI(14), EMA20, EMA50, SMA200, MACD
+(line/signal/hist), volume ratio, ATR / ATR%**. From these it derives a
+BUY/HOLD/SELL signal, a 0–100 score, and the app's category taxonomy.
+
+Market → yfinance suffix:
+
+| Market | Suffix |
+| ------ | ------ |
+| IDX    | `.JK`  |
+| HKEX   | `.HK`  |
+| KOSPI  | `.KS`  |
+| KOSDAQ | `.KQ`  |
+
+Categories mapped from indicators: `bullish`, `bearish`, `scalping`,
+`accumulation`, `pullback`, `accumulation_silent`, `turnaround_multibagger`,
+`frequently_traded`, `short_candidate`, `ara_hunter`.
+
+**Fallback:** any fetch error, empty data, or insufficient history routes to the
+mock generators (`app/mock_data.py`). `/screen/{market}` returns mock output
+until a symbol universe is configured.
 
 ## Endpoints
 
@@ -57,6 +81,15 @@ source .venv/bin/activate
 python -m pytest -q
 ```
 
+## End-to-end smoke test
+
+From the repo root, one command starts this backend, runs the Flutter live
+smoke test against it (asserting the app gets **live** data), and tears down:
+
+```bash
+./scripts/e2e_smoke.sh
+```
+
 ## Layout
 
 ```
@@ -64,9 +97,13 @@ backend/
   app/
     main.py        # FastAPI app, routes, CORS, health
     models.py      # Pydantic models matching the Flutter contract
+    indicators.py  # Pure pandas/numpy indicators (RSI/EMA/SMA/MACD/ATR/...)
+    engine.py      # yfinance fetch + categorize + signal/score (mock fallback)
     mock_data.py   # Deterministic mock generators (mirror the app's mocks)
   tests/
-    test_api.py    # Contract/shape tests
+    test_api.py        # Contract/shape tests (forced mock fallback, no network)
+    test_indicators.py # Indicator math (synthetic data)
+    test_engine.py     # Engine logic + fallback (injected fetchers, no network)
   requirements.txt
 ```
 

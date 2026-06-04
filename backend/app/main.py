@@ -9,7 +9,7 @@ from __future__ import annotations
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import mock_data
+from .engine import AnalysisEngine
 from .models import (
     AnalysisResult,
     HealthResponse,
@@ -36,6 +36,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Real analysis engine (yfinance-backed, with mock fallback on failure).
+engine = AnalysisEngine()
+
 
 def _parse_market(market: str) -> Market:
     try:
@@ -56,24 +59,31 @@ def health() -> HealthResponse:
 
 @app.get(f"{API_PREFIX}/analyze/{{symbol}}", response_model=AnalysisResult)
 def analyze(symbol: str, market: Market = Market.IDX) -> AnalysisResult:
-    """Full analysis for a single symbol."""
+    """Full analysis for a single symbol (real engine, mock fallback)."""
     if not symbol.strip():
         raise HTTPException(status_code=400, detail="symbol is required")
-    return mock_data.mock_analyze(symbol, market)
+    return engine.analyze(symbol, market)
 
 
 @app.get(f"{API_PREFIX}/screen/{{market}}", response_model=ScreenerResult)
 def screen(market: str) -> ScreenerResult:
-    """Screener results for a market."""
-    return mock_data.mock_screen(_parse_market(market))
+    """Screener results for a market.
+
+    Without a symbol universe configured, this returns mock screener output
+    (the engine handles that fallback). A real deployment supplies the
+    market's symbol list.
+    """
+    return engine.screen(_parse_market(market))
 
 
 @app.get(
     f"{API_PREFIX}/predict_weekly/{{symbol}}",
     response_model=WeeklyPrediction,
 )
-def predict_weekly(symbol: str) -> WeeklyPrediction:
-    """Weekly prediction for a symbol."""
+def predict_weekly(
+    symbol: str, market: Market = Market.IDX
+) -> WeeklyPrediction:
+    """Weekly prediction for a symbol (real engine, mock fallback)."""
     if not symbol.strip():
         raise HTTPException(status_code=400, detail="symbol is required")
-    return mock_data.mock_predict_weekly(symbol)
+    return engine.predict_weekly(symbol, market)
