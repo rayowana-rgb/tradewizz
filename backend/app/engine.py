@@ -376,7 +376,13 @@ class AnalysisEngine:
         matches.sort(
             key=lambda m: (m.score, m.change_percent), reverse=True
         )
+        total = len(matches)  # filtered count BEFORE applying the limit
         result.matches = matches[:limit]
+        result.total_count = total
+        result.returned_count = len(result.matches)
+        result.limit = limit
+        result.min_score = min_score
+        result.categories = list(categories or [])
         return result
 
 

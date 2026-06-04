@@ -11,7 +11,8 @@ stock-screening bot — the backend API mirrors the bot's capabilities.
   badges (bullish, bearish, scalping, accumulation, pullback, silent
   accumulation, turnaround multibagger, frequently traded, short candidate,
   ARA hunter). Filter by market and category; pull-to-refresh; loading/error/
-  empty states.
+  empty states. Shows “Showing X of Y” with a **Load more** button (limit grows
+  by 50 up to 200) when the backend reports more matches than returned.
 - **Watchlist** — per-market watchlist with swipe-to-remove; tap a row to open
   its analysis. **Persists across launches** via `shared_preferences`.
 - **Market selector** — switch between IDX, HKEX, KOSPI, KOSDAQ.

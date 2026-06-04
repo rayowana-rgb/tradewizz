@@ -85,6 +85,9 @@ All under the `/v1` prefix.
     a match must carry at least one. Unknown names are ignored.
   - Results are sorted by **score desc, then change_percent desc**.
   - Example: `/v1/screen/IDX?limit=20&min_score=70&categories=bullish,ara_hunter`
+  - The response includes pagination metadata: `total_count` (matches after
+    filtering, before the limit), `returned_count`, `limit`, `min_score`, and
+    `categories` — enabling “showing N of M” + load-more in clients.
 - Interactive docs: `http://localhost:8000/docs`.
 
 ## Setup

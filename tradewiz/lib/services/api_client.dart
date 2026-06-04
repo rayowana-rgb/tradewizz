@@ -235,6 +235,7 @@ class ApiClient {
       return (b['change_percent'] as double)
           .compareTo(a['change_percent'] as double);
     });
+    final total = matches.length; // after filter, before limit
     final bounded = (limit ?? 50).clamp(1, 200);
     if (matches.length > bounded) matches = matches.sublist(0, bounded);
 
@@ -242,6 +243,12 @@ class ApiClient {
       'market': market.code,
       'matches': matches,
       'generated_at': DateTime.now().toIso8601String(),
+      // Pagination metadata mirroring the backend.
+      'total_count': total,
+      'returned_count': matches.length,
+      'limit': bounded,
+      'min_score': minScore ?? 0,
+      'categories': categories ?? const <String>[],
     };
   }
 

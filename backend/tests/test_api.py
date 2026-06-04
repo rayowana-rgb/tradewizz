@@ -85,6 +85,22 @@ def test_screen_limit_param():
     assert len(r.json()["matches"]) <= 2
 
 
+def test_screen_response_includes_pagination_metadata():
+    r = client.get(
+        "/v1/screen/HKEX",
+        params={"limit": 3, "min_score": 0, "categories": "bullish"},
+    )
+    assert r.status_code == 200
+    b = r.json()
+    for key in ("total_count", "returned_count", "limit", "min_score",
+                "categories"):
+        assert key in b
+    assert b["returned_count"] == len(b["matches"])
+    assert b["total_count"] >= b["returned_count"]
+    assert b["limit"] == 3
+    assert b["categories"] == ["bullish"]
+
+
 def test_screen_limit_out_of_bounds_422():
     assert client.get("/v1/screen/IDX", params={"limit": 0}).status_code == 422
     assert client.get("/v1/screen/IDX", params={"limit": 201}).status_code == 422

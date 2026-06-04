@@ -167,6 +167,30 @@ def test_screen_limit_is_bounded_to_max():
     eng = AnalysisEngine(fetcher=lambda t, p, i: uptrend())
     res = eng.screen(Market.IDX, limit=99999)
     assert len(res.matches) <= 200  # MAX_LIMIT
+    assert res.limit == 200  # echoed back, clamped
+
+
+def test_screen_metadata_counts():
+    eng = AnalysisEngine(fetcher=lambda t, p, i: uptrend())
+    # Mock universe has 10 rows; limit to 3.
+    res = eng.screen(Market.HKEX, limit=3)
+    assert res.returned_count == len(res.matches) == 3
+    assert res.total_count >= res.returned_count
+    assert res.total_count == 10  # all 10 mock rows pass (no filter)
+    assert res.limit == 3
+    assert res.min_score == 0.0
+    assert res.categories == []
+
+
+def test_screen_metadata_reflects_filters():
+    eng = AnalysisEngine(fetcher=lambda t, p, i: uptrend())
+    res = eng.screen(
+        Market.IDX, limit=50, min_score=80,
+        categories=[ScreenerCategory.bullish],
+    )
+    assert res.min_score == 80
+    assert res.categories == [ScreenerCategory.bullish]
+    assert res.total_count == res.returned_count  # within limit
 
 
 def test_screen_min_score_filters():

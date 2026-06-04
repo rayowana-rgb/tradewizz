@@ -68,6 +68,12 @@ class ScreenerResult(BaseModel):
     market: Market
     matches: List[ScreenerMatch] = []
     generated_at: str  # ISO-8601
+    # Pagination/filter metadata (added for "showing N of M" + load-more).
+    total_count: int = 0  # matches after filtering, BEFORE the limit
+    returned_count: int = 0  # matches actually returned (== len(matches))
+    limit: int = 50
+    min_score: float = 0.0
+    categories: List[ScreenerCategory] = []
 
 
 class HealthResponse(BaseModel):

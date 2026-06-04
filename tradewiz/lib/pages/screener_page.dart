@@ -31,8 +31,11 @@ class _ScreenerPageState extends State<ScreenerPage> {
   ScreenerCategory? _categoryFilter;
   double _minScore = 0;
 
-  // Default top-N requested from the backend.
-  static const int _limit = 50;
+  // Pagination: requested top-N grows by _pageSize up to _maxLimit.
+  static const int _pageSize = 50;
+  static const int _maxLimit = 200;
+  int _limit = _pageSize;
+  bool _loadingMore = false;
 
   bool _loading = false;
   String? _error;
@@ -93,18 +96,43 @@ class _ScreenerPageState extends State<ScreenerPage> {
 
   void _selectMarket(Market m) {
     if (m == _market) return;
-    setState(() => _market = m);
+    setState(() {
+      _market = m;
+      _limit = _pageSize; // reset pagination on context change
+    });
     _run();
   }
 
   void _selectCategory(ScreenerCategory? c) {
-    setState(() => _categoryFilter = c);
+    setState(() {
+      _categoryFilter = c;
+      _limit = _pageSize;
+    });
     _run(); // re-query server-side with the category filter
   }
 
   void _selectMinScore(double v) {
-    setState(() => _minScore = v);
+    setState(() {
+      _minScore = v;
+      _limit = _pageSize;
+    });
     _run();
+  }
+
+  bool get _canLoadMore =>
+      (_result?.hasMore ?? false) && _limit < _maxLimit;
+
+  Future<void> _loadMore() async {
+    if (!_canLoadMore || _loadingMore) return;
+    setState(() {
+      _limit = (_limit + _pageSize).clamp(_pageSize, _maxLimit);
+      _loadingMore = true;
+    });
+    try {
+      await _run();
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
+    }
   }
 
   void _openAnalysis(ScreenerMatch match) {
@@ -186,16 +214,90 @@ class _ScreenerPageState extends State<ScreenerPage> {
         onRefresh: _run,
       );
     }
+    final result = _result;
     return RefreshIndicator(
       onRefresh: _run,
       child: ListView.separated(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-        itemCount: matches.length,
+        // +1 for the footer (count + optional Load More).
+        itemCount: matches.length + 1,
         separatorBuilder: (_, index) => const SizedBox(height: 12),
-        itemBuilder: (_, i) => _MatchCard(
-          match: matches[i],
-          onTap: () => _openAnalysis(matches[i]),
-        ),
+        itemBuilder: (_, i) {
+          if (i < matches.length) {
+            return _MatchCard(
+              match: matches[i],
+              onTap: () => _openAnalysis(matches[i]),
+            );
+          }
+          return _ScreenerFooter(
+            shown: result?.shownCount ?? matches.length,
+            total: result?.totalCount ?? matches.length,
+            canLoadMore: _canLoadMore,
+            loadingMore: _loadingMore,
+            atMax: _limit >= _maxLimit,
+            onLoadMore: _loadMore,
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// "Showing X of Y" count + Load More control at the bottom of the list.
+class _ScreenerFooter extends StatelessWidget {
+  const _ScreenerFooter({
+    required this.shown,
+    required this.total,
+    required this.canLoadMore,
+    required this.loadingMore,
+    required this.atMax,
+    required this.onLoadMore,
+  });
+
+  final int shown;
+  final int total;
+  final bool canLoadMore;
+  final bool loadingMore;
+  final bool atMax;
+  final VoidCallback onLoadMore;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Column(
+        children: [
+          Text(
+            'Showing $shown of $total',
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+          ),
+          const SizedBox(height: 10),
+          if (canLoadMore)
+            SizedBox(
+              width: double.infinity,
+              child: loadingMore
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(8),
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    )
+                  : OutlinedButton.icon(
+                      onPressed: onLoadMore,
+                      icon: const Icon(Icons.expand_more),
+                      label: const Text('Load more'),
+                    ),
+            )
+          else if (atMax && total > shown)
+            Text(
+              'Showing the top $shown (max).',
+              style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
+            ),
+        ],
       ),
     );
   }
