@@ -7,6 +7,7 @@ import pytest
 from app import indicators
 from app.engine import AnalysisEngine, yf_symbol
 from app.models import Market, ScreenerCategory
+from app.universe import UniverseRepository
 
 
 def make_ohlcv(close, volume=None, n=None):
@@ -148,3 +149,20 @@ def test_screen_no_universe_falls_back_to_mock():
     res = eng.screen(Market.HKEX)  # no symbols
     assert res.market == Market.HKEX
     assert len(res.matches) > 0  # mock provides rows
+
+
+def test_screen_uses_market_universe(tmp_path):
+    # A controlled 2-symbol universe loaded from disk.
+    (tmp_path / "idx.csv").write_text(
+        "symbol,name\nBBCA,Bank Central Asia\nTLKM,Telkom Indonesia\n"
+    )
+    eng = AnalysisEngine(
+        fetcher=lambda t, p, i: uptrend(),
+        universe=UniverseRepository(universe_dir=tmp_path),
+    )
+    res = eng.screen(Market.IDX)  # no explicit symbols -> uses universe
+    assert {m.symbol for m in res.matches} == {"BBCA", "TLKM"}
+    # Name enrichment comes from the universe file.
+    bbca = next(m for m in res.matches if m.symbol == "BBCA")
+    assert bbca.name == "Bank Central Asia"
+    assert bbca.signal == "BUY"  # uptrend synthetic data

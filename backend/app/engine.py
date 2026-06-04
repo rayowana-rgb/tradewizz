@@ -16,6 +16,7 @@ import pandas as pd
 
 from . import indicators, mock_data
 from .cache import make_cached_fetcher
+from .universe import UniverseRepository
 from .models import (
     AnalysisResult,
     Market,
@@ -76,9 +77,14 @@ def _yf_fetch(ticker: str, period: str = "1y", interval: str = "1d") -> pd.DataF
 
 
 class AnalysisEngine:
-    def __init__(self, fetcher: Optional[Fetcher] = None):
+    def __init__(
+        self,
+        fetcher: Optional[Fetcher] = None,
+        universe: Optional[UniverseRepository] = None,
+    ):
         # Default: yfinance behind the on-disk OHLCV cache (TTL via env).
         self._fetch = fetcher or make_cached_fetcher(_yf_fetch)
+        self._universe = universe or UniverseRepository()
 
     # -- categories --------------------------------------------------------
 
@@ -284,11 +290,18 @@ class AnalysisEngine:
     def screen(
         self, market: Market, symbols: Optional[List[str]] = None
     ) -> ScreenerResult:
-        """Screen a list of symbols for a market.
+        """Screen a market's symbol universe (or an explicit symbol list).
 
-        With no universe provided, falls back to mock screener output (a real
-        deployment would supply the market's symbol universe).
+        Resolution order:
+          1. explicit ``symbols`` argument, if given;
+          2. the market's configured universe (CSV/Excel);
+          3. mock screener output if neither yields a usable universe.
         """
+        names: dict = {}
+        if not symbols:
+            symbols = self._universe.symbols(market)
+            names = self._universe.names(market)
+
         if not symbols:
             return mock_data.mock_screen(market)
 
@@ -306,7 +319,7 @@ class AnalysisEngine:
                 matches.append(
                     ScreenerMatch(
                         symbol=sym.upper(),
-                        name=sym.upper(),
+                        name=names.get(sym.upper(), sym.upper()),
                         score=score,
                         signal=signal,
                         price=round(ind["close"], 2),

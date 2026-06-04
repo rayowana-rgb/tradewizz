@@ -26,8 +26,27 @@ Categories mapped from indicators: `bullish`, `bearish`, `scalping`,
 `frequently_traded`, `short_candidate`, `ara_hunter`.
 
 **Fallback:** any fetch error, empty data, or insufficient history routes to the
-mock generators (`app/mock_data.py`). `/screen/{market}` returns mock output
-until a symbol universe is configured.
+mock generators (`app/mock_data.py`).
+
+### Symbol universes
+
+`/screen/{market}` runs over a **controlled per-market symbol list** loaded from
+`app/universe.py`. Starter universes ship under `data/universe/`:
+
+```
+data/universe/idx.csv     hkex.csv     kospi.csv     kosdaq.csv
+```
+
+- File per market: `<market>.csv` or `<market>.xlsx` (CSV preferred if both
+  exist). Dir override: `TRADEWIZ_UNIVERSE_DIR`.
+- Columns (case-insensitive): a symbol column named `symbol`/`ticker`/`code`,
+  plus an optional `name` column. A single-column file works too.
+- Symbols are upper-cased, trimmed, and de-duplicated; the market suffix
+  (`.JK/.HK/.KS/.KQ`) is applied at fetch time.
+- Missing/invalid files yield an empty universe, and `/screen` then falls back
+  to mock output. Symbols that fail to fetch are skipped.
+
+Edit these files to control exactly which tickers get screened.
 
 ### OHLCV cache
 
@@ -117,13 +136,17 @@ backend/
     models.py      # Pydantic models matching the Flutter contract
     indicators.py  # Pure pandas/numpy indicators (RSI/EMA/SMA/MACD/ATR/...)
     cache.py       # On-disk OHLCV cache (ticker+period+interval, TTL)
+    universe.py    # Per-market symbol universes (CSV/Excel loader)
     engine.py      # yfinance fetch (cached) + categorize + signal/score
     mock_data.py   # Deterministic mock generators (mirror the app's mocks)
+  data/
+    universe/      # idx.csv, hkex.csv, kospi.csv, kosdaq.csv
   tests/
     test_api.py        # Contract/shape tests (forced mock fallback, no network)
     test_indicators.py # Indicator math (synthetic data)
     test_engine.py     # Engine logic + fallback (injected fetchers, no network)
     test_cache.py      # Cache hit/miss/expiry (fake clock, no network)
+    test_universe.py   # Universe loader: CSV/Excel, dedupe, fallbacks
   requirements.txt
 ```
 
