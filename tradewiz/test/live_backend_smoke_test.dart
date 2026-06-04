@@ -47,9 +47,11 @@ void main() {
   setUp(() {
     // Real HTTP client + real config; fallback OFF so a failure can't be
     // silently masked as "live" — we want a hard error if the server is down.
+    // Generous timeout: /screen fans out across a whole symbol universe, so a
+    // few seconds per symbol can add up on a real (networked) machine.
     final liveConfig = AppConfig(
       baseUrl: config.baseUrl,
-      requestTimeout: const Duration(seconds: 8),
+      requestTimeout: const Duration(seconds: 60),
       mockFallback: false,
     );
     client = ApiClient(config: liveConfig, httpClient: http.Client());

@@ -9,6 +9,7 @@ fails, so the API never hard-fails on a flaky data source.
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timezone
 from typing import Callable, List, Optional
 
@@ -58,6 +59,11 @@ def _now_iso() -> str:
 Fetcher = Callable[[str, str, str], pd.DataFrame]
 
 
+# Per-request network timeout for yfinance (seconds). Keeps a slow/blocked data
+# source from stalling /screen across a whole universe. Override via env.
+_YF_TIMEOUT = float(os.environ.get("TRADEWIZ_YF_TIMEOUT", "8"))
+
+
 def _yf_fetch(ticker: str, period: str = "1y", interval: str = "1d") -> pd.DataFrame:
     import yfinance as yf
 
@@ -68,6 +74,7 @@ def _yf_fetch(ticker: str, period: str = "1y", interval: str = "1d") -> pd.DataF
         auto_adjust=False,
         progress=False,
         threads=False,
+        timeout=_YF_TIMEOUT,
     )
     if df is None or df.empty:
         raise ValueError(f"No data for {ticker}")
