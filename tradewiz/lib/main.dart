@@ -22,7 +22,14 @@ class TradeWizApp extends StatefulWidget {
 }
 
 class _TradeWizAppState extends State<TradeWizApp> {
-  final WatchlistStore _watchlist = WatchlistStore();
+  final WatchlistStore _watchlist =
+      WatchlistStore(persistence: SharedPrefsWatchlistPersistence());
+
+  @override
+  void initState() {
+    super.initState();
+    _watchlist.load();
+  }
 
   @override
   void dispose() {

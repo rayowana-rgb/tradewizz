@@ -12,7 +12,8 @@ stock-screening bot — the backend API mirrors the bot's capabilities.
   accumulation, turnaround multibagger, frequently traded, short candidate,
   ARA hunter). Filter by market and category; pull-to-refresh; loading/error/
   empty states.
-- **Watchlist** — per-market watchlist with swipe-to-remove.
+- **Watchlist** — per-market watchlist with swipe-to-remove; tap a row to open
+  its analysis. **Persists across launches** via `shared_preferences`.
 - **Market selector** — switch between IDX, HKEX, KOSPI, KOSDAQ.
 - **AI Analysis** — enter a symbol + market, get a placeholder analysis result
   and weekly forecast (wired through the repository/API layer). **Save to
@@ -39,7 +40,7 @@ lib/
     watchlist_item.dart        # WatchlistItem (persistable)
   services/
     api_client.dart            # HTTP-ready client (stubbed transport)
-    watchlist_store.dart       # Shared ChangeNotifier watchlist state
+    watchlist_store.dart       # Shared ChangeNotifier state + persistence
     watchlist_scope.dart       # InheritedNotifier exposing the store
   repositories/
     stock_repository.dart      # UI-facing data access
@@ -76,5 +77,4 @@ flutter run        # iOS simulator or device (Android also supported)
 ## Next steps
 
 - Connect the real (migrated bot) backend.
-- Persist watchlist (e.g. shared_preferences / local DB) — store API is ready.
 - iOS polish: Cupertino touches where it improves UX.

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/market.dart';
 import '../models/watchlist_item.dart';
 import '../services/watchlist_scope.dart';
+import 'ai_analysis_page.dart';
 
 /// Watchlist for the selected market, backed by the shared [WatchlistStore].
 class WatchlistPage extends StatelessWidget {
@@ -37,7 +38,17 @@ class WatchlistPage extends StatelessWidget {
                   ),
                   onDismissed: (_) =>
                       store.remove(items[i].symbol, items[i].market),
-                  child: _WatchlistTile(item: items[i]),
+                  child: _WatchlistTile(
+                    item: items[i],
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => AnalysisDetailPage(
+                          symbol: items[i].symbol,
+                          market: items[i].market,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
                 if (i != items.length - 1)
                   const Divider(height: 1, indent: 72),
@@ -58,12 +69,14 @@ class WatchlistPage extends StatelessWidget {
 }
 
 class _WatchlistTile extends StatelessWidget {
-  const _WatchlistTile({required this.item});
+  const _WatchlistTile({required this.item, this.onTap});
   final WatchlistItem item;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     return ListTile(
+      onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       leading: CircleAvatar(
         backgroundColor: Theme.of(context).colorScheme.primary.withValues(
