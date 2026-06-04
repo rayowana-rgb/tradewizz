@@ -15,6 +15,7 @@ from typing import Callable, List, Optional
 import pandas as pd
 
 from . import indicators, mock_data
+from .cache import make_cached_fetcher
 from .models import (
     AnalysisResult,
     Market,
@@ -47,17 +48,18 @@ def _now_iso() -> str:
 
 
 # A fetcher returns an OHLCV DataFrame (columns: Open/High/Low/Close/Volume) or
-# raises. Injectable so tests can supply synthetic data with no network.
-Fetcher = Callable[[str, str], pd.DataFrame]
+# raises. Signature: (ticker, period, interval). Injectable so tests can supply
+# synthetic data with no network.
+Fetcher = Callable[[str, str, str], pd.DataFrame]
 
 
-def _yf_fetch(ticker: str, period: str = "1y") -> pd.DataFrame:
+def _yf_fetch(ticker: str, period: str = "1y", interval: str = "1d") -> pd.DataFrame:
     import yfinance as yf
 
     df = yf.download(
         ticker,
         period=period,
-        interval="1d",
+        interval=interval,
         auto_adjust=False,
         progress=False,
         threads=False,
@@ -75,7 +77,8 @@ def _yf_fetch(ticker: str, period: str = "1y") -> pd.DataFrame:
 
 class AnalysisEngine:
     def __init__(self, fetcher: Optional[Fetcher] = None):
-        self._fetch = fetcher or _yf_fetch
+        # Default: yfinance behind the on-disk OHLCV cache (TTL via env).
+        self._fetch = fetcher or make_cached_fetcher(_yf_fetch)
 
     # -- categories --------------------------------------------------------
 
@@ -207,7 +210,7 @@ class AnalysisEngine:
     def analyze(self, symbol: str, market: Market) -> AnalysisResult:
         ticker = yf_symbol(symbol, market)
         try:
-            df = self._fetch(ticker, "1y")
+            df = self._fetch(ticker, "1y", "1d")
             ind = indicators.compute_all(df)
             if ind.get("close") is None:
                 raise ValueError("insufficient data")
@@ -233,7 +236,7 @@ class AnalysisEngine:
     def predict_weekly(self, symbol: str, market: Market) -> WeeklyPrediction:
         ticker = yf_symbol(symbol, market)
         try:
-            df = self._fetch(ticker, "6mo")
+            df = self._fetch(ticker, "6mo", "1d")
             ind = indicators.compute_all(df)
             close = ind.get("close")
             ema20 = ind.get("ema20")
@@ -293,7 +296,7 @@ class AnalysisEngine:
         for sym in symbols:
             ticker = yf_symbol(sym, market)
             try:
-                df = self._fetch(ticker, "1y")
+                df = self._fetch(ticker, "1y", "1d")
                 ind = indicators.compute_all(df)
                 if ind.get("close") is None:
                     raise ValueError("insufficient data")

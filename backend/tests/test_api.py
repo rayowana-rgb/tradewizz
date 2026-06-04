@@ -10,7 +10,7 @@ from app import main
 from app.engine import AnalysisEngine
 
 
-def _offline_fetch(ticker, period):
+def _offline_fetch(ticker, period, interval):
     raise ConnectionError("no network in tests")
 
 

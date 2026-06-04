@@ -53,7 +53,7 @@ def test_yf_symbol_suffix(market, suffix):
 # ---- analyze -----------------------------------------------------------------
 
 def test_analyze_uptrend_is_bullish_buy():
-    eng = AnalysisEngine(fetcher=lambda t, p: uptrend())
+    eng = AnalysisEngine(fetcher=lambda t, p, i: uptrend())
     res = eng.analyze("BBCA", Market.IDX)
     assert res.signal == "BUY"
     assert res.score >= 66
@@ -62,14 +62,14 @@ def test_analyze_uptrend_is_bullish_buy():
 
 
 def test_analyze_downtrend_is_bearish_sell():
-    eng = AnalysisEngine(fetcher=lambda t, p: downtrend())
+    eng = AnalysisEngine(fetcher=lambda t, p, i: downtrend())
     res = eng.analyze("XYZ", Market.HKEX)
     assert res.signal == "SELL"
     assert res.score <= 40
 
 
 def test_analyze_falls_back_to_mock_on_fetch_error():
-    def boom(ticker, period):
+    def boom(ticker, period, interval):
         raise ConnectionError("offline")
 
     eng = AnalysisEngine(fetcher=boom)
@@ -81,7 +81,7 @@ def test_analyze_falls_back_to_mock_on_fetch_error():
 
 
 def test_analyze_falls_back_on_empty_data():
-    eng = AnalysisEngine(fetcher=lambda t, p: make_ohlcv([100.0], n=1))
+    eng = AnalysisEngine(fetcher=lambda t, p, i: make_ohlcv([100.0], n=1))
     res = eng.analyze("AAA", Market.KOSPI)
     # 1 row => indicators are NaN => fallback to mock.
     assert res.symbol == "AAA"
@@ -91,7 +91,7 @@ def test_analyze_falls_back_on_empty_data():
 # ---- categories --------------------------------------------------------------
 
 def test_categorize_bullish_on_uptrend():
-    eng = AnalysisEngine(fetcher=lambda t, p: uptrend())
+    eng = AnalysisEngine(fetcher=lambda t, p, i: uptrend())
     res = eng.analyze("UP", Market.IDX)
     assert "bullish" in res.summary
 
@@ -113,7 +113,7 @@ def test_categorize_ara_hunter_on_surge():
 # ---- predict_weekly ----------------------------------------------------------
 
 def test_predict_uptrend_is_up():
-    eng = AnalysisEngine(fetcher=lambda t, p: uptrend())
+    eng = AnalysisEngine(fetcher=lambda t, p, i: uptrend())
     res = eng.predict_weekly("BBCA", Market.IDX)
     assert res.direction == "UP"
     assert res.expected_change_percent >= 0
@@ -121,7 +121,7 @@ def test_predict_uptrend_is_up():
 
 
 def test_predict_falls_back_on_error():
-    def boom(ticker, period):
+    def boom(ticker, period, interval):
         raise ValueError("no data")
 
     eng = AnalysisEngine(fetcher=boom)
@@ -133,7 +133,7 @@ def test_predict_falls_back_on_error():
 # ---- screen ------------------------------------------------------------------
 
 def test_screen_with_universe_ranks_by_score():
-    def fetch(ticker, period):
+    def fetch(ticker, period, interval):
         return uptrend() if ticker.startswith("GOOD") else downtrend()
 
     eng = AnalysisEngine(fetcher=fetch)
@@ -144,7 +144,7 @@ def test_screen_with_universe_ranks_by_score():
 
 
 def test_screen_no_universe_falls_back_to_mock():
-    eng = AnalysisEngine(fetcher=lambda t, p: uptrend())
+    eng = AnalysisEngine(fetcher=lambda t, p, i: uptrend())
     res = eng.screen(Market.HKEX)  # no symbols
     assert res.market == Market.HKEX
     assert len(res.matches) > 0  # mock provides rows

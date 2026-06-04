@@ -29,6 +29,24 @@ Categories mapped from indicators: `bullish`, `bearish`, `scalping`,
 mock generators (`app/mock_data.py`). `/screen/{market}` returns mock output
 until a symbol universe is configured.
 
+### OHLCV cache
+
+`app/cache.py` memoizes yfinance fetches on disk, keyed by resolved Yahoo
+ticker + period + interval, to avoid repeat calls and Yahoo rate limits. Entries
+expire after a TTL (default **6 hours**). The inner fetcher stays injectable, so
+tests run with no network.
+
+Config via environment:
+
+| Variable                       | Default                | Purpose                  |
+| ------------------------------ | ---------------------- | ------------------------ |
+| `TRADEWIZ_CACHE_DIR`           | `backend/.cache/ohlcv` | Where cache files live   |
+| `TRADEWIZ_CACHE_TTL_SECONDS`   | `21600` (6h)           | Cache entry time-to-live |
+
+The cache dir is git-ignored. Corrupt/unreadable entries are transparently
+refetched; fetch errors propagate (and are not cached) so the engine's mock
+fallback still applies.
+
 ## Endpoints
 
 All under the `/v1` prefix.
@@ -98,12 +116,14 @@ backend/
     main.py        # FastAPI app, routes, CORS, health
     models.py      # Pydantic models matching the Flutter contract
     indicators.py  # Pure pandas/numpy indicators (RSI/EMA/SMA/MACD/ATR/...)
-    engine.py      # yfinance fetch + categorize + signal/score (mock fallback)
+    cache.py       # On-disk OHLCV cache (ticker+period+interval, TTL)
+    engine.py      # yfinance fetch (cached) + categorize + signal/score
     mock_data.py   # Deterministic mock generators (mirror the app's mocks)
   tests/
     test_api.py        # Contract/shape tests (forced mock fallback, no network)
     test_indicators.py # Indicator math (synthetic data)
     test_engine.py     # Engine logic + fallback (injected fetchers, no network)
+    test_cache.py      # Cache hit/miss/expiry (fake clock, no network)
   requirements.txt
 ```
 
