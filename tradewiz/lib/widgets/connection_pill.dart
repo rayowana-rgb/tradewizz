@@ -51,10 +51,20 @@ class ConnectionPill extends StatelessWidget {
 }
 
 /// Full-width banner variant for prominent placement (e.g. top of a page).
+///
+/// When [onRetry] is provided and the state is degraded, shows a Retry action
+/// so users can attempt to reconnect to the live backend.
 class ConnectionBanner extends StatelessWidget {
-  const ConnectionBanner({super.key, required this.source});
+  const ConnectionBanner({
+    super.key,
+    required this.source,
+    this.onRetry,
+    this.retrying = false,
+  });
 
   final DataSource? source;
+  final VoidCallback? onRetry;
+  final bool retrying;
 
   @override
   Widget build(BuildContext context) {
@@ -84,9 +94,32 @@ class ConnectionBanner extends StatelessWidget {
           Expanded(
             child: Text(
               s.description,
-              style: TextStyle(color: color, fontWeight: FontWeight.w600, fontSize: 13),
+              style: TextStyle(
+                  color: color, fontWeight: FontWeight.w600, fontSize: 13),
             ),
           ),
+          if (onRetry != null) ...[
+            const SizedBox(width: 8),
+            retrying
+                ? SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation(color),
+                    ),
+                  )
+                : TextButton.icon(
+                    onPressed: onRetry,
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text('Retry'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: color,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+          ],
         ],
       ),
     );

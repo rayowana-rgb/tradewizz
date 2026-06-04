@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -65,6 +66,37 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    expect(find.text('Mock'), findsOneWidget);
+  });
+
+  testWidgets('Degraded banner exposes a working Retry action',
+      (tester) async {
+    var calls = 0;
+    final flaky = MockClient((req) async {
+      calls++;
+      throw http.ClientException('offline');
+    });
+    final repo = StockRepository(
+      client: ApiClient(
+        config: const AppConfig(baseUrl: 'https://test.tradewiz.app/v1'),
+        httpClient: flaky,
+      ),
+    );
+
+    await tester.pumpWidget(
+      wrapApp(ScreenerPage(market: Market.idx, repository: repo)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Mock'), findsOneWidget);
+    final afterInitial = calls;
+    expect(afterInitial, greaterThan(0));
+
+    // Tap Retry on the banner -> triggers another fetch attempt.
+    await tester.tap(find.widgetWithText(TextButton, 'Retry'));
+    await tester.pumpAndSettle();
+
+    expect(calls, greaterThan(afterInitial));
     expect(find.text('Mock'), findsOneWidget);
   });
 }

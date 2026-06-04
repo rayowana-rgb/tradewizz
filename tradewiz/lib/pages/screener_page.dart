@@ -128,6 +128,14 @@ class _ScreenerPageState extends State<ScreenerPage> {
             ],
           ),
         ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: ConnectionBanner(
+            source: _source,
+            onRetry: _run,
+            retrying: _loading,
+          ),
+        ),
         const Divider(height: 1),
         Expanded(child: _buildBody()),
       ],

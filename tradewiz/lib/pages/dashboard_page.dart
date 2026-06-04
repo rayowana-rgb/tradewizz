@@ -77,7 +77,11 @@ class _DashboardPageState extends State<DashboardPage> {
             ],
           ),
           const SizedBox(height: 8),
-          ConnectionBanner(source: _source),
+          ConnectionBanner(
+            source: _source,
+            onRetry: _load,
+            retrying: _loading,
+          ),
           _MarketHeader(market: market),
           const SizedBox(height: 16),
           Row(

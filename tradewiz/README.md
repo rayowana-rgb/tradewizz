@@ -34,7 +34,8 @@ stays usable offline. Non-2xx responses surface a friendly `ApiException`
 (no silent fallback). Every result is tagged with a **`DataSource`**
 (`live` / `fallback` / `offline` / `error`) carried from the client through the
 repository to the UI, surfaced as a **connection pill/banner** on the Dashboard,
-Screener, and Analysis result.
+Screener, and Analysis result. The banner offers a **Retry** action to attempt
+reconnecting to the live backend.
 
 Configure the base URL at build time:
 
@@ -70,9 +71,8 @@ lib/
     ai_analysis_page.dart      # Form-driven analysis
   widgets/
     market_selector.dart
-    stock_tile.dart
     category_badge.dart
-    connection_pill.dart       # Live/Mock/Offline/Error pill + banner
+    connection_pill.dart       # Live/Mock/Offline/Error pill + banner (Retry)
 ```
 
 ### Planned API endpoints

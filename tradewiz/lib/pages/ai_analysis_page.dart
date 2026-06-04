@@ -177,7 +177,11 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
               ],
             ),
           ),
-          ConnectionBanner(source: _source),
+          ConnectionBanner(
+            source: _source,
+            onRetry: _submit,
+            retrying: _loading,
+          ),
           _ResultCard(result: _result!),
           const SizedBox(height: 12),
           _SaveToWatchlistButton(result: _result!),
