@@ -15,9 +15,10 @@ import hashlib
 import json
 import logging
 import os
+import threading
 import time
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Dict, Optional
 
 import pandas as pd
 
@@ -63,6 +64,19 @@ class OhlcvCache:
         self._ttl = ttl_seconds if ttl_seconds is not None else _ttl_from_env()
         self._clock = clock
         self._dir.mkdir(parents=True, exist_ok=True)
+        # Single-flight: one lock per cache key, guarded by a registry lock.
+        # FastAPI runs sync endpoints in a threadpool, so real threading locks
+        # are required (not asyncio locks).
+        self._registry_lock = threading.Lock()
+        self._key_locks: Dict[str, threading.Lock] = {}
+
+    def _lock_for(self, key: str) -> threading.Lock:
+        with self._registry_lock:
+            lock = self._key_locks.get(key)
+            if lock is None:
+                lock = threading.Lock()
+                self._key_locks[key] = lock
+            return lock
 
     # -- key/paths ---------------------------------------------------------
 
@@ -80,25 +94,49 @@ class OhlcvCache:
     def get(
         self, ticker: str, period: str = "1y", interval: str = "1d"
     ) -> pd.DataFrame:
-        """Return cached data if fresh, else fetch, store, and return."""
+        """Return cached data if fresh, else fetch (single-flight), store, return.
+
+        Concurrent cold requests for the same key share one underlying fetch:
+        the first acquires the per-key lock and fetches; others block, then read
+        the freshly written cache instead of duplicating the fetch.
+        """
         key = self._key(ticker, period, interval)
         csv_path, meta_path = self._paths(key)
 
-        if self._is_fresh(meta_path):
-            try:
-                df = self._read(csv_path)
-                logger.debug("cache hit %s (%s)", ticker, key)
-                return df
-            except Exception as exc:  # noqa: BLE001 - corrupt entry -> refetch
-                logger.warning("cache read failed for %s: %s", ticker, exc)
+        # Fast path: fresh on disk, no lock needed.
+        fresh = self._try_read_fresh(ticker, csv_path, meta_path)
+        if fresh is not None:
+            return fresh
 
-        # Miss / expired / corrupt: fetch fresh (may raise -> caller handles).
-        df = self._fetch(ticker, period, interval)
+        # Slow path: serialize per key so only one thread fetches.
+        with self._lock_for(key):
+            # Double-check: another thread may have populated it while we waited.
+            fresh = self._try_read_fresh(ticker, csv_path, meta_path)
+            if fresh is not None:
+                logger.debug("single-flight hit %s (%s)", ticker, key)
+                return fresh
+
+            # We're the leader: fetch fresh (may raise -> caller handles).
+            df = self._fetch(ticker, period, interval)
+            try:
+                self._write(csv_path, meta_path, df)
+            except Exception as exc:  # noqa: BLE001 - cache write best-effort
+                logger.warning("cache write failed for %s: %s", ticker, exc)
+            return df
+
+    def _try_read_fresh(
+        self, ticker: str, csv_path: Path, meta_path: Path
+    ) -> Optional[pd.DataFrame]:
+        """Return cached data if present and fresh, else None."""
+        if not self._is_fresh(meta_path):
+            return None
         try:
-            self._write(csv_path, meta_path, df)
-        except Exception as exc:  # noqa: BLE001 - cache write is best-effort
-            logger.warning("cache write failed for %s: %s", ticker, exc)
-        return df
+            df = self._read(csv_path)
+            logger.debug("cache hit %s", ticker)
+            return df
+        except Exception as exc:  # noqa: BLE001 - corrupt entry -> refetch
+            logger.warning("cache read failed for %s: %s", ticker, exc)
+            return None
 
     def clear(self) -> None:
         for p in self._dir.glob("*"):

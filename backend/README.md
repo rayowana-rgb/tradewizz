@@ -66,6 +66,13 @@ The cache dir is git-ignored. Corrupt/unreadable entries are transparently
 refetched; fetch errors propagate (and are not cached) so the engine's mock
 fallback still applies.
 
+**Single-flight concurrency guard:** simultaneous cold requests for the same
+ticker+period+interval share one underlying fetch. The first caller acquires a
+per-key `threading.Lock` and fetches; others block, then read the freshly
+written cache instead of issuing duplicate yfinance calls. Real thread locks are
+used (FastAPI runs sync endpoints in a threadpool). Failed fetches are not
+cached, so they never poison subsequent reads.
+
 ## Endpoints
 
 All under the `/v1` prefix.
@@ -155,6 +162,7 @@ backend/
     test_indicators.py # Indicator math (synthetic data)
     test_engine.py     # Engine logic + fallback (injected fetchers, no network)
     test_cache.py      # Cache hit/miss/expiry (fake clock, no network)
+    test_cache_concurrency.py # Single-flight guard (real threads, no network)
     test_universe.py   # Universe loader: CSV/Excel, dedupe, fallbacks
   requirements.txt
 ```
