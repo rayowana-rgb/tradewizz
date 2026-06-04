@@ -176,3 +176,78 @@ def test_predict_weekly_shape():
 def test_cors_header_present():
     r = client.get("/v1/health", headers={"Origin": "http://localhost"})
     assert r.headers.get("access-control-allow-origin") == "*"
+
+
+# --- /v1/backtest -----------------------------------------------------------
+
+BACKTEST_FIELDS = {
+    "symbol", "market", "signal_type", "forward_days",
+    "total_signals", "total_wins", "total_losses",
+    "win_rate", "average_return", "profit_factor", "max_drawdown",
+    "generated_at",
+}
+
+
+def test_backtest_shape_offline_zeroed():
+    # Module engine uses an offline fetcher -> zeroed but well-formed 200.
+    r = client.get("/v1/backtest/BBCA", params={"market": "IDX"})
+    assert r.status_code == 200
+    b = r.json()
+    assert BACKTEST_FIELDS <= set(b.keys())
+    assert b["symbol"] == "BBCA"
+    assert b["signal_type"] == "momentum"
+    assert b["total_signals"] == 0
+    assert b["win_rate"] == 0.0
+
+
+def test_backtest_signal_type_param():
+    for st in ("momentum", "scalping", "accumulation"):
+        r = client.get("/v1/backtest/BBCA", params={"signal_type": st})
+        assert r.status_code == 200
+        assert r.json()["signal_type"] == st
+
+
+def test_backtest_bad_signal_type_400():
+    r = client.get("/v1/backtest/BBCA", params={"signal_type": "nope"})
+    assert r.status_code == 400
+
+
+def test_backtest_forward_days_bounds_422():
+    assert client.get(
+        "/v1/backtest/BBCA", params={"forward_days": 0}
+    ).status_code == 422
+    assert client.get(
+        "/v1/backtest/BBCA", params={"forward_days": 31}
+    ).status_code == 422
+
+
+def test_backtest_with_synthetic_data_produces_signals():
+    # Inject a synthetic-data engine so signals actually fire; restore after.
+    import numpy as np
+    import pandas as pd
+
+    from app.engine import AnalysisEngine
+
+    rng = np.random.default_rng(7)
+    n = 400
+    close = 100 + np.cumsum(rng.normal(0.4, 1.5, n))
+    close = np.maximum(close, 1.0)
+    high = close + np.abs(rng.normal(0, 1, n)) + 0.5
+    low = close - np.abs(rng.normal(0, 1, n)) - 0.5
+    df = pd.DataFrame({
+        "Open": close, "High": high, "Low": low,
+        "Close": close, "Volume": rng.integers(1000, 8000, n).astype("float64"),
+    })
+    prev_engine = main.engine
+    main.engine = AnalysisEngine(fetcher=lambda t, p, i: df)
+    try:
+        b = client.get(
+            "/v1/backtest/BBCA",
+            params={"signal_type": "accumulation", "forward_days": 2},
+        ).json()
+    finally:
+        main.engine = prev_engine
+    assert b["total_signals"] > 0
+    assert 0.0 <= b["win_rate"] <= 1.0
+    import math
+    assert math.isfinite(b["profit_factor"])

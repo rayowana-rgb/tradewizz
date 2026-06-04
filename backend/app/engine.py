@@ -16,12 +16,14 @@ from typing import Callable, List, Optional
 
 import pandas as pd
 
+from . import backtest as backtest_mod
 from . import indicators, mock_data
 from .ml import ProfitModel
 from .cache import make_cached_fetcher
 from .universe import UniverseRepository
 from .models import (
     AnalysisResult,
+    BacktestResult,
     Market,
     ScreenerCategory,
     ScreenerMatch,
@@ -526,6 +528,40 @@ class AnalysisEngine:
         except Exception as exc:  # noqa: BLE001
             logger.warning("predict fell back to mock for %s: %s", ticker, exc)
             return mock_data.mock_predict_weekly(symbol)
+
+    def backtest(
+        self,
+        symbol: str,
+        market: Market,
+        signal_type: str = backtest_mod.DEFAULT_SIGNAL_TYPE,
+        forward_days: int = backtest_mod.DEFAULT_FORWARD_DAYS,
+    ) -> BacktestResult:
+        """Backtest a historical buy-signal rule over the symbol's history.
+
+        Returns zeroed stats (not an error) when data is unavailable, so the
+        endpoint stays 200 and contract-stable.
+        """
+        ticker = yf_symbol(symbol, market)
+        try:
+            df = self._fetch(ticker, "1y", "1d")
+            if df is None or df.empty:
+                raise ValueError("no data")
+            stats = backtest_mod.run_backtest(df, signal_type, forward_days)
+        except Exception as exc:  # noqa: BLE001 - safe, contract-stable
+            logger.warning("backtest fell back to empty for %s: %s", ticker, exc)
+            stats = {
+                "total_signals": 0, "total_wins": 0, "total_losses": 0,
+                "win_rate": 0.0, "average_return": 0.0,
+                "profit_factor": 0.0, "max_drawdown": 0.0,
+            }
+        return BacktestResult(
+            symbol=symbol.upper(),
+            market=market,
+            signal_type=signal_type,
+            forward_days=forward_days,
+            generated_at=_now_iso(),
+            **stats,
+        )
 
     def screen(
         self,

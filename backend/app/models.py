@@ -92,6 +92,23 @@ class ScreenerResult(BaseModel):
     categories: List[ScreenerCategory] = []
 
 
+class BacktestResult(BaseModel):
+    """Forward-return backtest of a historical buy-signal rule."""
+
+    symbol: str
+    market: Market
+    signal_type: str  # momentum / scalping / accumulation
+    forward_days: int
+    total_signals: int
+    total_wins: int
+    total_losses: int
+    win_rate: float  # fraction 0..1
+    average_return: float  # mean forward return (fraction, e.g. 0.012)
+    profit_factor: float  # sum(wins) / abs(sum(losses)); inf-safe
+    max_drawdown: float  # most negative single-signal return (fraction)
+    generated_at: str  # ISO-8601
+
+
 class HealthResponse(BaseModel):
     status: str = "ok"
     service: str = "tradewiz-backend"

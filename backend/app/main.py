@@ -11,9 +11,15 @@ from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
+from .backtest import (
+    DEFAULT_FORWARD_DAYS,
+    DEFAULT_SIGNAL_TYPE,
+    SIGNAL_TYPES,
+)
 from .engine import DEFAULT_LIMIT, MAX_LIMIT, AnalysisEngine
 from .models import (
     AnalysisResult,
+    BacktestResult,
     HealthResponse,
     Market,
     ScreenerCategory,
@@ -121,3 +127,28 @@ def predict_weekly(
     if not symbol.strip():
         raise HTTPException(status_code=400, detail="symbol is required")
     return engine.predict_weekly(symbol, market)
+
+
+@app.get(f"{API_PREFIX}/backtest/{{symbol}}", response_model=BacktestResult)
+def backtest(
+    symbol: str,
+    market: Market = Market.IDX,
+    signal_type: str = Query(
+        DEFAULT_SIGNAL_TYPE,
+        description="momentum | scalping | accumulation",
+    ),
+    forward_days: int = Query(DEFAULT_FORWARD_DAYS, ge=1, le=30),
+) -> BacktestResult:
+    """Backtest a historical buy-signal rule over the symbol's history.
+
+    Returns win_rate, average_return, profit_factor, max_drawdown, and
+    total_signals/total_wins/total_losses. Empty (zeroed) when no data.
+    """
+    if not symbol.strip():
+        raise HTTPException(status_code=400, detail="symbol is required")
+    if signal_type not in SIGNAL_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"signal_type must be one of {sorted(SIGNAL_TYPES)}",
+        )
+    return engine.backtest(symbol, market, signal_type, forward_days)

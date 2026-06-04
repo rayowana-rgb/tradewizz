@@ -248,10 +248,16 @@ tests). 12 ML tests incl. bullish-prob > bearish-prob, persistence/lazy-load,
 graceful None. backend 133 passed, Flutter 25 passed. API contract preserved.
 → Next: backtest endpoint (Phase 4 below). RL/LSTM/Telegram still deferred.
 
-**Phase 4 — Backtest endpoint.** Port `generate_historical_signals` +
-`backtest_signals` behind a new `GET /v1/backtest/{symbol}` returning the stats
-dict. Pure, deterministic, no new heavy deps.
-→ Low risk. Tests: synthetic series with known forward returns.
+**Phase 4 — Backtest endpoint. ✅ DONE (2026-06-05, shipped as task "Phase 5").**
+`app/backtest.py`: `generate_historical_signals` (vectorized momentum/scalping/
+accumulation buy rules reusing the migrated indicator stack) + `backtest_signals`
+(forward-return stats). New `GET /v1/backtest/{symbol}` (`?market=`,
+`?signal_type=`, `?forward_days=`) → `BacktestResult` with win_rate,
+average_return, profit_factor (finite-capped; JSON has no Infinity), max_drawdown,
+and total_signals/total_wins/total_losses. Bad signal_type → 400; no data →
+zeroed 200. Pure/deterministic, no new deps. 18 tests (signal binary/flat,
+hand-computed win-rate & profit-factor, capped-no-loss, engine + API contract,
+param bounds). backend 149 passed, Flutter 25 passed. Existing contracts intact.
 
 **Phase 5 — Richer `/analyze`. ✅ DONE (2026-06-04, shipped as task "Phase 3").**
 Migrated `analyze_screened_stocks` refinement logic into `engine.analyze`:

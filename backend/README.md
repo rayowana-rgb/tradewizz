@@ -102,6 +102,7 @@ All under the `/v1` prefix.
 | GET    | `/v1/analyze/{symbol}`        | `AnalysisResult`   |
 | GET    | `/v1/screen/{market}`         | `ScreenerResult`   |
 | GET    | `/v1/predict_weekly/{symbol}` | `WeeklyPrediction` |
+| GET    | `/v1/backtest/{symbol}`       | `BacktestResult`   |
 
 - `analyze` accepts an optional `?market=IDX|HKEX|KOSPI|KOSDAQ` query param.
 - `screen` returns 404 for unknown markets, and supports:
@@ -114,6 +115,12 @@ All under the `/v1` prefix.
   - The response includes pagination metadata: `total_count` (matches after
     filtering, before the limit), `returned_count`, `limit`, `min_score`, and
     `categories` — enabling “showing N of M” + load-more in clients.
+- `backtest` accepts `?market=`, `?signal_type=momentum|scalping|accumulation`
+  (default momentum), and `?forward_days=` (1..30, default 2). Returns
+  `win_rate`, `average_return`, `profit_factor`, `max_drawdown`, and
+  `total_signals`/`total_wins`/`total_losses`. Bad `signal_type` → 400; no data
+  → a zeroed 200. `profit_factor` is capped finite (999) when there are no
+  losing trades (JSON has no Infinity).
 - Interactive docs: `http://localhost:8000/docs`.
 
 ## Setup
