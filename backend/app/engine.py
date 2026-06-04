@@ -17,6 +17,7 @@ from typing import Callable, List, Optional
 import pandas as pd
 
 from . import indicators, mock_data
+from .ml import ProfitModel
 from .cache import make_cached_fetcher
 from .universe import UniverseRepository
 from .models import (
@@ -97,10 +98,13 @@ class AnalysisEngine:
         self,
         fetcher: Optional[Fetcher] = None,
         universe: Optional[UniverseRepository] = None,
+        profit_model: Optional["ProfitModel"] = None,
     ):
         # Default: yfinance behind the on-disk OHLCV cache (TTL via env).
         self._fetch = fetcher or make_cached_fetcher(_yf_fetch)
         self._universe = universe or UniverseRepository()
+        self._profit_model = profit_model if profit_model is not None \
+            else ProfitModel()
 
     # -- categories --------------------------------------------------------
 
@@ -446,6 +450,12 @@ class AnalysisEngine:
             signal, score = self._signal_and_score(ind, cats)
             tags = ", ".join(c.value for c in cats) or "none"
             ts_pct, ts_price = self._trailing_stop(ind, cats)
+            # Real RandomForest profit probability; placeholder if untrainable.
+            profit_prob = self._profit_model.probability(
+                df, market.value, symbol.upper()
+            )
+            if profit_prob is None:
+                profit_prob = self._profit_probability_placeholder(score)
             return AnalysisResult(
                 symbol=symbol.upper(),
                 market=market,
@@ -463,7 +473,7 @@ class AnalysisEngine:
                 support_resistance=self._support_resistance(ind),
                 trailing_stop_percent=ts_pct,
                 trailing_stop_price=ts_price,
-                profit_probability=self._profit_probability_placeholder(score),
+                profit_probability=profit_prob,
             )
         except Exception as exc:  # noqa: BLE001 - intentional safe fallback
             logger.warning("analyze fell back to mock for %s: %s", ticker, exc)

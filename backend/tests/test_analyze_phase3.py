@@ -4,11 +4,17 @@ Buy reasons, support/resistance, trailing stop, profit-probability placeholder,
 recommendation. All are additive/optional so the API contract is preserved.
 """
 
+import tempfile
+
 import numpy as np
 import pandas as pd
 
 from app.engine import AnalysisEngine
+from app.ml import ProfitModel
 from app.models import AnalysisResult, Market, ScreenerCategory
+
+# Isolated model dir so these tests don't train into the repo cache.
+_MODEL_DIR = tempfile.mkdtemp(prefix="tw_phase3_models_")
 
 
 def make_df(close, high=None, low=None, volume=None):
@@ -31,7 +37,10 @@ def downtrend(n=300):
 
 
 def _engine(df):
-    return AnalysisEngine(fetcher=lambda t, p, i: df)
+    return AnalysisEngine(
+        fetcher=lambda t, p, i: df,
+        profit_model=ProfitModel(models_dir=_MODEL_DIR),
+    )
 
 
 # --- contract preservation --------------------------------------------------

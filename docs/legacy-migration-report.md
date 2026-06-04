@@ -234,12 +234,19 @@ still the prior approximations** (next step). Scoring + API contract unchanged.
 25 passed.
 → Remaining: migrate bullish/bearish/scalping faithfully (≥8/9 criteria forms).
 
-**Phase 3 — RandomForest profit probability.** Port `label_profitable_signals`
-+ `train_profit_model` into a `ml.py` module; expose an optional
-`profit_probability` field on `AnalysisResult` (backward-compatible, like the
-pagination metadata was). Cache models on disk per symbol. `scikit-learn` is
-already a manageable dep.
-→ Medium risk. Tests: deterministic with a fixed seed + synthetic labels.
+**Phase 3 — RandomForest profit probability. ✅ DONE (2026-06-04, shipped as
+task "Phase 4").** `app/ml.py`: `build_feature_frame` (RSI/MACD±/VWAP/SMA20-50-
+200/EMA20-50/OBV/A-D/CMF/ADX/ATR/volume/volume-ratio), `label_profitable`
+(forward-3-day return > 1%), and `ProfitModel` — a per-symbol
+`RandomForestClassifier(100, seed=42)` with disk persistence (joblib) + lazy
+load, keyed by market+symbol+feature-version. `engine.analyze` now uses the real
+P(profitable) for `profit_probability`, falling back to the score/100 placeholder
+only when untrainable (too little data / single-class / sklearn error). Trains
+offline on the symbol's own history — no network. Deps: scikit-learn, joblib.
+Model cache under `.cache/rf_models` (gitignored; a session fixture isolates
+tests). 12 ML tests incl. bullish-prob > bearish-prob, persistence/lazy-load,
+graceful None. backend 133 passed, Flutter 25 passed. API contract preserved.
+→ Next: backtest endpoint (Phase 4 below). RL/LSTM/Telegram still deferred.
 
 **Phase 4 — Backtest endpoint.** Port `generate_historical_signals` +
 `backtest_signals` behind a new `GET /v1/backtest/{symbol}` returning the stats
