@@ -214,10 +214,12 @@ Prioritized by **value ÷ risk**. Each step is independently shippable and
 testable with synthetic OHLCV (no network), consistent with the existing test
 strategy.
 
-**Phase 1 — Indicator parity (foundation).** Add pure-pandas `OBV`, `A/D`,
-`CMF`, `VWAP`, `ADX`, `SMA_20`, `SMA_50`, Bollinger Bands to `indicators.py`
-and surface them in `compute_all`. No TA-Lib. *Unlocks faithful rules.*
-→ Low risk, high leverage. Tests: known-input numeric checks.
+**Phase 1 — Indicator parity (foundation). ✅ DONE (2026-06-04).** Added
+pure-pandas `OBV`, `A/D`, `CMF`, `VWAP`, `ADX`, `SMA_20`, `SMA_50`, Bollinger
+Bands, plus `volume` and `value_traded` to `indicators.py`, surfaced as **new
+keys only** in `compute_all` (existing keys/values untouched). No TA-Lib. No
+category/scoring/API-contract change. 13 new unit tests on synthetic data;
+backend 84 passed, Flutter 25 passed. *Unlocks faithful rules in Phase 2.*
 
 **Phase 2 — Faithful category rules.** Reimplement
 `accumulation, accumulation_silent, pullback, turnaround_multibagger,
