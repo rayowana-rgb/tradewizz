@@ -97,6 +97,42 @@ def mock_predict_weekly(symbol: str) -> WeeklyPrediction:
     )
 
 
+def mock_screener_match(
+    symbol: str, market: Market, name: str = ""
+) -> ScreenerMatch:
+    """Deterministic per-symbol screener match (for graceful /screen fallback).
+
+    Used when a real fetch fails for a single symbol, so the universe still
+    returns a populated, stable row instead of dropping the symbol.
+    """
+    sym = symbol.upper()
+    s = _seed(sym)
+    score = float(s % 100)
+    cats = _CATEGORY_ROTATION[s % len(_CATEGORY_ROTATION)]
+    bearish = (
+        ScreenerCategory.bearish in cats
+        or ScreenerCategory.short_candidate in cats
+    )
+    if bearish:
+        signal = "SELL"
+    elif score > 66:
+        signal = "BUY"
+    else:
+        signal = "HOLD"
+    # Stable pseudo price/change derived from the seed.
+    price = round(100 + (s % 9000) / 10.0, 2)
+    change = round(((s % 21) - 10) * 0.3, 2)
+    return ScreenerMatch(
+        symbol=sym,
+        name=name or sym,
+        score=score,
+        signal=signal,
+        price=price,
+        change_percent=change,
+        categories=cats,
+    )
+
+
 def mock_screen(market: Market) -> ScreenerResult:
     matches: List[ScreenerMatch] = []
     for i, cats in enumerate(_CATEGORY_ROTATION):

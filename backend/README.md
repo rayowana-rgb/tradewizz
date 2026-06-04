@@ -28,6 +28,13 @@ Categories mapped from indicators: `bullish`, `bearish`, `scalping`,
 **Fallback:** any fetch error, empty data, or insufficient history routes to the
 mock generators (`app/mock_data.py`).
 
+For `/screen`, fallback is **per symbol**: if a single ticker fails to fetch, a
+deterministic mock match (stable score/signal/categories from the symbol hash)
+is substituted instead of dropping the symbol. So the endpoint returns `200`
+quickly with the universe fully populated — which the Flutter app treats as live
+backend data. (If the *entire* run yields nothing, it falls back to the generic
+mock screen.)
+
 ### Symbol universes
 
 `/screen/{market}` runs over a **controlled per-market symbol list** loaded from

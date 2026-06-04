@@ -85,6 +85,19 @@ def test_screen_limit_param():
     assert len(r.json()["matches"]) <= 2
 
 
+def test_screen_populates_universe_even_when_fetches_fail():
+    # Engine fetcher always fails, but the shipped universe + per-symbol mock
+    # fallback means /screen still returns 200 with populated matches.
+    r = client.get("/v1/screen/IDX", params={"limit": 200})
+    assert r.status_code == 200
+    b = r.json()
+    assert len(b["matches"]) > 0
+    # Symbols come from the IDX universe (e.g. BBCA), not the generic mock rows.
+    symbols = {m["symbol"] for m in b["matches"]}
+    assert "BBCA" in symbols
+    assert b["total_count"] == len(b["matches"])
+
+
 def test_screen_response_includes_pagination_metadata():
     r = client.get(
         "/v1/screen/HKEX",

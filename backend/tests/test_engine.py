@@ -225,3 +225,60 @@ def test_screen_uses_market_universe(tmp_path):
     bbca = next(m for m in res.matches if m.symbol == "BBCA")
     assert bbca.name == "Bank Central Asia"
     assert bbca.signal == "BUY"  # uptrend synthetic data
+
+
+def test_screen_failed_symbol_uses_mock_not_skipped():
+    # Fetcher always fails -> every symbol must still produce a match.
+    def boom(t, p, i):
+        raise ConnectionError("offline")
+
+    eng = AnalysisEngine(fetcher=boom)
+    res = eng.screen(Market.IDX, symbols=["BBCA", "TLKM", "GOTO"], limit=50)
+    assert {m.symbol for m in res.matches} == {"BBCA", "TLKM", "GOTO"}
+    for m in res.matches:
+        assert 0 <= m.score <= 100
+        assert m.signal in {"BUY", "HOLD", "SELL"}
+        assert m.categories  # non-empty deterministic categories
+
+
+def test_screen_mixed_success_and_failure_all_populated():
+    # GOOD* succeeds (real indicators); BAD* fails -> mock fallback per symbol.
+    def fetch(t, p, i):
+        if t.startswith("GOOD"):
+            return uptrend()
+        raise ValueError("no data")
+
+    eng = AnalysisEngine(fetcher=fetch)
+    res = eng.screen(
+        Market.IDX, symbols=["GOOD1", "BAD1", "GOOD2", "BAD2"], limit=50
+    )
+    assert {m.symbol for m in res.matches} == {"GOOD1", "BAD1", "GOOD2", "BAD2"}
+    assert res.total_count == 4  # nothing dropped
+
+
+def test_screen_failed_symbol_is_deterministic():
+    def boom(t, p, i):
+        raise ConnectionError("offline")
+
+    eng = AnalysisEngine(fetcher=boom)
+    a = eng.screen(Market.HKEX, symbols=["0700"], limit=50).matches[0]
+    b = eng.screen(Market.HKEX, symbols=["0700"], limit=50).matches[0]
+    assert (a.symbol, a.score, a.signal, a.categories) == (
+        b.symbol, b.score, b.signal, b.categories,
+    )
+
+
+def test_screen_failed_symbol_keeps_universe_name(tmp_path):
+    (tmp_path / "idx.csv").write_text(
+        "symbol,name\nBBCA,Bank Central Asia\n"
+    )
+
+    def boom(t, p, i):
+        raise ConnectionError("offline")
+
+    eng = AnalysisEngine(
+        fetcher=boom, universe=UniverseRepository(universe_dir=tmp_path)
+    )
+    res = eng.screen(Market.IDX)
+    assert res.matches[0].symbol == "BBCA"
+    assert res.matches[0].name == "Bank Central Asia"  # name preserved

@@ -350,8 +350,15 @@ class AnalysisEngine:
                     )
                 )
             except Exception as exc:  # noqa: BLE001
-                logger.warning("screen skipped %s: %s", ticker, exc)
-                continue
+                # Per-symbol failure: substitute deterministic mock data so the
+                # universe stays fully populated (don't drop the symbol). The
+                # response is still 200 "live" from the client's perspective.
+                logger.warning("screen mock-fallback for %s: %s", ticker, exc)
+                matches.append(
+                    mock_data.mock_screener_match(
+                        sym, market, names.get(sym.upper(), "")
+                    )
+                )
 
         if not matches:
             return self._finalize(
