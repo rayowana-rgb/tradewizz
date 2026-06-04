@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from app import indicators
 from app.engine import AnalysisEngine, yf_symbol
 from app.models import Market, ScreenerCategory
 from app.universe import UniverseRepository
@@ -97,18 +96,9 @@ def test_categorize_bullish_on_uptrend():
     assert "bullish" in res.summary
 
 
-def test_categorize_ara_hunter_on_surge():
-    eng = AnalysisEngine()
-    n = 300
-    close = 100 + np.arange(n) * 0.5
-    # Sharp final spike to push RSI very high, with a volume surge.
-    close = close.astype("float64")
-    close[-5:] = close[-6] * np.array([1.08, 1.16, 1.25, 1.34, 1.45])
-    volume = np.full(n, 1000.0)
-    volume[-1] = 5000.0  # 5x surge
-    ind = indicators.compute_all(make_ohlcv(close, volume=volume, n=n))
-    cats = eng.categorize(ind)
-    assert ScreenerCategory.ara_hunter in cats
+# Faithful Phase-2 category rules (accumulation/silent/pullback/turnaround/
+# ara_hunter/frequently_traded/short_candidate) are covered in test_categories.py
+# with explicit indicator scenarios.
 
 
 # ---- predict_weekly ----------------------------------------------------------

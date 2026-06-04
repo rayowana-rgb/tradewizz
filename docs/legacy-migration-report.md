@@ -221,13 +221,18 @@ keys only** in `compute_all` (existing keys/values untouched). No TA-Lib. No
 category/scoring/API-contract change. 13 new unit tests on synthetic data;
 backend 84 passed, Flutter 25 passed. *Unlocks faithful rules in Phase 2.*
 
-**Phase 2 — Faithful category rules.** Reimplement
+**Phase 2 — Faithful category rules. ✅ PARTIAL DONE (2026-06-04).** Migrated
 `accumulation, accumulation_silent, pullback, turnaround_multibagger,
-ara_hunter, frequently_traded, short_candidate` (and bullish/bearish/scalping)
-using the exact legacy thresholds, plus the **IDR liquidity gate** (generalized
-to per-market currency/threshold config). Keep the enum/contract unchanged.
-→ Medium risk (behavior change). Tests: craft synthetic frames that trip each
-rule, mirroring legacy `iloc[-1]/[-2]` semantics.
+ara_hunter, frequently_traded, short_candidate` from legacy thresholds
+(OBV/A-D/CMF/SMA20-50/VWAP/rolling-volume based) into `engine.categorize`,
+with per-market liquidity/price scaling (`_value_floor`/`_cheap_price`; IDX keeps
+legacy IDR figures, HKEX/KOSPI/KOSDAQ scaled). `compute_all` gained additive
+rolling-aggregate support keys (vol means, vol3/vol20, obv_diff_3, pct_change_3,
+ad/obv 30d means, prev_close/volume, high, rsi_prev). **bullish/bearish/scalping
+still the prior approximations** (next step). Scoring + API contract unchanged.
+24 explicit-scenario tests in `test_categories.py`; backend 107 passed, Flutter
+25 passed.
+→ Remaining: migrate bullish/bearish/scalping faithfully (≥8/9 criteria forms).
 
 **Phase 3 — RandomForest profit probability.** Port `label_profitable_signals`
 + `train_profit_model` into a `ml.py` module; expose an optional

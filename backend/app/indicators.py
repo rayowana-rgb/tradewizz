@@ -217,9 +217,46 @@ def compute_all(df: pd.DataFrame) -> dict:
     last_volume = last(volume)
     last_atr = last(atr_s)
 
+    # --- Phase 2 support: rolling aggregates legacy category rules need ---
+    def roll_mean(series: pd.Series, w: int):
+        s = series.rolling(window=w, min_periods=w).mean()
+        return last(s)
+
+    prev_close = prev(close)
+    prev_volume = prev(volume)
+    # Rolling volume means (trailing, excluding NaN warm-up).
+    vol_mean_10 = roll_mean(volume, 10)
+    vol_mean_20 = roll_mean(volume, 20)
+    vol_mean_30 = roll_mean(volume, 30)
+    # A/D and OBV 30-day means (for accumulation).
+    ad_mean_30 = roll_mean(ad_s, 30)
+    obv_mean_30 = roll_mean(obv_s, 30)
+    # Short-window vol ratio vol_3/vol_20 (turnaround / silent accumulation).
+    vol_mean_3 = roll_mean(volume, 3)
+    vol3_over_20 = (
+        vol_mean_3 / vol_mean_20
+        if (vol_mean_3 is not None and vol_mean_20 not in (None, 0))
+        else None
+    )
+    # OBV change over last 3 bars (smart-money inflow proxy).
+    obv_diff_3 = None
+    obv_nonan = obv_s.dropna()
+    if len(obv_nonan) >= 4:
+        obv_diff_3 = float(obv_nonan.iloc[-1] - obv_nonan.iloc[-4])
+    # 3-day absolute price change %.
+    pct_change_3 = None
+    close_nonan = close.dropna()
+    if len(close_nonan) >= 4 and close_nonan.iloc[-4] != 0:
+        pct_change_3 = abs(
+            float(close_nonan.iloc[-1] / close_nonan.iloc[-4] - 1)
+        )
+    # Latest high (for ARA near-high check).
+    last_high = last(df["High"])
+
     return {
         "close": last_close,
         "rsi": last(rsi_s),
+        "rsi_prev": prev(rsi_s),
         "ema20": last(ema20_s),
         "ema50": last(ema50_s),
         "sma200": last(sma200_s),
@@ -249,4 +286,17 @@ def compute_all(df: pd.DataFrame) -> dict:
         "value_traded": (last_close * last_volume)
         if (last_close is not None and last_volume is not None)
         else None,
+        # --- Phase 2 support: rolling aggregates for category rules ---
+        "high": last_high,
+        "prev_close": prev_close,
+        "prev_volume": prev_volume,
+        "vol_mean_10": vol_mean_10,
+        "vol_mean_20": vol_mean_20,
+        "vol_mean_30": vol_mean_30,
+        "vol_mean_3": vol_mean_3,
+        "vol3_over_20": vol3_over_20,
+        "ad_mean_30": ad_mean_30,
+        "obv_mean_30": obv_mean_30,
+        "obv_diff_3": obv_diff_3,
+        "pct_change_3": pct_change_3,
     }

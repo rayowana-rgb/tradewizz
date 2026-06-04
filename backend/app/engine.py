@@ -103,80 +103,196 @@ class AnalysisEngine:
 
     # -- categories --------------------------------------------------------
 
-    def categorize(self, ind: dict) -> List[ScreenerCategory]:
-        """Map indicator values onto the app's category taxonomy."""
+    def categorize(
+        self, ind: dict, market: Optional[Market] = None
+    ) -> List[ScreenerCategory]:
+        """Map indicator values onto the app's category taxonomy.
+
+        Phase 2: accumulation, accumulation_silent, pullback, frequently_traded,
+        short_candidate, turnaround_multibagger and ara_hunter use rules ported
+        faithfully from the legacy bot (OBV / A-D / CMF / SMA20-50 / VWAP /
+        rolling-volume based). bullish/bearish/scalping remain the prior
+        approximations (migrated in a later step). Liquidity thresholds are
+        scaled per market currency via `_value_floor`.
+        """
         cats: List[ScreenerCategory] = []
         close = ind.get("close")
         rsi = ind.get("rsi")
         ema20 = ind.get("ema20")
         ema50 = ind.get("ema50")
+        sma20 = ind.get("sma20")
+        sma50 = ind.get("sma50")
         sma200 = ind.get("sma200")
+        macd = ind.get("macd")
+        macd_signal = ind.get("macd_signal")
         macd_hist = ind.get("macd_hist")
-        macd_hist_prev = ind.get("macd_hist_prev")
-        vr = ind.get("volume_ratio")
         atr_pct = ind.get("atr_pct")
+        vr = ind.get("volume_ratio")
+        cmf = ind.get("cmf")
+        obv = ind.get("obv")
+        obv_prev = ind.get("obv_prev")
+        ad = ind.get("ad")
+        ad_prev = ind.get("ad_prev")
+        ad_mean_30 = ind.get("ad_mean_30")
+        obv_mean_30 = ind.get("obv_mean_30")
+        volume = ind.get("volume")
+        prev_volume = ind.get("prev_volume")
+        prev_close = ind.get("prev_close")
+        high = ind.get("high")
+        value_traded = ind.get("value_traded")
+        vol_mean_10 = ind.get("vol_mean_10")
+        vol_mean_20 = ind.get("vol_mean_20")
+        vol_mean_30 = ind.get("vol_mean_30")
+        vol3_over_20 = ind.get("vol3_over_20")
+        obv_diff_3 = ind.get("obv_diff_3")
+        pct_change_3 = ind.get("pct_change_3")
+
+        def has(*vals) -> bool:
+            return all(v is not None for v in vals)
 
         def gt(a, b) -> bool:
             return a is not None and b is not None and a > b
 
-        # Trend: EMA20 > EMA50 (and price above) => bullish; inverse => bearish.
+        # Per-market liquidity floors (legacy used IDR; scale for HKD/KRW).
+        v500m = self._value_floor(market, 500_000_000)
+        v5b = self._value_floor(market, 5_000_000_000)
+        v10b = self._value_floor(market, 10_000_000_000)
+        cheap = self._cheap_price(market)  # legacy <250/<300 IDR thresholds
+
+        # --- bullish/bearish/scalping: unchanged approximations (later) ---
         if gt(ema20, ema50) and gt(close, ema20):
             cats.append(ScreenerCategory.bullish)
         if gt(ema50, ema20) and gt(ema20, close):
             cats.append(ScreenerCategory.bearish)
-
-        # Scalping: elevated short-term volatility.
         if atr_pct is not None and atr_pct >= 4.0:
             cats.append(ScreenerCategory.scalping)
 
-        # Accumulation: MACD histogram turning up while volume rises.
+        # --- accumulation (legacy screen_accumulation) ---
+        # Strong A/D+OBV+volume vs 30d, price not exploded (<SMA50*1.15),
+        # value_traded >= 10B (scaled).
         if (
-            macd_hist is not None
-            and macd_hist_prev is not None
-            and macd_hist > macd_hist_prev
-            and vr is not None
-            and vr >= 1.2
+            has(ad, ad_mean_30, obv, obv_mean_30, volume, vol_mean_30,
+                close, sma50, value_traded)
+            and ad > ad_mean_30 * 1.1
+            and obv > obv_mean_30
+            and volume > vol_mean_30 * 1.2
+            and close < sma50 * 1.15
+            and value_traded >= v10b
         ):
             cats.append(ScreenerCategory.accumulation)
 
-        # Silent accumulation: histogram improving on quiet (below-avg) volume.
+        # --- accumulation_silent (legacy silent accumulation) ---
+        # Cheap price, vol_3/vol_20 > 2, |3d %chg| < 2%, CMF>0, OBV 3d up.
         if (
-            macd_hist is not None
-            and macd_hist_prev is not None
-            and macd_hist > macd_hist_prev
-            and vr is not None
-            and vr < 0.9
+            has(close, vol3_over_20, pct_change_3, cmf, obv_diff_3)
+            and close < cheap
+            and vol3_over_20 > 2
+            and pct_change_3 < 0.02
+            and cmf > 0
+            and obv_diff_3 > 0
         ):
             cats.append(ScreenerCategory.accumulation_silent)
 
-        # Pullback: uptrend (above SMA200) but RSI dipped into 35..50.
-        if gt(close, sma200) and rsi is not None and 35 <= rsi <= 50:
+        # --- pullback (legacy screen_pullback; requires ALL) ---
+        if (
+            has(sma50, sma200, close, sma20, rsi, macd, macd_signal,
+                volume, prev_volume)
+            and sma50 > sma200
+            and close > sma200
+            and close < sma20
+            and 40 < rsi < 60
+            and macd > 0
+            and macd < macd_signal
+            and volume < prev_volume
+        ):
             cats.append(ScreenerCategory.pullback)
 
-        # Turnaround multibagger: deeply below SMA200 but momentum flipping up.
+        # --- turnaround_multibagger (legacy inline) ---
+        # value>=500M, cheap, Close>MA20>MA50, vol_3/vol_20>1, CMF>0,
+        # OBV 3d up, 30<RSI<60.
         if (
-            sma200 is not None
-            and close is not None
-            and close < sma200 * 0.7
-            and macd_hist is not None
-            and macd_hist_prev is not None
-            and macd_hist > macd_hist_prev
+            has(value_traded, close, sma20, sma50, vol3_over_20, cmf,
+                obv_diff_3, rsi)
+            and value_traded >= v500m
+            and close < cheap
+            and close > sma20
+            and sma20 > sma50
+            and vol3_over_20 > 1
+            and cmf > 0
+            and obv_diff_3 > 0
+            and 30 < rsi < 60
         ):
             cats.append(ScreenerCategory.turnaround_multibagger)
 
-        # Frequently traded: sustained above-average volume.
-        if vr is not None and vr >= 1.5:
-            cats.append(ScreenerCategory.frequently_traded)
-
-        # Short candidate: downtrend + overbought-ish bounce / weak structure.
-        if gt(ema50, ema20) and rsi is not None and rsi >= 55:
-            cats.append(ScreenerCategory.short_candidate)
-
-        # ARA hunter (auto-reject-atas): very strong up momentum + volume surge.
-        if rsi is not None and rsi >= 70 and vr is not None and vr >= 2.0:
+        # --- ara_hunter (legacy inline) ---
+        # Near auto-reject: +6% vs prev, near high, vol>10d*3, RSI>70,
+        # MACD>Signal, A/D & OBV rising, Close>SMA20, value>=5B.
+        if (
+            has(close, prev_close, high, volume, vol_mean_10, rsi, macd,
+                macd_signal, ad, ad_prev, obv, obv_prev, sma20, value_traded)
+            and close >= prev_close * 1.06
+            and close >= high * 0.98
+            and volume > vol_mean_10 * 3
+            and rsi > 70
+            and macd > macd_signal
+            and ad > ad_prev
+            and obv > obv_prev
+            and close > sma20
+            and value_traded >= v5b
+        ):
             cats.append(ScreenerCategory.ara_hunter)
 
+        # --- frequently_traded (legacy inline) ---
+        # Volume > 20d mean * 2 AND value_traded > 10B (scaled).
+        if (
+            has(volume, vol_mean_20, value_traded)
+            and volume > vol_mean_20 * 2
+            and value_traded > v10b
+        ):
+            cats.append(ScreenerCategory.frequently_traded)
+
+        # --- short_candidate (legacy screen_short_candidates) ---
+        # RSI>70 & falling, MACD<Signal, hist<0, Close<SMA20, vol>10d*1.5,
+        # OBV & A/D falling.
+        if (
+            has(rsi, ind.get("rsi_prev"), macd, macd_signal, macd_hist,
+                close, sma20, volume, vol_mean_10, obv, obv_prev, ad, ad_prev)
+            and rsi > 70
+            and rsi < ind.get("rsi_prev")
+            and macd < macd_signal
+            and macd_hist < 0
+            and close < sma20
+            and volume > vol_mean_10 * 1.5
+            and obv < obv_prev
+            and ad < ad_prev
+        ):
+            cats.append(ScreenerCategory.short_candidate)
+
         return cats
+
+    @staticmethod
+    def _value_floor(market: Optional[Market], idr_amount: float) -> float:
+        """Scale a legacy IDR liquidity threshold to the market's currency.
+
+        Rough FX so HKD/KRW markets don't require IDR-sized turnover. IDX keeps
+        the original IDR figures.
+        """
+        # Approx value of 1 unit of currency in IDR (order-of-magnitude).
+        # 1 HKD ~ 2000 IDR, 1 KRW ~ 12 IDR.
+        if market in (Market.HKEX,):
+            return idr_amount / 2000.0
+        if market in (Market.KOSPI, Market.KOSDAQ):
+            return idr_amount / 12.0
+        return idr_amount  # IDX / default: legacy IDR amounts
+
+    @staticmethod
+    def _cheap_price(market: Optional[Market]) -> float:
+        """Legacy 'cheap' price ceiling (<250-300 IDR) scaled per market."""
+        if market in (Market.HKEX,):
+            return 5.0  # ~ small-cap HKD
+        if market in (Market.KOSPI, Market.KOSDAQ):
+            return 5000.0  # KRW
+        return 300.0  # IDX / default
 
     def _signal_and_score(self, ind: dict, cats: List[ScreenerCategory]):
         """Derive a BUY/HOLD/SELL signal and a 0..100 conviction score."""
@@ -235,7 +351,7 @@ class AnalysisEngine:
             ind = indicators.compute_all(df)
             if ind.get("close") is None:
                 raise ValueError("insufficient data")
-            cats = self.categorize(ind)
+            cats = self.categorize(ind, market)
             signal, score = self._signal_and_score(ind, cats)
             tags = ", ".join(c.value for c in cats) or "none"
             return AnalysisResult(
@@ -366,7 +482,7 @@ class AnalysisEngine:
             ind = indicators.compute_all(df)
             if ind.get("close") is None:
                 raise ValueError("insufficient data")
-            cats = self.categorize(ind)
+            cats = self.categorize(ind, market)
             signal, score = self._signal_and_score(ind, cats)
             change_pct = _daily_change_pct(df)
             return ScreenerMatch(
