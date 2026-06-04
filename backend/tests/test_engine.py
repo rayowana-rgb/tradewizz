@@ -134,16 +134,37 @@ def test_screen_with_universe_ranks_by_score():
     assert scores == sorted(scores, reverse=True)  # ranked desc
 
 
+def _controlled_universe(tmp_path, n=10):
+    """Write a controlled IDX universe of `n` symbols and return its repo."""
+    rows = "symbol,name\n" + "".join(
+        f"SYM{i:02d},Co {i}\n" for i in range(n)
+    )
+    (tmp_path / "idx.csv").write_text(rows)
+    return UniverseRepository(universe_dir=tmp_path)
+
+
+def _controlled_engine(tmp_path, n=10, fetcher=None):
+    """Engine over a small controlled IDX universe (fast, deterministic)."""
+    return AnalysisEngine(
+        fetcher=fetcher or (lambda t, p, i: uptrend()),
+        universe=_controlled_universe(tmp_path, n=n),
+    )
+
+
 def test_screen_no_universe_falls_back_to_mock():
-    eng = AnalysisEngine(fetcher=lambda t, p, i: uptrend())
-    res = eng.screen(Market.HKEX)  # no symbols
+    # Empty universe (no files) -> generic mock screen rows.
+    eng = AnalysisEngine(
+        fetcher=lambda t, p, i: uptrend(),
+        universe=UniverseRepository(universe_dir="/nonexistent-univ-dir"),
+    )
+    res = eng.screen(Market.HKEX)  # no symbols -> mock fallback
     assert res.market == Market.HKEX
     assert len(res.matches) > 0  # mock provides rows
 
 
-def test_screen_limit_and_sort_order():
-    eng = AnalysisEngine(fetcher=lambda t, p, i: uptrend())
-    res = eng.screen(Market.HKEX, limit=3)  # mock universe via fallback
+def test_screen_limit_and_sort_order(tmp_path):
+    eng = _controlled_engine(tmp_path, n=10)
+    res = eng.screen(Market.IDX, limit=3)
     assert len(res.matches) <= 3
     scores = [m.score for m in res.matches]
     assert scores == sorted(scores, reverse=True)
@@ -153,27 +174,33 @@ def test_screen_limit_and_sort_order():
             assert a.change_percent >= b.change_percent
 
 
-def test_screen_limit_is_bounded_to_max():
-    eng = AnalysisEngine(fetcher=lambda t, p, i: uptrend())
+def test_screen_limit_is_bounded_to_max(tmp_path):
+    # 250 controlled symbols, limit above MAX -> clamped to 200.
+    eng = _controlled_engine(tmp_path, n=250)
     res = eng.screen(Market.IDX, limit=99999)
     assert len(res.matches) <= 200  # MAX_LIMIT
     assert res.limit == 200  # echoed back, clamped
 
 
-def test_screen_metadata_counts():
-    eng = AnalysisEngine(fetcher=lambda t, p, i: uptrend())
-    # Mock universe has 10 rows; limit to 3.
-    res = eng.screen(Market.HKEX, limit=3)
+def test_screen_metadata_counts(tmp_path):
+    eng = AnalysisEngine(
+        fetcher=lambda t, p, i: uptrend(),
+        universe=_controlled_universe(tmp_path, n=10),
+    )
+    res = eng.screen(Market.IDX, limit=3)
     assert res.returned_count == len(res.matches) == 3
     assert res.total_count >= res.returned_count
-    assert res.total_count == 10  # all 10 mock rows pass (no filter)
+    assert res.total_count == 10  # all 10 controlled rows pass (no filter)
     assert res.limit == 3
     assert res.min_score == 0.0
     assert res.categories == []
 
 
-def test_screen_metadata_reflects_filters():
-    eng = AnalysisEngine(fetcher=lambda t, p, i: uptrend())
+def test_screen_metadata_reflects_filters(tmp_path):
+    eng = AnalysisEngine(
+        fetcher=lambda t, p, i: uptrend(),
+        universe=_controlled_universe(tmp_path, n=10),
+    )
     res = eng.screen(
         Market.IDX, limit=50, min_score=80,
         categories=[ScreenerCategory.bullish],
@@ -183,14 +210,14 @@ def test_screen_metadata_reflects_filters():
     assert res.total_count == res.returned_count  # within limit
 
 
-def test_screen_min_score_filters():
-    eng = AnalysisEngine(fetcher=lambda t, p, i: uptrend())
+def test_screen_min_score_filters(tmp_path):
+    eng = _controlled_engine(tmp_path, n=10)
     res = eng.screen(Market.IDX, min_score=80)
     assert all(m.score >= 80 for m in res.matches)
 
 
-def test_screen_category_filter():
-    eng = AnalysisEngine(fetcher=lambda t, p, i: uptrend())
+def test_screen_category_filter(tmp_path):
+    eng = _controlled_engine(tmp_path, n=10)
     res = eng.screen(Market.IDX, categories=[ScreenerCategory.bearish])
     # Synthetic uptrend produces bullish matches, so a bearish filter is empty.
     assert res.matches == []

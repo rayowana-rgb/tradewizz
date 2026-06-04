@@ -1,5 +1,14 @@
 # Universe Files: Excel (legacy) vs current CSV — Analysis
 
+> **UPDATE 2026-06-04:** Migration executed. The backend now uses the Excel
+> universes as the **primary source** with per-market normalization on load
+> (HKEX filtered to equity codes 1..9999; `kospi.xlsx` routed by suffix into
+> KOSPI `.KS` / KOSDAQ `.KQ`; suffixes stripped to bare symbols). Loaded sizes:
+> IDX 956, HKEX 3822, KOSPI 948, KOSDAQ 1822 (KOSPI/KOSDAQ disjoint). CSV is now
+> the fallback. See `app/universe.py` and the backend README. Original analysis
+> below.
+
+
 **Date:** 2026-06-04 22:14 (GMT+8)
 **Scope:** Analysis only. No code or data was changed. Recommendation on whether
 the `*.xlsx` universes should replace the current `*.csv` universes.

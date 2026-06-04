@@ -4,18 +4,34 @@ The API engine is swapped for one whose fetcher always fails, so these tests
 exercise the deterministic mock-fallback path with no network (fast + stable).
 """
 
+import tempfile
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from app import main
 from app.engine import AnalysisEngine
+from app.universe import UniverseRepository
 
 
 def _offline_fetch(ticker, period, interval):
     raise ConnectionError("no network in tests")
 
 
-# Force mock fallback for the whole API test module.
-main.engine = AnalysisEngine(fetcher=_offline_fetch)
+# Small controlled universe per market so contract tests stay fast and stable
+# (independent of the large shipped Excel universes). Symbols are bare SYM** so
+# the "not generic IDX0* mock" check still holds.
+_UNIV_DIR = Path(tempfile.mkdtemp(prefix="tw_api_univ_"))
+for _stem in ("idx", "hkex", "kospi", "kosdaq"):
+    (_UNIV_DIR / f"{_stem}.csv").write_text(
+        "symbol,name\n" + "".join(f"SYM{i:02d},Co {i}\n" for i in range(8))
+    )
+
+# Force mock fallback (offline fetcher) over a controlled universe.
+main.engine = AnalysisEngine(
+    fetcher=_offline_fetch,
+    universe=UniverseRepository(universe_dir=_UNIV_DIR),
+)
 
 client = TestClient(main.app)
 
@@ -86,16 +102,18 @@ def test_screen_limit_param():
 
 
 def test_screen_populates_universe_even_when_fetches_fail():
-    # Engine fetcher always fails, but the shipped universe + per-symbol mock
-    # fallback means /screen still returns 200 with populated matches.
-    r = client.get("/v1/screen/IDX", params={"limit": 200})
+    # Engine fetcher always fails, but the universe + per-symbol mock fallback
+    # means /screen still returns 200 with populated matches.
+    r = client.get("/v1/screen/IDX", params={"limit": 50})
     assert r.status_code == 200
     b = r.json()
     assert len(b["matches"]) > 0
-    # Symbols come from the IDX universe (e.g. BBCA), not the generic mock rows.
+    # Real universe symbols (bare IDX tickers), not generic IDX01/.. mock rows.
     symbols = {m["symbol"] for m in b["matches"]}
-    assert "BBCA" in symbols
-    assert b["total_count"] == len(b["matches"])
+    assert not any(s.startswith("IDX0") for s in symbols)
+    # returned_count == matches; total_count is the full (pre-limit) universe.
+    assert b["returned_count"] == len(b["matches"])
+    assert b["total_count"] >= b["returned_count"]
 
 
 def test_screen_response_includes_pagination_metadata():

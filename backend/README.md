@@ -37,21 +37,33 @@ mock screen.)
 
 ### Symbol universes
 
-`/screen/{market}` runs over a **controlled per-market symbol list** loaded from
-`app/universe.py`. Starter universes ship under `data/universe/`:
+`/screen/{market}` runs over a **per-market symbol universe** loaded from
+`app/universe.py`. The primary source is the **Excel** export under
+`data/universe/` (more complete); CSV is a fallback:
 
 ```
-data/universe/idx.csv     hkex.csv     kospi.csv     kosdaq.csv
+data/universe/idx.xlsx    hkex.xlsx    kospi.xlsx     (primary)
+data/universe/idx.csv     hkex.csv     kospi.csv  kosdaq.csv  (fallback)
 ```
 
-- File per market: `<market>.csv` or `<market>.xlsx` (CSV preferred if both
-  exist). Dir override: `TRADEWIZ_UNIVERSE_DIR`.
+Approx sizes after normalization: IDX ~956, HKEX ~3822 (equities only), KOSPI
+~948, KOSDAQ ~1822.
+
+- **Resolution per market:** `<market>.xlsx` (primary) → for KOSDAQ, the
+  combined `kospi.xlsx` → `<market>.csv` (fallback). Dir override:
+  `TRADEWIZ_UNIVERSE_DIR`.
 - Columns (case-insensitive): a symbol column named `symbol`/`ticker`/`code`,
   plus an optional `name` column. A single-column file works too.
-- Symbols are upper-cased, trimmed, and de-duplicated; the market suffix
-  (`.JK/.HK/.KS/.KQ`) is applied at fetch time.
+- **Normalization on load** (the raw legacy Excel is not market-clean):
+  - symbols are stripped of the yfinance suffix (`.JK/.HK/.KS/.KQ`) so the
+    stored value is bare (re-appended idempotently at fetch time);
+  - **HKEX**: only ordinary-equity board codes (1..9999) are kept (warrants/
+    CBBCs/DRs dropped);
+  - **KOSPI/KOSDAQ**: `kospi.xlsx` is a combined-Korea export, so rows are
+    routed by source suffix — `.KS` → KOSPI, `.KQ` → KOSDAQ.
+- Symbols are upper-cased, trimmed, and de-duplicated.
 - Missing/invalid files yield an empty universe, and `/screen` then falls back
-  to mock output. Symbols that fail to fetch are skipped.
+  to mock output. Symbols that fail to fetch get per-symbol mock data.
 
 Edit these files to control exactly which tickers get screened.
 
@@ -159,11 +171,11 @@ backend/
     models.py      # Pydantic models matching the Flutter contract
     indicators.py  # Pure pandas/numpy indicators (RSI/EMA/SMA/MACD/ATR/...)
     cache.py       # On-disk OHLCV cache (ticker+period+interval, TTL)
-    universe.py    # Per-market symbol universes (CSV/Excel loader)
+    universe.py    # Per-market symbol universes (Excel-primary loader + normalize)
     engine.py      # yfinance fetch (cached) + categorize + signal/score
     mock_data.py   # Deterministic mock generators (mirror the app's mocks)
   data/
-    universe/      # idx.csv, hkex.csv, kospi.csv, kosdaq.csv
+    universe/      # idx/hkex/kospi.xlsx (primary) + *.csv fallback
   tests/
     test_api.py        # Contract/shape tests (forced mock fallback, no network)
     test_indicators.py # Indicator math (synthetic data)

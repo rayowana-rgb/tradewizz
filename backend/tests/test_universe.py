@@ -54,13 +54,20 @@ def test_excel_loading(tmp_path):
     assert repo.names(Market.KOSDAQ)["086520"] == "EcoPro"
 
 
-def test_csv_preferred_over_excel(tmp_path):
+def test_excel_preferred_over_csv(tmp_path):
+    # Excel is the primary source; CSV is only the fallback.
     _write_csv(tmp_path / "idx.csv", "symbol\nFROMCSV\n")
     pd.DataFrame({"symbol": ["FROMXLSX"]}).to_excel(
         tmp_path / "idx.xlsx", index=False
     )
     repo = UniverseRepository(universe_dir=tmp_path)
-    assert repo.symbols(Market.IDX) == ["FROMCSV"]
+    assert repo.symbols(Market.IDX) == ["FROMXLSX"]
+
+
+def test_csv_used_when_no_excel(tmp_path):
+    _write_csv(tmp_path / "idx.csv", "symbol\nONLYCSV\n")
+    repo = UniverseRepository(universe_dir=tmp_path)
+    assert repo.symbols(Market.IDX) == ["ONLYCSV"]
 
 
 def test_missing_file_returns_empty(tmp_path):
