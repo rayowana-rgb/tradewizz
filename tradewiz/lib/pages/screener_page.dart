@@ -29,6 +29,10 @@ class _ScreenerPageState extends State<ScreenerPage> {
 
   late Market _market = widget.market ?? Market.idx;
   ScreenerCategory? _categoryFilter;
+  double _minScore = 0;
+
+  // Default top-N requested from the backend.
+  static const int _limit = 50;
 
   bool _loading = false;
   String? _error;
@@ -56,7 +60,15 @@ class _ScreenerPageState extends State<ScreenerPage> {
       _error = null;
     });
     try {
-      final result = await _repo.screen(_market);
+      // Pass params only when a filter is active (limit always bounds results).
+      final result = await _repo.screen(
+        _market,
+        limit: _limit,
+        minScore: _minScore > 0 ? _minScore : null,
+        categories: _categoryFilter != null
+            ? [_categoryFilter!.wireName]
+            : null,
+      );
       if (!mounted) return;
       setState(() {
         _result = result.data;
@@ -85,6 +97,16 @@ class _ScreenerPageState extends State<ScreenerPage> {
     _run();
   }
 
+  void _selectCategory(ScreenerCategory? c) {
+    setState(() => _categoryFilter = c);
+    _run(); // re-query server-side with the category filter
+  }
+
+  void _selectMinScore(double v) {
+    setState(() => _minScore = v);
+    _run();
+  }
+
   void _openAnalysis(ScreenerMatch match) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -97,10 +119,16 @@ class _ScreenerPageState extends State<ScreenerPage> {
     );
   }
 
+  // Server already filters; keep a defensive local pass for fallback data.
   List<ScreenerMatch> get _filtered {
     final matches = _result?.matches ?? [];
-    if (_categoryFilter == null) return matches;
-    return matches.where((m) => m.hasCategory(_categoryFilter!)).toList();
+    return matches.where((m) {
+      if (_minScore > 0 && m.score < _minScore) return false;
+      if (_categoryFilter != null && !m.hasCategory(_categoryFilter!)) {
+        return false;
+      }
+      return true;
+    }).toList();
   }
 
   @override
@@ -110,8 +138,9 @@ class _ScreenerPageState extends State<ScreenerPage> {
         _MarketFilterBar(selected: _market, onSelected: _selectMarket),
         _CategoryFilterBar(
           selected: _categoryFilter,
-          onSelected: (c) => setState(() => _categoryFilter = c),
+          onSelected: _selectCategory,
         ),
+        _MinScoreBar(selected: _minScore, onSelected: _selectMinScore),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: Row(
@@ -227,6 +256,43 @@ class _CategoryFilterBar extends StatelessWidget {
                 avatar: Icon(c.icon, size: 16, color: c.color),
                 label: Text(c.label),
                 onSelected: (sel) => onSelected(sel ? c : null),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Quick min-score selector (chips). 0 means "no minimum".
+class _MinScoreBar extends StatelessWidget {
+  const _MinScoreBar({required this.selected, required this.onSelected});
+  final double selected;
+  final ValueChanged<double> onSelected;
+
+  static const _options = <double>[0, 50, 70, 90];
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Row(
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Text(
+              'Min score',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            ),
+          ),
+          for (final v in _options)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ChoiceChip(
+                selected: v == selected,
+                label: Text(v == 0 ? 'Any' : '≥ ${v.toInt()}'),
+                onSelected: (_) => onSelected(v),
               ),
             ),
         ],

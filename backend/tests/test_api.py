@@ -79,6 +79,42 @@ def test_screen_unknown_market_404():
     assert r.status_code == 404
 
 
+def test_screen_limit_param():
+    r = client.get("/v1/screen/HKEX", params={"limit": 2})
+    assert r.status_code == 200
+    assert len(r.json()["matches"]) <= 2
+
+
+def test_screen_limit_out_of_bounds_422():
+    assert client.get("/v1/screen/IDX", params={"limit": 0}).status_code == 422
+    assert client.get("/v1/screen/IDX", params={"limit": 201}).status_code == 422
+
+
+def test_screen_min_score_filters():
+    r = client.get("/v1/screen/IDX", params={"min_score": 80})
+    assert r.status_code == 200
+    assert all(m["score"] >= 80 for m in r.json()["matches"])
+
+
+def test_screen_sorted_by_score_then_change():
+    matches = client.get("/v1/screen/HKEX").json()["matches"]
+    pairs = [(m["score"], m["change_percent"]) for m in matches]
+    assert pairs == sorted(pairs, reverse=True)
+
+
+def test_screen_categories_filter():
+    r = client.get("/v1/screen/IDX", params={"categories": "bearish"})
+    assert r.status_code == 200
+    for m in r.json()["matches"]:
+        assert "bearish" in m["categories"]
+
+
+def test_screen_unknown_category_ignored():
+    # Unknown category names are dropped; request still succeeds.
+    r = client.get("/v1/screen/IDX", params={"categories": "not_a_real_cat"})
+    assert r.status_code == 200
+
+
 def test_predict_weekly_shape():
     r = client.get("/v1/predict_weekly/0700")
     assert r.status_code == 200

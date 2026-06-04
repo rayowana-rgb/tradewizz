@@ -57,6 +57,53 @@ void main() {
     expect(res.data['market'], 'HKEX');
   });
 
+  test('screen() sends limit/min_score/categories query params', () async {
+    late Uri captured;
+    final mock = MockClient((req) async {
+      captured = req.url;
+      return http.Response(
+        jsonEncode({'market': 'IDX', 'matches': []}),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    });
+    final client = ApiClient(config: _config(), httpClient: mock);
+    await client.screen(
+      Market.idx,
+      limit: 10,
+      minScore: 70,
+      categories: ['bullish', 'scalping'],
+    );
+    expect(captured.queryParameters['limit'], '10');
+    expect(captured.queryParameters['min_score'], '70.0');
+    expect(captured.queryParameters['categories'], 'bullish,scalping');
+  });
+
+  test('screen() mock fallback applies limit/min_score/categories', () async {
+    final mock = MockClient((req) async {
+      throw http.ClientException('offline');
+    });
+    final client =
+        ApiClient(config: _config(mockFallback: true), httpClient: mock);
+    final res = await client.screen(
+      Market.idx,
+      limit: 3,
+      minScore: 50,
+      categories: ['bullish'],
+    );
+    expect(res.source, DataSource.fallback);
+    final matches = (res.data['matches'] as List).cast<Map>();
+    expect(matches.length, lessThanOrEqualTo(3));
+    for (final m in matches) {
+      expect(m['score'] as num, greaterThanOrEqualTo(50));
+      expect((m['categories'] as List).contains('bullish'), isTrue);
+    }
+    // Sorted by score desc.
+    final scores = matches.map((m) => m['score'] as num).toList();
+    final sorted = [...scores]..sort((a, b) => b.compareTo(a));
+    expect(scores, sorted);
+  });
+
   test('falls back to mock data when the server is unreachable', () async {
     final mock = MockClient((req) async {
       throw http.ClientException('offline');

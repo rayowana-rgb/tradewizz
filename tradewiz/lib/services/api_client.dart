@@ -46,10 +46,33 @@ class ApiClient {
   }
 
   /// GET /screen/{market}
-  Future<Sourced<Map<String, dynamic>>> screen(Market market) {
+  ///
+  /// Optional query params: [limit] (bounded 1..200), [minScore] (0..100), and
+  /// [categories] (wire names). They are also applied to the mock fallback so
+  /// behavior is consistent offline.
+  Future<Sourced<Map<String, dynamic>>> screen(
+    Market market, {
+    int? limit,
+    double? minScore,
+    List<String>? categories,
+  }) {
+    final query = <String, String>{};
+    if (limit != null) query['limit'] = limit.toString();
+    if (minScore != null && minScore > 0) {
+      query['min_score'] = minScore.toString();
+    }
+    if (categories != null && categories.isNotEmpty) {
+      query['categories'] = categories.join(',');
+    }
     return _get(
       '/screen/${market.code}',
-      fallback: () => _mockScreen(market),
+      query: query.isEmpty ? null : query,
+      fallback: () => _mockScreen(
+        market,
+        limit: limit,
+        minScore: minScore,
+        categories: categories,
+      ),
     );
   }
 
@@ -155,7 +178,12 @@ class ApiClient {
     };
   }
 
-  Map<String, dynamic> _mockScreen(Market market) {
+  Map<String, dynamic> _mockScreen(
+    Market market, {
+    int? limit,
+    double? minScore,
+    List<String>? categories,
+  }) {
     // Cycle through the full category taxonomy so the UI/filters have coverage.
     const categoryRotation = <List<String>>[
       ['bullish', 'ara_hunter'],
@@ -169,27 +197,50 @@ class ApiClient {
       ['ara_hunter', 'scalping'],
       ['short_candidate'],
     ];
+    var matches = List.generate(categoryRotation.length, (i) {
+      final score = (95 - i * 6).toDouble();
+      final cats = categoryRotation[i];
+      final bearish =
+          cats.contains('bearish') || cats.contains('short_candidate');
+      return {
+        'symbol': '${market.code}${(i + 1).toString().padLeft(2, '0')}',
+        'name': 'Sample ${market.code} Co. ${i + 1}',
+        'score': score,
+        'signal': bearish
+            ? 'SELL'
+            : score > 66
+                ? 'BUY'
+                : 'HOLD',
+        'price': 1000 + i * 137.0,
+        'change_percent': (bearish ? -1 : 1) * (i % 5 + 1) * 0.8,
+        'categories': cats,
+      };
+    });
+
+    // Mirror the backend filter/sort/limit so offline behavior is consistent.
+    final wanted = categories?.toSet() ?? const <String>{};
+    matches = matches.where((m) {
+      final score = m['score'] as double;
+      if (minScore != null && score < minScore) return false;
+      if (wanted.isNotEmpty) {
+        final cats = (m['categories'] as List).cast<String>().toSet();
+        if (wanted.intersection(cats).isEmpty) return false;
+      }
+      return true;
+    }).toList();
+    matches.sort((a, b) {
+      final byScore =
+          (b['score'] as double).compareTo(a['score'] as double);
+      if (byScore != 0) return byScore;
+      return (b['change_percent'] as double)
+          .compareTo(a['change_percent'] as double);
+    });
+    final bounded = (limit ?? 50).clamp(1, 200);
+    if (matches.length > bounded) matches = matches.sublist(0, bounded);
+
     return {
       'market': market.code,
-      'matches': List.generate(categoryRotation.length, (i) {
-        final score = (95 - i * 6).toDouble();
-        final cats = categoryRotation[i];
-        final bearish =
-            cats.contains('bearish') || cats.contains('short_candidate');
-        return {
-          'symbol': '${market.code}${(i + 1).toString().padLeft(2, '0')}',
-          'name': 'Sample ${market.code} Co. ${i + 1}',
-          'score': score,
-          'signal': bearish
-              ? 'SELL'
-              : score > 66
-                  ? 'BUY'
-                  : 'HOLD',
-          'price': 1000 + i * 137.0,
-          'change_percent': (bearish ? -1 : 1) * (i % 5 + 1) * 0.8,
-          'categories': cats,
-        };
-      }),
+      'matches': matches,
       'generated_at': DateTime.now().toIso8601String(),
     };
   }

@@ -151,6 +151,41 @@ def test_screen_no_universe_falls_back_to_mock():
     assert len(res.matches) > 0  # mock provides rows
 
 
+def test_screen_limit_and_sort_order():
+    eng = AnalysisEngine(fetcher=lambda t, p, i: uptrend())
+    res = eng.screen(Market.HKEX, limit=3)  # mock universe via fallback
+    assert len(res.matches) <= 3
+    scores = [m.score for m in res.matches]
+    assert scores == sorted(scores, reverse=True)
+    # Tie-break by change_percent desc within equal scores.
+    for a, b in zip(res.matches, res.matches[1:]):
+        if a.score == b.score:
+            assert a.change_percent >= b.change_percent
+
+
+def test_screen_limit_is_bounded_to_max():
+    eng = AnalysisEngine(fetcher=lambda t, p, i: uptrend())
+    res = eng.screen(Market.IDX, limit=99999)
+    assert len(res.matches) <= 200  # MAX_LIMIT
+
+
+def test_screen_min_score_filters():
+    eng = AnalysisEngine(fetcher=lambda t, p, i: uptrend())
+    res = eng.screen(Market.IDX, min_score=80)
+    assert all(m.score >= 80 for m in res.matches)
+
+
+def test_screen_category_filter():
+    eng = AnalysisEngine(fetcher=lambda t, p, i: uptrend())
+    res = eng.screen(Market.IDX, categories=[ScreenerCategory.bearish])
+    # Synthetic uptrend produces bullish matches, so a bearish filter is empty.
+    assert res.matches == []
+
+    res2 = eng.screen(Market.IDX, categories=[ScreenerCategory.bullish])
+    assert len(res2.matches) > 0
+    assert all(ScreenerCategory.bullish in m.categories for m in res2.matches)
+
+
 def test_screen_uses_market_universe(tmp_path):
     # A controlled 2-symbol universe loaded from disk.
     (tmp_path / "idx.csv").write_text(

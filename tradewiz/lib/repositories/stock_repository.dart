@@ -22,8 +22,21 @@ class StockRepository {
   }
 
   /// Screener results for a market. Backs `/screen/{market}`.
-  Future<Sourced<ScreenerResult>> screen(Market market) async {
-    final res = await _client.screen(market);
+  ///
+  /// Optional [limit] (top-N), [minScore], and [categories] (wire names) are
+  /// forwarded to the API as query params when set.
+  Future<Sourced<ScreenerResult>> screen(
+    Market market, {
+    int? limit,
+    double? minScore,
+    List<String>? categories,
+  }) async {
+    final res = await _client.screen(
+      market,
+      limit: limit,
+      minScore: minScore,
+      categories: categories,
+    );
     return Sourced(ScreenerResult.fromJson(res.data), res.source);
   }
 

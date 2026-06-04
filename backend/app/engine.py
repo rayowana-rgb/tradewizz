@@ -28,6 +28,10 @@ from .models import (
 
 logger = logging.getLogger("tradewiz.engine")
 
+# Screener pagination bounds.
+DEFAULT_LIMIT = 50
+MAX_LIMIT = 200
+
 # yfinance ticker suffix per market.
 MARKET_SUFFIX = {
     Market.IDX: ".JK",
@@ -288,7 +292,12 @@ class AnalysisEngine:
             return mock_data.mock_predict_weekly(symbol)
 
     def screen(
-        self, market: Market, symbols: Optional[List[str]] = None
+        self,
+        market: Market,
+        symbols: Optional[List[str]] = None,
+        limit: int = DEFAULT_LIMIT,
+        min_score: float = 0.0,
+        categories: Optional[List[ScreenerCategory]] = None,
     ) -> ScreenerResult:
         """Screen a market's symbol universe (or an explicit symbol list).
 
@@ -296,6 +305,10 @@ class AnalysisEngine:
           1. explicit ``symbols`` argument, if given;
           2. the market's configured universe (CSV/Excel);
           3. mock screener output if neither yields a usable universe.
+
+        Results are filtered by ``min_score`` and ``categories`` (a match must
+        carry at least one requested category), sorted by score desc then
+        change_percent desc, and truncated to ``limit`` (bounded to MAX_LIMIT).
         """
         names: dict = {}
         if not symbols:
@@ -303,7 +316,9 @@ class AnalysisEngine:
             names = self._universe.names(market)
 
         if not symbols:
-            return mock_data.mock_screen(market)
+            return self._finalize(
+                mock_data.mock_screen(market), limit, min_score, categories
+            )
 
         matches: List[ScreenerMatch] = []
         for sym in symbols:
@@ -332,12 +347,37 @@ class AnalysisEngine:
                 continue
 
         if not matches:
-            return mock_data.mock_screen(market)
+            return self._finalize(
+                mock_data.mock_screen(market), limit, min_score, categories
+            )
 
-        matches.sort(key=lambda m: m.score, reverse=True)
-        return ScreenerResult(
+        result = ScreenerResult(
             market=market, matches=matches, generated_at=_now_iso()
         )
+        return self._finalize(result, limit, min_score, categories)
+
+    @staticmethod
+    def _finalize(
+        result: ScreenerResult,
+        limit: int,
+        min_score: float,
+        categories: Optional[List[ScreenerCategory]],
+    ) -> ScreenerResult:
+        """Filter, sort (score desc, then change_percent desc), and paginate."""
+        limit = max(1, min(int(limit), MAX_LIMIT))
+        wanted = set(categories or [])
+
+        matches = [
+            m
+            for m in result.matches
+            if m.score >= min_score
+            and (not wanted or wanted.intersection(m.categories))
+        ]
+        matches.sort(
+            key=lambda m: (m.score, m.change_percent), reverse=True
+        )
+        result.matches = matches[:limit]
+        return result
 
 
 def _daily_change_pct(df: pd.DataFrame) -> float:

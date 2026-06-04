@@ -78,7 +78,13 @@ All under the `/v1` prefix.
 | GET    | `/v1/predict_weekly/{symbol}` | `WeeklyPrediction` |
 
 - `analyze` accepts an optional `?market=IDX|HKEX|KOSPI|KOSDAQ` query param.
-- `screen` returns 404 for unknown markets.
+- `screen` returns 404 for unknown markets, and supports:
+  - `?limit=` top-N matches, `1..200` (default `50`).
+  - `?min_score=` minimum score, `0..100` (default `0`).
+  - `?categories=` comma-separated category filter (e.g. `bullish,scalping`);
+    a match must carry at least one. Unknown names are ignored.
+  - Results are sorted by **score desc, then change_percent desc**.
+  - Example: `/v1/screen/IDX?limit=20&min_score=70&categories=bullish,ara_hunter`
 - Interactive docs: `http://localhost:8000/docs`.
 
 ## Setup

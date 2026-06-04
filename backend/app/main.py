@@ -6,14 +6,17 @@ models. Replace the `mock_*` calls with the real screening engine later.
 
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException
+from typing import List, Optional
+
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from .engine import AnalysisEngine
+from .engine import DEFAULT_LIMIT, MAX_LIMIT, AnalysisEngine
 from .models import (
     AnalysisResult,
     HealthResponse,
     Market,
+    ScreenerCategory,
     ScreenerResult,
     WeeklyPrediction,
 )
@@ -65,15 +68,46 @@ def analyze(symbol: str, market: Market = Market.IDX) -> AnalysisResult:
     return engine.analyze(symbol, market)
 
 
+def _parse_categories(raw: Optional[str]) -> Optional[List[ScreenerCategory]]:
+    """Parse a comma-separated category filter; unknown values are ignored."""
+    if not raw:
+        return None
+    out: List[ScreenerCategory] = []
+    for part in raw.split(","):
+        name = part.strip().lower()
+        if not name:
+            continue
+        try:
+            out.append(ScreenerCategory(name))
+        except ValueError:
+            continue  # silently drop unknown category names
+    return out or None
+
+
 @app.get(f"{API_PREFIX}/screen/{{market}}", response_model=ScreenerResult)
-def screen(market: str) -> ScreenerResult:
+def screen(
+    market: str,
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
+    min_score: float = Query(0.0, ge=0.0, le=100.0),
+    categories: Optional[str] = Query(
+        None, description="Comma-separated category filter, e.g. bullish,scalping"
+    ),
+) -> ScreenerResult:
     """Screener results for a market.
 
-    Without a symbol universe configured, this returns mock screener output
-    (the engine handles that fallback). A real deployment supplies the
-    market's symbol list.
+    Query params:
+      - ``limit``: max matches (1..200, default 50).
+      - ``min_score``: minimum score 0..100 (default 0).
+      - ``categories``: comma-separated category filter (match must carry one).
+
+    Results are sorted by score desc, then change_percent desc.
     """
-    return engine.screen(_parse_market(market))
+    return engine.screen(
+        _parse_market(market),
+        limit=limit,
+        min_score=min_score,
+        categories=_parse_categories(categories),
+    )
 
 
 @app.get(
