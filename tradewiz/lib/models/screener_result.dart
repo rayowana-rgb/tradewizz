@@ -1,4 +1,5 @@
 import 'market.dart';
+import 'screener_category.dart';
 
 /// A single matched row from a screener run.
 class ScreenerMatch {
@@ -9,6 +10,7 @@ class ScreenerMatch {
     required this.signal,
     required this.price,
     required this.changePercent,
+    this.categories = const [],
   });
 
   final String symbol;
@@ -18,7 +20,12 @@ class ScreenerMatch {
   final double price;
   final double changePercent;
 
+  /// Tags assigned by the screening engine (bullish, scalping, etc.).
+  final List<ScreenerCategory> categories;
+
   bool get isUp => changePercent >= 0;
+
+  bool hasCategory(ScreenerCategory c) => categories.contains(c);
 
   factory ScreenerMatch.fromJson(Map<String, dynamic> json) {
     return ScreenerMatch(
@@ -28,6 +35,10 @@ class ScreenerMatch {
       signal: json['signal'] as String? ?? 'HOLD',
       price: (json['price'] as num?)?.toDouble() ?? 0,
       changePercent: (json['change_percent'] as num?)?.toDouble() ?? 0,
+      categories: (json['categories'] as List<dynamic>? ?? [])
+          .map((e) => ScreenerCategory.fromWire(e?.toString()))
+          .whereType<ScreenerCategory>()
+          .toList(),
     );
   }
 }

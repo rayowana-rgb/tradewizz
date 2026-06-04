@@ -80,17 +80,38 @@ class ApiClient {
   }
 
   Map<String, dynamic> _mockScreen(Market market) {
+    // Cycle through the full category taxonomy so the UI/filters have coverage.
+    const categoryRotation = <List<String>>[
+      ['bullish', 'ara_hunter'],
+      ['bearish', 'short_candidate'],
+      ['scalping', 'frequently_traded'],
+      ['accumulation', 'pullback'],
+      ['accumulation_silent'],
+      ['turnaround_multibagger', 'bullish'],
+      ['pullback', 'accumulation'],
+      ['frequently_traded'],
+      ['ara_hunter', 'scalping'],
+      ['short_candidate'],
+    ];
     return {
       'market': market.code,
-      'matches': List.generate(5, (i) {
-        final score = (90 - i * 7).toDouble();
+      'matches': List.generate(categoryRotation.length, (i) {
+        final score = (95 - i * 6).toDouble();
+        final cats = categoryRotation[i];
+        final bearish =
+            cats.contains('bearish') || cats.contains('short_candidate');
         return {
-          'symbol': '${market.code}$i',
-          'name': 'Sample ${market.code} Co. $i',
+          'symbol': '${market.code}${(i + 1).toString().padLeft(2, '0')}',
+          'name': 'Sample ${market.code} Co. ${i + 1}',
           'score': score,
-          'signal': score > 66 ? 'BUY' : 'HOLD',
+          'signal': bearish
+              ? 'SELL'
+              : score > 66
+                  ? 'BUY'
+                  : 'HOLD',
           'price': 1000 + i * 137.0,
-          'change_percent': (i.isEven ? 1 : -1) * (i + 1) * 0.8,
+          'change_percent': (bearish ? -1 : 1) * (i % 5 + 1) * 0.8,
+          'categories': cats,
         };
       }),
       'generated_at': DateTime.now().toIso8601String(),

@@ -7,6 +7,11 @@ stock-screening bot — the backend API mirrors the bot's capabilities.
 ## Features (current scaffold)
 
 - **Dashboard** — market summary header, summary cards, and top movers.
+- **Screener** — runs `/screen/{market}`, lists tagged matches with category
+  badges (bullish, bearish, scalping, accumulation, pullback, silent
+  accumulation, turnaround multibagger, frequently traded, short candidate,
+  ARA hunter). Filter by market and category; pull-to-refresh; loading/error/
+  empty states.
 - **Watchlist** — per-market watchlist with swipe-to-remove.
 - **Market selector** — switch between IDX, HKEX, KOSPI, KOSDAQ.
 - **AI Analysis** — enter a symbol + market, get a placeholder analysis result
@@ -28,6 +33,7 @@ lib/
     stock.dart                 # Stock + sample data
     analysis_result.dart       # AnalysisResult, WeeklyPrediction
     screener_result.dart       # ScreenerResult, ScreenerMatch
+    screener_category.dart     # ScreenerCategory enum (badges)
     watchlist_item.dart        # WatchlistItem (persistable)
   services/
     api_client.dart            # HTTP-ready client (stubbed transport)
@@ -35,11 +41,13 @@ lib/
     stock_repository.dart      # UI-facing data access
   pages/
     dashboard_page.dart
+    screener_page.dart         # Market/category-filtered screener
     watchlist_page.dart
     ai_analysis_page.dart      # Form-driven analysis
   widgets/
     market_selector.dart
     stock_tile.dart
+    category_badge.dart
 ```
 
 ### Planned API endpoints
@@ -65,5 +73,5 @@ flutter run        # iOS simulator or device (Android also supported)
 
 - Connect the real (migrated bot) backend.
 - Persist watchlist (e.g. shared_preferences / local DB).
-- Surface `/screen/{market}` results in a screener view.
+- Tap a screener match to open its analysis.
 - iOS polish: Cupertino touches where it improves UX.

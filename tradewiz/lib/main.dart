@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'models/market.dart';
 import 'pages/ai_analysis_page.dart';
 import 'pages/dashboard_page.dart';
+import 'pages/screener_page.dart';
 import 'pages/watchlist_page.dart';
 import 'theme.dart';
 import 'widgets/market_selector.dart';
@@ -45,11 +46,12 @@ class _HomeShellState extends State<HomeShell> {
   Widget build(BuildContext context) {
     final pages = [
       DashboardPage(market: _market),
+      ScreenerPage(market: _market),
       WatchlistPage(market: _market),
       AiAnalysisPage(market: _market),
     ];
 
-    final titles = ['Dashboard', 'Watchlist', 'AI Analysis'];
+    final titles = ['Dashboard', 'Screener', 'Watchlist', 'AI Analysis'];
 
     return Scaffold(
       appBar: AppBar(
@@ -58,7 +60,7 @@ class _HomeShellState extends State<HomeShell> {
           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 22),
         ),
         actions: [
-          if (_index != 2)
+          if (_index != 1 && _index != 3)
             Padding(
               padding: const EdgeInsets.only(right: 12),
               child: MarketSelector(
@@ -77,6 +79,11 @@ class _HomeShellState extends State<HomeShell> {
             icon: Icon(Icons.dashboard_outlined),
             selectedIcon: Icon(Icons.dashboard),
             label: 'Dashboard',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.radar_outlined),
+            selectedIcon: Icon(Icons.radar),
+            label: 'Screener',
           ),
           NavigationDestination(
             icon: Icon(Icons.star_outline),
