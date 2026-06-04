@@ -4,9 +4,12 @@ import '../models/analysis_result.dart';
 import '../models/market.dart';
 import '../models/watchlist_item.dart';
 import '../repositories/stock_repository.dart';
+import '../services/api_client.dart';
+import '../services/data_source.dart';
 import '../services/repository_scope.dart';
 import '../services/watchlist_scope.dart';
 import '../theme.dart';
+import '../widgets/connection_pill.dart';
 
 /// Full-screen analysis route with a back button. Used when navigating from a
 /// screener match: prefills the symbol/market and auto-runs the analysis.
@@ -77,6 +80,7 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
   String? _error;
   AnalysisResult? _result;
   WeeklyPrediction? _prediction;
+  DataSource? _source;
 
   @override
   void initState() {
@@ -105,24 +109,45 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
       _error = null;
       _result = null;
       _prediction = null;
+      _source = null;
     });
 
     try {
-      final results = await Future.wait([
-        _repo.analyze(symbol, _market),
-        _repo.predictWeekly(symbol),
-      ]);
+      final analysis = await _repo.analyze(symbol, _market);
+      final prediction = await _repo.predictWeekly(symbol);
       if (!mounted) return;
       setState(() {
-        _result = results[0] as AnalysisResult;
-        _prediction = results[1] as WeeklyPrediction;
+        _result = analysis.data;
+        _prediction = prediction.data;
+        // Worst-of the two sources (fallback outranks live) so the pill is honest.
+        _source = _worst(analysis.source, prediction.source);
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.message;
+        _source = e.statusCode == null ? DataSource.offline : DataSource.error;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = 'Could not load analysis. $e');
+      setState(() {
+        _error = 'Could not load analysis. $e';
+        _source = DataSource.error;
+      });
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// Returns the less-trustworthy of two sources for an honest combined pill.
+  DataSource _worst(DataSource a, DataSource b) {
+    int rank(DataSource s) => switch (s) {
+          DataSource.live => 0,
+          DataSource.fallback => 1,
+          DataSource.offline => 2,
+          DataSource.error => 3,
+        };
+    return rank(a) >= rank(b) ? a : b;
   }
 
   @override
@@ -139,6 +164,20 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
           ),
         if (_error != null) _ErrorCard(message: _error!),
         if (_result != null && !_loading) ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              children: [
+                const Text(
+                  'Result',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                ),
+                const Spacer(),
+                ConnectionPill(source: _source),
+              ],
+            ),
+          ),
+          ConnectionBanner(source: _source),
           _ResultCard(result: _result!),
           const SizedBox(height: 12),
           _SaveToWatchlistButton(result: _result!),

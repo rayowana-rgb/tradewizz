@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:tradewiz/config/app_config.dart';
 import 'package:tradewiz/models/market.dart';
 import 'package:tradewiz/services/api_client.dart';
+import 'package:tradewiz/services/data_source.dart';
 
 AppConfig _config({bool mockFallback = true}) => AppConfig(
       baseUrl: 'https://test.tradewiz.app/v1',
@@ -35,9 +36,10 @@ void main() {
     });
 
     final client = ApiClient(config: _config(), httpClient: mock);
-    final json = await client.analyze('bbca', Market.idx);
-    expect(json['signal'], 'BUY');
-    expect(json['score'], 88);
+    final res = await client.analyze('bbca', Market.idx);
+    expect(res.source, DataSource.live);
+    expect(res.data['signal'], 'BUY');
+    expect(res.data['score'], 88);
   });
 
   test('screen() hits /screen/{market}', () async {
@@ -50,8 +52,9 @@ void main() {
       );
     });
     final client = ApiClient(config: _config(), httpClient: mock);
-    final json = await client.screen(Market.hkex);
-    expect(json['market'], 'HKEX');
+    final res = await client.screen(Market.hkex);
+    expect(res.source, DataSource.live);
+    expect(res.data['market'], 'HKEX');
   });
 
   test('falls back to mock data when the server is unreachable', () async {
@@ -60,10 +63,11 @@ void main() {
     });
     final client = ApiClient(config: _config(mockFallback: true), httpClient: mock);
 
-    final json = await client.analyze('TLKM', Market.idx);
-    // Mock fallback shape still present.
-    expect(json['symbol'], 'TLKM');
-    expect(json['signal'], isNotNull);
+    final res = await client.analyze('TLKM', Market.idx);
+    // Mock fallback shape still present, tagged as fallback.
+    expect(res.source, DataSource.fallback);
+    expect(res.data['symbol'], 'TLKM');
+    expect(res.data['signal'], isNotNull);
   });
 
   test('no fallback => throws friendly ApiException when offline', () async {

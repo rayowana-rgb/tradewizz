@@ -31,7 +31,12 @@ The API client performs real `GET`s against `AppConfig.baseUrl` with a timeout
 and friendly error mapping. If the backend is unreachable (timeout / socket /
 client error) and `mockFallback` is on, it falls back to mocked JSON so the app
 stays usable offline. Non-2xx responses surface a friendly `ApiException`
-(no silent fallback). Configure the base URL at build time:
+(no silent fallback). Every result is tagged with a **`DataSource`**
+(`live` / `fallback` / `offline` / `error`) carried from the client through the
+repository to the UI, surfaced as a **connection pill/banner** on the Dashboard,
+Screener, and Analysis result.
+
+Configure the base URL at build time:
 
 ```bash
 flutter run --dart-define=TRADEWIZ_API_BASE_URL=https://staging.tradewiz.app/v1
@@ -53,6 +58,7 @@ lib/
   services/
     api_client.dart            # Real HTTP (package:http) + mock fallback
     repository_scope.dart      # InheritedWidget exposing StockRepository
+    data_source.dart           # DataSource enum + Sourced<T> wrapper
     watchlist_store.dart       # Shared ChangeNotifier state + persistence
     watchlist_scope.dart       # InheritedNotifier exposing the store
   repositories/
@@ -66,6 +72,7 @@ lib/
     market_selector.dart
     stock_tile.dart
     category_badge.dart
+    connection_pill.dart       # Live/Mock/Offline/Error pill + banner
 ```
 
 ### Planned API endpoints

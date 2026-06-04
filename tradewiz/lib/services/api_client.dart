@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import '../config/app_config.dart';
 import '../models/market.dart';
+import 'data_source.dart';
 
 /// Thrown when an API call fails in a way the UI should surface.
 class ApiException implements Exception {
@@ -35,7 +36,7 @@ class ApiClient {
   void close() => _http.close();
 
   /// GET /analyze/{symbol}
-  Future<Map<String, dynamic>> analyze(String symbol, Market market) {
+  Future<Sourced<Map<String, dynamic>>> analyze(String symbol, Market market) {
     final s = Uri.encodeComponent(symbol.toUpperCase());
     return _get(
       '/analyze/$s',
@@ -45,7 +46,7 @@ class ApiClient {
   }
 
   /// GET /screen/{market}
-  Future<Map<String, dynamic>> screen(Market market) {
+  Future<Sourced<Map<String, dynamic>>> screen(Market market) {
     return _get(
       '/screen/${market.code}',
       fallback: () => _mockScreen(market),
@@ -53,7 +54,7 @@ class ApiClient {
   }
 
   /// GET /predict_weekly/{symbol}
-  Future<Map<String, dynamic>> predictWeekly(String symbol) {
+  Future<Sourced<Map<String, dynamic>>> predictWeekly(String symbol) {
     final s = Uri.encodeComponent(symbol.toUpperCase());
     return _get(
       '/predict_weekly/$s',
@@ -65,7 +66,7 @@ class ApiClient {
   // HTTP transport with timeout, friendly errors, and mock fallback.
   // ---------------------------------------------------------------------------
 
-  Future<Map<String, dynamic>> _get(
+  Future<Sourced<Map<String, dynamic>>> _get(
     String path, {
     Map<String, String>? query,
     required Map<String, dynamic> Function() fallback,
@@ -81,7 +82,9 @@ class ApiClient {
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final decoded = jsonDecode(response.body);
-        if (decoded is Map<String, dynamic>) return decoded;
+        if (decoded is Map<String, dynamic>) {
+          return Sourced(decoded, DataSource.live);
+        }
         throw ApiException('Unexpected response format from server.');
       }
 
@@ -103,11 +106,13 @@ class ApiClient {
     }
   }
 
-  Map<String, dynamic> _maybeFallback(
+  Sourced<Map<String, dynamic>> _maybeFallback(
     Map<String, dynamic> Function() fallback,
     String message,
   ) {
-    if (_config.mockFallback) return fallback();
+    if (_config.mockFallback) {
+      return Sourced(fallback(), DataSource.fallback);
+    }
     throw ApiException(message);
   }
 

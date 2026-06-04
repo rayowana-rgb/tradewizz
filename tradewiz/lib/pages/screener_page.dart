@@ -4,8 +4,11 @@ import '../models/market.dart';
 import '../models/screener_category.dart';
 import '../models/screener_result.dart';
 import '../repositories/stock_repository.dart';
+import '../services/api_client.dart';
+import '../services/data_source.dart';
 import '../theme.dart';
 import '../widgets/category_badge.dart';
+import '../widgets/connection_pill.dart';
 import 'ai_analysis_page.dart';
 
 /// Screener page: runs `/screen/{market}` and lists tagged matches with
@@ -30,6 +33,7 @@ class _ScreenerPageState extends State<ScreenerPage> {
   bool _loading = false;
   String? _error;
   ScreenerResult? _result;
+  DataSource? _source;
 
   @override
   void initState() {
@@ -54,10 +58,22 @@ class _ScreenerPageState extends State<ScreenerPage> {
     try {
       final result = await _repo.screen(_market);
       if (!mounted) return;
-      setState(() => _result = result);
+      setState(() {
+        _result = result.data;
+        _source = result.source;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e.message;
+        _source = e.statusCode == null ? DataSource.offline : DataSource.error;
+      });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = 'Could not run screener. $e');
+      setState(() {
+        _error = 'Could not run screener. $e';
+        _source = DataSource.error;
+      });
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -95,6 +111,22 @@ class _ScreenerPageState extends State<ScreenerPage> {
         _CategoryFilterBar(
           selected: _categoryFilter,
           onSelected: (c) => setState(() => _categoryFilter = c),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Row(
+            children: [
+              Text(
+                'Data source',
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 12,
+                ),
+              ),
+              const Spacer(),
+              ConnectionPill(source: _source),
+            ],
+          ),
         ),
         const Divider(height: 1),
         Expanded(child: _buildBody()),
