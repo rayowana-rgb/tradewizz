@@ -88,4 +88,89 @@ void main() {
     expect(store.contains('BBCA', Market.idx), isTrue);
     expect(find.text('Saved to Watchlist'), findsOneWidget);
   });
+
+  testWidgets('shows recommendation, profit probability and buy reasons',
+      (tester) async {
+    await tester.pumpWidget(
+      wrapApp(
+        AiAnalysisPage(
+          market: Market.idx,
+          initialSymbol: 'BBCA',
+          autoRun: true,
+          repository: offlineRepository(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('Recommendation'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Recommendation'), findsOneWidget);
+    expect(find.textContaining('Profit probability'), findsOneWidget);
+    expect(find.text('Reasons'), findsOneWidget);
+  });
+
+  testWidgets('shows support/resistance and trailing stop', (tester) async {
+    await tester.pumpWidget(
+      wrapApp(
+        AiAnalysisPage(
+          market: Market.idx,
+          initialSymbol: 'BBCA',
+          autoRun: true,
+          repository: offlineRepository(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('Support / Resistance'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Support / Resistance'), findsOneWidget);
+    expect(find.text('Imm. support'), findsOneWidget);
+
+    await tester.scrollUntilVisible(
+      find.text('Suggested trailing stop'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Suggested trailing stop'), findsOneWidget);
+  });
+
+  testWidgets('shows the Backtest section with stats', (tester) async {
+    await tester.pumpWidget(
+      wrapApp(
+        AiAnalysisPage(
+          market: Market.idx,
+          initialSymbol: 'BBCA',
+          autoRun: true,
+          repository: offlineRepository(),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('Backtest'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Backtest'), findsOneWidget);
+    expect(find.text('Win rate'), findsOneWidget);
+    expect(find.text('Avg return'), findsOneWidget);
+    expect(find.text('Profit factor'), findsOneWidget);
+    expect(find.text('Max drawdown'), findsOneWidget);
+    expect(find.text('Total signals'), findsOneWidget);
+  });
 }

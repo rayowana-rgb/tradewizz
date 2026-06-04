@@ -80,6 +80,7 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
   String? _error;
   AnalysisResult? _result;
   WeeklyPrediction? _prediction;
+  BacktestResult? _backtest;
   DataSource? _source;
 
   @override
@@ -109,18 +110,24 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
       _error = null;
       _result = null;
       _prediction = null;
+      _backtest = null;
       _source = null;
     });
 
     try {
       final analysis = await _repo.analyze(symbol, _market);
       final prediction = await _repo.predictWeekly(symbol);
+      final backtest = await _repo.backtest(symbol, _market);
       if (!mounted) return;
       setState(() {
         _result = analysis.data;
         _prediction = prediction.data;
-        // Worst-of the two sources (fallback outranks live) so the pill is honest.
-        _source = _worst(analysis.source, prediction.source);
+        _backtest = backtest.data;
+        // Worst-of the sources (fallback outranks live) so the pill is honest.
+        _source = _worst(
+          _worst(analysis.source, prediction.source),
+          backtest.source,
+        );
       });
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -183,11 +190,29 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
             retrying: _loading,
           ),
           _ResultCard(result: _result!),
+          if (_result!.recommendation != null ||
+              _result!.profitProbability != null ||
+              _result!.buyReasons.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _RecommendationCard(result: _result!),
+          ],
+          if (_result!.supportResistance != null) ...[
+            const SizedBox(height: 16),
+            _SupportResistanceCard(sr: _result!.supportResistance!),
+          ],
+          if (_result!.trailingStopPercent != null) ...[
+            const SizedBox(height: 16),
+            _TrailingStopCard(result: _result!),
+          ],
           const SizedBox(height: 12),
           _SaveToWatchlistButton(result: _result!),
           if (_prediction != null) ...[
             const SizedBox(height: 16),
             _PredictionCard(prediction: _prediction!),
+          ],
+          if (_backtest != null) ...[
+            const SizedBox(height: 16),
+            _BacktestCard(backtest: _backtest!),
           ],
         ],
         if (_result == null && !_loading && _error == null) const _EmptyHint(),
@@ -416,6 +441,267 @@ class _ResultCard extends StatelessWidget {
 
   String _time(DateTime t) =>
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+}
+
+/// Recommendation + profit probability + buy reasons (Phase 3).
+class _RecommendationCard extends StatelessWidget {
+  const _RecommendationCard({required this.result});
+  final AnalysisResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    final prob = result.profitProbability;
+    final color = switch (result.signal) {
+      'BUY' => AppColors.up,
+      'SELL' => AppColors.down,
+      _ => Colors.orange,
+    };
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Recommendation',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            const SizedBox(height: 8),
+            if (result.recommendation != null)
+              Text(
+                result.recommendation!,
+                style: TextStyle(
+                    color: color, fontWeight: FontWeight.w700, fontSize: 15),
+              ),
+            if (prob != null) ...[
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  const Icon(Icons.percent, size: 16, color: AppColors.seed),
+                  const SizedBox(width: 6),
+                  Text('Profit probability  '
+                      '${(prob * 100).toStringAsFixed(0)}%',
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                ],
+              ),
+              const SizedBox(height: 6),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: LinearProgressIndicator(
+                  value: prob.clamp(0, 1),
+                  minHeight: 8,
+                  color: AppColors.seed,
+                  backgroundColor: AppColors.seed.withValues(alpha: 0.12),
+                ),
+              ),
+            ],
+            if (result.buyReasons.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              const Text('Reasons',
+                  style: TextStyle(color: Colors.grey, fontSize: 12)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final r in result.buyReasons)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: AppColors.up.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.check, size: 13,
+                              color: AppColors.up),
+                          const SizedBox(width: 4),
+                          Text(r,
+                              style: const TextStyle(
+                                  color: AppColors.up,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Support/resistance levels (Phase 3).
+class _SupportResistanceCard extends StatelessWidget {
+  const _SupportResistanceCard({required this.sr});
+  final SupportResistance sr;
+
+  String _fmt(double? v) => v == null ? '—' : v.toStringAsFixed(v >= 100 ? 0 : 2);
+
+  @override
+  Widget build(BuildContext context) {
+    Widget level(String label, double? v, Color c, IconData icon) => Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Icon(icon, size: 13, color: c),
+                const SizedBox(width: 4),
+                Text(label,
+                    style: const TextStyle(color: Colors.grey, fontSize: 11)),
+              ]),
+              const SizedBox(height: 2),
+              Text(_fmt(v),
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+            ],
+          ),
+        );
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Support / Resistance',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+            const SizedBox(height: 12),
+            Row(children: [
+              level('Imm. support', sr.immediateSupport, AppColors.up,
+                  Icons.south),
+              level('Imm. resistance', sr.immediateResistance, AppColors.down,
+                  Icons.north),
+            ]),
+            const SizedBox(height: 12),
+            Row(children: [
+              level('Major support', sr.majorSupport, AppColors.up,
+                  Icons.keyboard_double_arrow_down),
+              level('Major resistance', sr.majorResistance, AppColors.down,
+                  Icons.keyboard_double_arrow_up),
+            ]),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// ADX-banded trailing stop (Phase 3).
+class _TrailingStopCard extends StatelessWidget {
+  const _TrailingStopCard({required this.result});
+  final AnalysisResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            CircleAvatar(
+              backgroundColor: Colors.orange.withValues(alpha: 0.12),
+              child: const Icon(Icons.vertical_align_bottom,
+                  color: Colors.orange),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Suggested trailing stop',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${result.trailingStopPercent!.toStringAsFixed(0)}%'
+                    '${result.trailingStopPrice != null ? '  ·  at '
+                        '${result.trailingStopPrice!.toStringAsFixed(result.trailingStopPrice! >= 100 ? 0 : 2)}' : ''}',
+                    style: const TextStyle(color: Colors.grey, fontSize: 13),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Backtest stats (Phase 5).
+class _BacktestCard extends StatelessWidget {
+  const _BacktestCard({required this.backtest});
+  final BacktestResult backtest;
+
+  @override
+  Widget build(BuildContext context) {
+    final b = backtest;
+    Widget stat(String label, String value, {Color? color}) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label,
+                style: const TextStyle(color: Colors.grey, fontSize: 11)),
+            const SizedBox(height: 2),
+            Text(value,
+                style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: color ?? const Color(0xFF1A1C1E))),
+          ],
+        );
+    final avgPct = b.averageReturn * 100;
+    final ddPct = b.maxDrawdown * 100;
+    final pf = b.profitFactor >= 999 ? '∞' : b.profitFactor.toStringAsFixed(2);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Icon(Icons.history, size: 18, color: AppColors.seed),
+              const SizedBox(width: 8),
+              const Text('Backtest',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              const Spacer(),
+              Text('${b.signalType} · ${b.forwardDays}d',
+                  style: const TextStyle(color: Colors.grey, fontSize: 12)),
+            ]),
+            const SizedBox(height: 14),
+            if (!b.hasSignals)
+              const Text('No historical signals for this rule.',
+                  style: TextStyle(color: Colors.grey))
+            else ...[
+              Row(children: [
+                Expanded(
+                    child: stat('Win rate',
+                        '${(b.winRate * 100).toStringAsFixed(0)}%',
+                        color: b.winRate >= 0.5
+                            ? AppColors.up
+                            : AppColors.down)),
+                Expanded(
+                    child: stat('Avg return',
+                        '${avgPct >= 0 ? '+' : ''}${avgPct.toStringAsFixed(2)}%',
+                        color: avgPct >= 0 ? AppColors.up : AppColors.down)),
+                Expanded(child: stat('Profit factor', pf)),
+              ]),
+              const SizedBox(height: 14),
+              Row(children: [
+                Expanded(
+                    child: stat('Max drawdown',
+                        '${ddPct.toStringAsFixed(2)}%',
+                        color: AppColors.down)),
+                Expanded(child: stat('Total signals', '${b.totalSignals}')),
+                Expanded(
+                    child: stat('W / L',
+                        '${b.totalWins} / ${b.totalLosses}')),
+              ]),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _PredictionCard extends StatelessWidget {

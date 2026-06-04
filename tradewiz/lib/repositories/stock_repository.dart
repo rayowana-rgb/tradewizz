@@ -45,4 +45,20 @@ class StockRepository {
     final res = await _client.predictWeekly(symbol);
     return Sourced(WeeklyPrediction.fromJson(res.data), res.source);
   }
+
+  /// Backtest a buy-signal rule for a symbol. Backs `/backtest/{symbol}`.
+  Future<Sourced<BacktestResult>> backtest(
+    String symbol,
+    Market market, {
+    String signalType = 'momentum',
+    int forwardDays = 2,
+  }) async {
+    final res = await _client.backtest(
+      symbol,
+      market,
+      signalType: signalType,
+      forwardDays: forwardDays,
+    );
+    return Sourced(BacktestResult.fromJson(res.data), res.source);
+  }
 }

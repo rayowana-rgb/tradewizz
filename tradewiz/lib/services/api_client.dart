@@ -85,6 +85,25 @@ class ApiClient {
     );
   }
 
+  /// GET /backtest/{symbol}
+  Future<Sourced<Map<String, dynamic>>> backtest(
+    String symbol,
+    Market market, {
+    String signalType = 'momentum',
+    int forwardDays = 2,
+  }) {
+    final s = Uri.encodeComponent(symbol.toUpperCase());
+    return _get(
+      '/backtest/$s',
+      query: {
+        'market': market.code,
+        'signal_type': signalType,
+        'forward_days': forwardDays.toString(),
+      },
+      fallback: () => _mockBacktest(symbol, market, signalType, forwardDays),
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // HTTP transport with timeout, friendly errors, and mock fallback.
   // ---------------------------------------------------------------------------
@@ -175,6 +194,25 @@ class ApiClient {
         'Volume trend: ${score % 2 == 0 ? 'rising' : 'flat'}',
       ],
       'generated_at': DateTime.now().toIso8601String(),
+      // Phase 3 refinement fields (mirror the live backend shape).
+      'recommendation': signal == 'BUY'
+          ? 'BUY — confirmed by momentum'
+          : signal == 'SELL'
+              ? 'SELL / avoid — weak setup'
+              : 'HOLD — no clear buy/sell signal yet',
+      'buy_reasons': signal == 'SELL'
+          ? <String>[]
+          : ['MACD bullish', if (score > 50) 'OBV rising', 'Above VWAP'],
+      'support_resistance': {
+        'immediate_support': 100.0 - (score % 10),
+        'immediate_resistance': 100.0 + (score % 10) + 5,
+        'major_support': 90.0 - (score % 10),
+        'major_resistance': 110.0 + (score % 10),
+      },
+      'trailing_stop_percent': (5 + score % 6).toDouble(),
+      'trailing_stop_price':
+          double.parse((100 * (1 - (5 + score % 6) / 100)).toStringAsFixed(2)),
+      'profit_probability': (score / 100),
     };
   }
 
@@ -267,6 +305,35 @@ class ApiClient {
       'rationale':
           'Placeholder weekly forecast for $symbol. Real prediction will come '
               'from the migrated model.',
+    };
+  }
+
+  Map<String, dynamic> _mockBacktest(
+    String symbol,
+    Market market,
+    String signalType,
+    int forwardDays,
+  ) {
+    final s = _seed(symbol);
+    final total = 5 + s % 20; // 5..24
+    final wins = (total * (0.4 + (s % 40) / 100)).round().clamp(0, total);
+    final losses = total - wins;
+    final avg = ((s % 9) - 3) * 0.004; // -1.2%..+2.0%
+    final pf = losses == 0
+        ? 999.0
+        : double.parse((wins / losses * (1 + (s % 5) / 10)).toStringAsFixed(4));
+    return {
+      'symbol': symbol.toUpperCase(),
+      'market': market.code,
+      'signal_type': signalType,
+      'forward_days': forwardDays,
+      'total_signals': total,
+      'total_wins': wins,
+      'total_losses': losses,
+      'win_rate': total == 0 ? 0.0 : double.parse((wins / total).toStringAsFixed(4)),
+      'average_return': double.parse(avg.toStringAsFixed(6)),
+      'profit_factor': pf,
+      'max_drawdown': -((s % 6) + 1) * 0.01,
     };
   }
 
