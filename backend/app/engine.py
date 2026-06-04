@@ -71,12 +71,30 @@ Fetcher = Callable[[str, str, str], pd.DataFrame]
 # source from stalling /screen across a whole universe. Override via env.
 _YF_TIMEOUT = float(os.environ.get("TRADEWIZ_YF_TIMEOUT", "8"))
 
+# Browser profile for curl_cffi TLS impersonation. Yahoo's edge WAF blocks the
+# default requests/urllib3 (esp. LibreSSL) TLS fingerprint with HTTP 429; a real
+# browser JA3 fingerprint passes. Override via TRADEWIZ_YF_IMPERSONATE.
+_YF_IMPERSONATE = os.environ.get("TRADEWIZ_YF_IMPERSONATE", "chrome")
+
+
+def _impersonating_session():
+    """A curl_cffi session impersonating a real browser, or None if unavailable.
+
+    yfinance accepts a `session=`; a curl_cffi session with a browser TLS
+    fingerprint bypasses Yahoo's fingerprint-based 429 blocking.
+    """
+    try:
+        from curl_cffi import requests as cffi_requests
+
+        return cffi_requests.Session(impersonate=_YF_IMPERSONATE)
+    except Exception:  # noqa: BLE001 - fall back to yfinance default session
+        return None
+
 
 def _yf_fetch(ticker: str, period: str = "1y", interval: str = "1d") -> pd.DataFrame:
     import yfinance as yf
 
-    df = yf.download(
-        ticker,
+    kwargs = dict(
         period=period,
         interval=interval,
         auto_adjust=False,
@@ -84,6 +102,10 @@ def _yf_fetch(ticker: str, period: str = "1y", interval: str = "1d") -> pd.DataF
         threads=False,
         timeout=_YF_TIMEOUT,
     )
+    session = _impersonating_session()
+    if session is not None:
+        kwargs["session"] = session
+    df = yf.download(ticker, **kwargs)
     if df is None or df.empty:
         raise ValueError(f"No data for {ticker}")
     # yfinance may return a column MultiIndex for a single ticker; flatten it.

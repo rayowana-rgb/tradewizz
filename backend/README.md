@@ -12,6 +12,27 @@ pure pandas/numpy (`app/indicators.py`): **RSI(14), EMA20, EMA50, SMA200, MACD
 (line/signal/hist), volume ratio, ATR / ATR%**. From these it derives a
 BUY/HOLD/SELL signal, a 0–100 score, and the app's category taxonomy.
 
+### Yahoo data source (HTTP 429 fix)
+
+Yahoo's edge WAF blocks requests with the default `requests`/`urllib3` TLS
+fingerprint (worst on macOS system Python built against **LibreSSL**) — returning
+`HTTP/2 429 "Edge: Too Many Requests"` even when the IP is not over-quota and
+browsers on the same network work. Root cause is **TLS/JA3 fingerprinting**, not
+rate limiting, SSL errors, or the `requests`/yfinance version per se (plain
+HTTPS to non-Yahoo hosts succeeds).
+
+Fix: `_yf_fetch` passes yfinance a **`curl_cffi` session impersonating Chrome**
+(`impersonate=chrome`), which presents a real-browser JA3 fingerprint and is
+allowed through. Diagnostics:
+
+```bash
+python -m app.diagnose_yahoo        # checks env + raw vs impersonated requests
+```
+
+Override the browser profile with `TRADEWIZ_YF_IMPERSONATE` if it ages out. If
+`curl_cffi` is unavailable the fetch degrades to yfinance's default session
+(and may 429 again → mock fallback).
+
 Market → yfinance suffix:
 
 | Market | Suffix |

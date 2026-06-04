@@ -4,7 +4,8 @@ pydantic==2.10.4
 httpx==0.28.1
 pandas==2.2.3
 numpy==2.0.2
-yfinance==0.2.51
+yfinance==0.2.66
+curl_cffi==0.13.0
 openpyxl==3.1.5
 scikit-learn==1.6.1
 joblib==1.4.2
