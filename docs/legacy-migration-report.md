@@ -246,10 +246,18 @@ already a manageable dep.
 dict. Pure, deterministic, no new heavy deps.
 → Low risk. Tests: synthetic series with known forward returns.
 
-**Phase 5 — Richer `/analyze`.** Add support/resistance, ADX-based trailing
-stop, and `buy_reasons[]` to `AnalysisResult` (all backward-compatible
-optional fields). Drives a much better Analysis screen.
-→ Low/medium risk.
+**Phase 5 — Richer `/analyze`. ✅ DONE (2026-06-04, shipped as task "Phase 3").**
+Migrated `analyze_screened_stocks` refinement logic into `engine.analyze`:
+`buy_reasons[]` (OBV/CMF/A-D/VWAP/MACD/RSI confirmation), `support_resistance`
+(rolling 10/50 min-max), ADX-banded `trailing_stop_percent`/`trailing_stop_price`
+(tighter for scalping), a `recommendation` string, and a deterministic
+`profit_probability` **placeholder** (score/100 — real RandomForest deferred to
+the report's Phase 3/ML). All added as additive *optional* fields on
+`AnalysisResult` (+ `immediate/major_support/resistance` keys in `compute_all`),
+so the API contract is preserved and the mock fallback path simply omits them.
+13 new tests; backend 121 passed, Flutter 25 passed. RL/LSTM/Telegram untouched.
+→ Remaining for full ML: replace the profit-probability placeholder with the
+RandomForest classifier (report Phase 3) and add the backtest endpoint (Phase 4).
 
 **Deferred (separate research track, opt-in):** RL trader (PPO/TD3/SAC) and
 LSTM predictor. Only if a concrete product need appears; they bring

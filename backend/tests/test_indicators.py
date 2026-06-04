@@ -244,3 +244,18 @@ def test_compute_all_existing_keys_unchanged():
 def _last(series):
     s = series.dropna()
     return float(s.iloc[-1]) if not s.empty else None
+
+
+def test_compute_all_support_resistance_keys():
+    # Rolling min/max support & resistance (Phase 3).
+    n = 80
+    close = 100 + np.sin(np.arange(n) / 5.0) * 10
+    df = _ohlcv(close, high=close + 2, low=close - 2)
+    ind = indicators.compute_all(df)
+    for key in ("immediate_support", "immediate_resistance",
+                "major_support", "major_resistance"):
+        assert key in ind and ind[key] is not None
+    # Resistance >= support; major window (50) brackets immediate (10).
+    assert ind["immediate_resistance"] >= ind["immediate_support"]
+    assert ind["major_support"] <= ind["immediate_support"]
+    assert ind["major_resistance"] >= ind["immediate_resistance"]

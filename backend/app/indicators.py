@@ -253,6 +253,14 @@ def compute_all(df: pd.DataFrame) -> dict:
     # Latest high (for ARA near-high check).
     last_high = last(df["High"])
 
+    # --- Phase 3 support: support/resistance (rolling min/max, legacy) ---
+    low = df["Low"]
+    high = df["High"]
+    immediate_support = last(low.rolling(window=10, min_periods=1).min())
+    immediate_resistance = last(high.rolling(window=10, min_periods=1).max())
+    major_support = last(low.rolling(window=50, min_periods=1).min())
+    major_resistance = last(high.rolling(window=50, min_periods=1).max())
+
     return {
         "close": last_close,
         "rsi": last(rsi_s),
@@ -288,6 +296,10 @@ def compute_all(df: pd.DataFrame) -> dict:
         else None,
         # --- Phase 2 support: rolling aggregates for category rules ---
         "high": last_high,
+        "immediate_support": immediate_support,
+        "immediate_resistance": immediate_resistance,
+        "major_support": major_support,
+        "major_resistance": major_resistance,
         "prev_close": prev_close,
         "prev_volume": prev_volume,
         "vol_mean_10": vol_mean_10,

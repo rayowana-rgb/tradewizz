@@ -7,7 +7,7 @@ Field names use snake_case to match the Dart `fromJson` parsers
 from __future__ import annotations
 
 from enum import Enum
-from typing import List
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -36,6 +36,15 @@ class ScreenerCategory(str, Enum):
     ara_hunter = "ara_hunter"
 
 
+class SupportResistance(BaseModel):
+    """Support/resistance levels (rolling min/max)."""
+
+    immediate_support: Optional[float] = None
+    immediate_resistance: Optional[float] = None
+    major_support: Optional[float] = None
+    major_resistance: Optional[float] = None
+
+
 class AnalysisResult(BaseModel):
     symbol: str
     market: Market
@@ -44,6 +53,13 @@ class AnalysisResult(BaseModel):
     summary: str = ""
     highlights: List[str] = []
     generated_at: str  # ISO-8601
+    # --- Phase 3 (additive, optional; older clients ignore these) ---
+    recommendation: str = ""  # human-readable BUY/SELL/HOLD verdict
+    buy_reasons: List[str] = []  # confirmation reasons (OBV/CMF/A-D/etc.)
+    support_resistance: Optional[SupportResistance] = None
+    trailing_stop_percent: Optional[float] = None
+    trailing_stop_price: Optional[float] = None
+    profit_probability: Optional[float] = None  # 0..1 placeholder (ML later)
 
 
 class WeeklyPrediction(BaseModel):

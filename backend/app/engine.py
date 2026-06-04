@@ -25,6 +25,7 @@ from .models import (
     ScreenerCategory,
     ScreenerMatch,
     ScreenerResult,
+    SupportResistance,
     WeeklyPrediction,
 )
 
@@ -342,6 +343,96 @@ class AnalysisEngine:
             f"ATR%: {fmt(ind.get('atr_pct'))}",
         ]
 
+    # -- Phase 3: signal confirmation / S-R / trailing stop ---------------
+
+    def _buy_reasons(self, ind: dict) -> List[str]:
+        """Confirmation reasons (ported from legacy analyze_screened_stocks).
+
+        Uses OBV / A-D / CMF / VWAP / MACD / RSI / volume confirmation.
+        """
+        reasons: List[str] = []
+        macd = ind.get("macd")
+        macd_signal = ind.get("macd_signal")
+        rsi = ind.get("rsi")
+        rsi_prev = ind.get("rsi_prev")
+        ad = ind.get("ad")
+        ad_prev = ind.get("ad_prev")
+        obv = ind.get("obv")
+        obv_prev = ind.get("obv_prev")
+        cmf = ind.get("cmf")
+        volume = ind.get("volume")
+        vol_mean_10 = ind.get("vol_mean_10")
+        close = ind.get("close")
+        vwap = ind.get("vwap")
+
+        if macd is not None and macd_signal is not None and macd > macd_signal:
+            reasons.append("MACD bullish")
+        if rsi is not None and rsi_prev is not None and rsi > rsi_prev:
+            reasons.append("RSI rising")
+        if ad is not None and ad_prev is not None and ad > ad_prev:
+            reasons.append("A/D rising")
+        if obv is not None and obv_prev is not None and obv > obv_prev:
+            reasons.append("OBV rising")
+        if cmf is not None and cmf > 0:
+            reasons.append("Positive money flow (CMF)")
+        if (
+            volume is not None
+            and vol_mean_10 is not None
+            and volume > vol_mean_10 * 1.5
+        ):
+            reasons.append("Volume spike")
+        if close is not None and vwap is not None and close > vwap:
+            reasons.append("Above VWAP")
+        return reasons
+
+    @staticmethod
+    def _support_resistance(ind: dict) -> Optional[SupportResistance]:
+        keys = (
+            "immediate_support", "immediate_resistance",
+            "major_support", "major_resistance",
+        )
+        if all(ind.get(k) is None for k in keys):
+            return None
+        return SupportResistance(
+            immediate_support=ind.get("immediate_support"),
+            immediate_resistance=ind.get("immediate_resistance"),
+            major_support=ind.get("major_support"),
+            major_resistance=ind.get("major_resistance"),
+        )
+
+    @staticmethod
+    def _trailing_stop(ind: dict, cats: List[ScreenerCategory]):
+        """ADX-banded trailing stop % + price (legacy: tighter for scalping)."""
+        close = ind.get("close")
+        if close is None:
+            return None, None
+        adx = ind.get("adx")
+        adx = adx if adx is not None else 20.0
+        is_scalping = ScreenerCategory.scalping in cats
+        if is_scalping:
+            pct = 2 if adx < 20 else 3 if adx < 30 else 4 if adx < 40 else 5
+        else:
+            pct = 5 if adx < 20 else 7 if adx < 30 else 8 if adx < 40 else 10
+        price = round(close * (1 - pct / 100.0), 2)
+        return float(pct), price
+
+    @staticmethod
+    def _profit_probability_placeholder(score: float) -> float:
+        """Deterministic 0..1 placeholder until the ML model lands (Phase 4).
+
+        Derived from the conviction score so it is monotonic and stable.
+        """
+        return round(max(0.0, min(1.0, score / 100.0)), 4)
+
+    @staticmethod
+    def _recommendation(signal: str, cats: List[ScreenerCategory]) -> str:
+        tag = cats[0].value if cats else "signal"
+        if signal == "BUY":
+            return f"BUY — confirmed by {tag}"
+        if signal == "SELL":
+            return f"SELL / avoid — weak {tag} setup"
+        return "HOLD — no clear buy/sell signal yet"
+
     # -- public API --------------------------------------------------------
 
     def analyze(self, symbol: str, market: Market) -> AnalysisResult:
@@ -354,6 +445,7 @@ class AnalysisEngine:
             cats = self.categorize(ind, market)
             signal, score = self._signal_and_score(ind, cats)
             tags = ", ".join(c.value for c in cats) or "none"
+            ts_pct, ts_price = self._trailing_stop(ind, cats)
             return AnalysisResult(
                 symbol=symbol.upper(),
                 market=market,
@@ -365,6 +457,13 @@ class AnalysisEngine:
                 ),
                 highlights=self._highlights(ind),
                 generated_at=_now_iso(),
+                # --- Phase 3 additive fields ---
+                recommendation=self._recommendation(signal, cats),
+                buy_reasons=self._buy_reasons(ind),
+                support_resistance=self._support_resistance(ind),
+                trailing_stop_percent=ts_pct,
+                trailing_stop_price=ts_price,
+                profit_probability=self._profit_probability_placeholder(score),
             )
         except Exception as exc:  # noqa: BLE001 - intentional safe fallback
             logger.warning("analyze fell back to mock for %s: %s", ticker, exc)
