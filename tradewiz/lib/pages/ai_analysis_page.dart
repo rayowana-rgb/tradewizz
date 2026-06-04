@@ -4,6 +4,7 @@ import '../models/analysis_result.dart';
 import '../models/market.dart';
 import '../models/watchlist_item.dart';
 import '../repositories/stock_repository.dart';
+import '../services/repository_scope.dart';
 import '../services/watchlist_scope.dart';
 import '../theme.dart';
 
@@ -35,7 +36,7 @@ class AnalysisDetailPage extends StatelessWidget {
           market: market,
           initialSymbol: symbol,
           autoRun: true,
-          repository: repository,
+          repository: repository ?? RepositoryScope.of(context),
         ),
       ),
     );

@@ -25,7 +25,17 @@ stock-screening bot — the backend API mirrors the bot's capabilities.
 
 ## Architecture
 
-UI → **Repository** → **ApiClient** → backend.
+UI → **Repository** → **ApiClient** (real HTTP via `package:http`) → backend.
+
+The API client performs real `GET`s against `AppConfig.baseUrl` with a timeout
+and friendly error mapping. If the backend is unreachable (timeout / socket /
+client error) and `mockFallback` is on, it falls back to mocked JSON so the app
+stays usable offline. Non-2xx responses surface a friendly `ApiException`
+(no silent fallback). Configure the base URL at build time:
+
+```bash
+flutter run --dart-define=TRADEWIZ_API_BASE_URL=https://staging.tradewiz.app/v1
+```
 
 ```
 lib/
@@ -38,8 +48,11 @@ lib/
     screener_result.dart       # ScreenerResult, ScreenerMatch
     screener_category.dart     # ScreenerCategory enum (badges)
     watchlist_item.dart        # WatchlistItem (persistable)
+  config/
+    app_config.dart            # baseUrl/timeout via --dart-define
   services/
-    api_client.dart            # HTTP-ready client (stubbed transport)
+    api_client.dart            # Real HTTP (package:http) + mock fallback
+    repository_scope.dart      # InheritedWidget exposing StockRepository
     watchlist_store.dart       # Shared ChangeNotifier state + persistence
     watchlist_scope.dart       # InheritedNotifier exposing the store
   repositories/

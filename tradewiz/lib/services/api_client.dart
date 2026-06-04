@@ -1,8 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 
+import 'package:http/http.dart' as http;
+
+import '../config/app_config.dart';
 import '../models/market.dart';
 
-/// Thrown when an API call fails.
+/// Thrown when an API call fails in a way the UI should surface.
 class ApiException implements Exception {
   ApiException(this.message, {this.statusCode});
   final String message;
@@ -14,41 +19,107 @@ class ApiException implements Exception {
 
 /// Low-level client for the TradeWiz backend (the migrated Telegram bot API).
 ///
-/// Endpoints are defined here as placeholders. Networking is stubbed for now:
-/// each method returns mocked JSON so the UI can be built and tested before the
-/// real backend is wired in. Swap [_mockGet] for a real HTTP call later.
+/// Performs real HTTP GETs against [AppConfig.baseUrl]. If the backend is
+/// unreachable (and [AppConfig.mockFallback] is on), it falls back to mocked
+/// JSON so the app stays usable offline / before the backend is deployed.
 class ApiClient {
-  ApiClient({this.baseUrl = 'https://api.tradewiz.app/v1'});
+  ApiClient({AppConfig? config, http.Client? httpClient})
+      : _config = config ?? AppConfig.fromEnvironment(),
+        _http = httpClient ?? http.Client();
 
-  /// Base URL of the backend. Override per-environment.
-  final String baseUrl;
+  final AppConfig _config;
+  final http.Client _http;
+
+  String get baseUrl => _config.baseUrl;
+
+  void close() => _http.close();
 
   /// GET /analyze/{symbol}
   Future<Map<String, dynamic>> analyze(String symbol, Market market) {
-    return _mockGet('/analyze/$symbol', () => _mockAnalyze(symbol, market));
+    final s = Uri.encodeComponent(symbol.toUpperCase());
+    return _get(
+      '/analyze/$s',
+      query: {'market': market.code},
+      fallback: () => _mockAnalyze(symbol, market),
+    );
   }
 
   /// GET /screen/{market}
   Future<Map<String, dynamic>> screen(Market market) {
-    return _mockGet('/screen/${market.code}', () => _mockScreen(market));
+    return _get(
+      '/screen/${market.code}',
+      fallback: () => _mockScreen(market),
+    );
   }
 
   /// GET /predict_weekly/{symbol}
   Future<Map<String, dynamic>> predictWeekly(String symbol) {
-    return _mockGet('/predict_weekly/$symbol', () => _mockPredict(symbol));
+    final s = Uri.encodeComponent(symbol.toUpperCase());
+    return _get(
+      '/predict_weekly/$s',
+      fallback: () => _mockPredict(symbol),
+    );
   }
 
   // ---------------------------------------------------------------------------
-  // Transport (stubbed). Replace this with a real http/dio implementation.
+  // HTTP transport with timeout, friendly errors, and mock fallback.
   // ---------------------------------------------------------------------------
 
-  Future<Map<String, dynamic>> _mockGet(
-    String path,
-    Map<String, dynamic> Function() build,
-  ) async {
-    // Simulate network latency.
-    await Future<void>.delayed(const Duration(milliseconds: 600));
-    return build();
+  Future<Map<String, dynamic>> _get(
+    String path, {
+    Map<String, String>? query,
+    required Map<String, dynamic> Function() fallback,
+  }) async {
+    final uri = Uri.parse('$baseUrl$path').replace(
+      queryParameters: query == null || query.isEmpty ? null : query,
+    );
+
+    try {
+      final response = await _http
+          .get(uri, headers: const {'Accept': 'application/json'})
+          .timeout(_config.requestTimeout);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) return decoded;
+        throw ApiException('Unexpected response format from server.');
+      }
+
+      // Non-2xx: these are real server answers, so surface them (no fallback).
+      throw ApiException(
+        _friendlyStatus(response.statusCode),
+        statusCode: response.statusCode,
+      );
+    } on ApiException {
+      rethrow;
+    } on TimeoutException {
+      return _maybeFallback(fallback, 'The request timed out.');
+    } on SocketException {
+      return _maybeFallback(fallback, 'Could not reach the server.');
+    } on http.ClientException {
+      return _maybeFallback(fallback, 'Network error contacting the server.');
+    } on FormatException {
+      throw ApiException('Could not read the server response.');
+    }
+  }
+
+  Map<String, dynamic> _maybeFallback(
+    Map<String, dynamic> Function() fallback,
+    String message,
+  ) {
+    if (_config.mockFallback) return fallback();
+    throw ApiException(message);
+  }
+
+  String _friendlyStatus(int code) {
+    return switch (code) {
+      400 => 'Invalid request.',
+      401 || 403 => 'Not authorized.',
+      404 => 'Not found.',
+      429 => 'Too many requests — please slow down.',
+      >= 500 => 'The server is having trouble. Try again shortly.',
+      _ => 'Request failed (HTTP $code).',
+    };
   }
 
   // ---------------------------------------------------------------------------

@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tradewiz/models/market.dart';
 import 'package:tradewiz/pages/screener_page.dart';
-import 'package:tradewiz/repositories/stock_repository.dart';
 import 'package:tradewiz/widgets/category_badge.dart';
 
 import 'helpers.dart';
@@ -11,7 +10,7 @@ import 'helpers.dart';
 Future<void> _loadScreener(WidgetTester tester) async {
   await tester.pumpWidget(
     wrapApp(
-      ScreenerPage(market: Market.idx, repository: StockRepository()),
+      ScreenerPage(market: Market.idx, repository: offlineRepository()),
     ),
   );
   await tester.pump(const Duration(seconds: 1));
@@ -23,7 +22,7 @@ void main() {
       (tester) async {
     await tester.pumpWidget(
       wrapApp(
-        ScreenerPage(market: Market.idx, repository: StockRepository()),
+        ScreenerPage(market: Market.idx, repository: offlineRepository()),
       ),
     );
 

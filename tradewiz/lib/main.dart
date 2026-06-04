@@ -5,6 +5,8 @@ import 'pages/ai_analysis_page.dart';
 import 'pages/dashboard_page.dart';
 import 'pages/screener_page.dart';
 import 'pages/watchlist_page.dart';
+import 'repositories/stock_repository.dart';
+import 'services/repository_scope.dart';
 import 'services/watchlist_scope.dart';
 import 'services/watchlist_store.dart';
 import 'theme.dart';
@@ -24,6 +26,7 @@ class TradeWizApp extends StatefulWidget {
 class _TradeWizAppState extends State<TradeWizApp> {
   final WatchlistStore _watchlist =
       WatchlistStore(persistence: SharedPrefsWatchlistPersistence());
+  final StockRepository _repository = StockRepository();
 
   @override
   void initState() {
@@ -39,13 +42,16 @@ class _TradeWizAppState extends State<TradeWizApp> {
 
   @override
   Widget build(BuildContext context) {
-    return WatchlistScope(
-      store: _watchlist,
-      child: MaterialApp(
-        title: 'TradeWiz',
-        debugShowCheckedModeBanner: false,
-        theme: buildTradeWizTheme(),
-        home: const HomeShell(),
+    return RepositoryScope(
+      repository: _repository,
+      child: WatchlistScope(
+        store: _watchlist,
+        child: MaterialApp(
+          title: 'TradeWiz',
+          debugShowCheckedModeBanner: false,
+          theme: buildTradeWizTheme(),
+          home: const HomeShell(),
+        ),
       ),
     );
   }

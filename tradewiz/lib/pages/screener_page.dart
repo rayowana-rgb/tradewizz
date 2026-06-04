@@ -75,6 +75,7 @@ class _ScreenerPageState extends State<ScreenerPage> {
         builder: (_) => AnalysisDetailPage(
           symbol: match.symbol,
           market: _market,
+          repository: widget.repository,
         ),
       ),
     );

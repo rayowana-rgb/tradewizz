@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tradewiz/models/market.dart';
 import 'package:tradewiz/pages/ai_analysis_page.dart';
-import 'package:tradewiz/repositories/stock_repository.dart';
 import 'package:tradewiz/services/watchlist_store.dart';
 
 import 'helpers.dart';
@@ -12,7 +11,7 @@ void main() {
   testWidgets('AI Analysis form produces a placeholder result', (tester) async {
     await tester.pumpWidget(
       wrapApp(
-        AiAnalysisPage(market: Market.idx, repository: StockRepository()),
+        AiAnalysisPage(market: Market.idx, repository: offlineRepository()),
       ),
     );
 
@@ -44,7 +43,7 @@ void main() {
           market: Market.hkex,
           initialSymbol: '0700',
           autoRun: true,
-          repository: StockRepository(),
+          repository: offlineRepository(),
         ),
       ),
     );
@@ -67,7 +66,7 @@ void main() {
           market: Market.idx,
           initialSymbol: 'BBCA',
           autoRun: true,
-          repository: StockRepository(),
+          repository: offlineRepository(),
         ),
         store: store,
       ),
