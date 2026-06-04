@@ -1,0 +1,14 @@
+# Test tags configuration.
+#
+# The `live` tag marks end-to-end tests that need a REAL running backend
+# (network access). Registering the tag here silences the "unknown tag"
+# warning. The live suite self-skips at runtime unless explicitly enabled, so
+# the normal `flutter test` run stays hermetic.
+#
+# Run the live end-to-end check with:
+#
+#   flutter test --tags live \
+#     --dart-define=TRADEWIZ_API_BASE_URL=http://localhost:8000/v1 \
+#     --dart-define=RUN_LIVE=true
+tags:
+  live:

@@ -94,6 +94,30 @@ flutter pub get
 flutter run        # iOS simulator or device (Android also supported)
 ```
 
+## End-to-end smoke test
+
+Verify the app receives **live** backend data (not mock fallback) against a real
+server. One command (starts the backend, runs the live test, tears down):
+
+```bash
+../scripts/e2e_smoke.sh          # from tradewiz/, or run from repo root
+```
+
+Or manually:
+
+```bash
+# terminal 1: backend
+cd ../backend && source .venv/bin/activate && uvicorn app.main:app --port 8000
+
+# terminal 2: live test (excluded from the default run)
+flutter test --tags live \
+  --dart-define=TRADEWIZ_API_BASE_URL=http://localhost:8000/v1 \
+  --dart-define=RUN_LIVE=true
+```
+
+The default `flutter test` stays hermetic — the live suite self-skips unless
+`RUN_LIVE=true` is set.
+
 ## Next steps
 
 - Connect the real (migrated bot) backend.
