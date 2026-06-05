@@ -56,11 +56,13 @@ class OhlcvCache:
         self,
         fetcher: InnerFetcher,
         cache_dir: Optional[Path | str] = None,
-        ttl_seconds: Optional[int] = None,
+        ttl_seconds: Optional["int | Callable[[], int]"] = None,
         clock: Callable[[], float] = time.time,
     ):
         self._fetch = fetcher
         self._dir = Path(cache_dir) if cache_dir else _default_cache_dir()
+        # TTL may be a fixed int or a callable evaluated per freshness check
+        # (so it can shorten while a market session is open). Default from env.
         self._ttl = ttl_seconds if ttl_seconds is not None else _ttl_from_env()
         self._clock = clock
         self._dir.mkdir(parents=True, exist_ok=True)
@@ -69,6 +71,11 @@ class OhlcvCache:
         # are required (not asyncio locks).
         self._registry_lock = threading.Lock()
         self._key_locks: Dict[str, threading.Lock] = {}
+
+    def _ttl_seconds(self) -> int:
+        """Resolve the effective TTL (supports a callable for dynamic TTL)."""
+        ttl = self._ttl
+        return int(ttl() if callable(ttl) else ttl)
 
     def _lock_for(self, key: str) -> threading.Lock:
         with self._registry_lock:
@@ -156,7 +163,7 @@ class OhlcvCache:
         except (ValueError, OSError):
             return False
         age = self._clock() - fetched_at
-        return 0 <= age < self._ttl
+        return 0 <= age < self._ttl_seconds()
 
     def _read(self, csv_path: Path) -> pd.DataFrame:
         df = pd.read_csv(csv_path, index_col=0, parse_dates=True)
@@ -172,7 +179,7 @@ class OhlcvCache:
 def make_cached_fetcher(
     inner: InnerFetcher,
     cache_dir: Optional[Path | str] = None,
-    ttl_seconds: Optional[int] = None,
+    ttl_seconds: Optional["int | Callable[[], int]"] = None,
     clock: Callable[[], float] = time.time,
 ) -> Callable[[str, str, str], pd.DataFrame]:
     """Build a `(ticker, period, interval) -> df` fetcher backed by disk cache."""

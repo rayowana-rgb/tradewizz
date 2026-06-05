@@ -106,6 +106,28 @@ def _market_now(market: Optional[Market]) -> datetime:
     return datetime.now(ZoneInfo(tz))
 
 
+# OHLCV cache TTLs. The *latest* candle is volatile while a session is open
+# (intraday close keeps moving) and final once closed. Use a short TTL when any
+# supported market is open so the latest price stays current; a long TTL when
+# all are closed (the last candle won't change). Override via env.
+_CACHE_TTL_OPEN = int(os.environ.get("TRADEWIZ_CACHE_TTL_OPEN", "300"))     # 5m
+_CACHE_TTL_CLOSED = int(os.environ.get("TRADEWIZ_CACHE_TTL_CLOSED", "21600"))  # 6h
+
+
+def _any_market_open(now_provider=None) -> bool:
+    """True if any supported market is currently in session."""
+    for mkt in _MARKET_SESSION:
+        now = now_provider(mkt) if now_provider else _market_now(mkt)
+        if _is_market_open(mkt, now):
+            return True
+    return False
+
+
+def _dynamic_cache_ttl() -> int:
+    """Short TTL while any market is open; long TTL when all are closed."""
+    return _CACHE_TTL_OPEN if _any_market_open() else _CACHE_TTL_CLOSED
+
+
 def _is_market_open(market: Optional[Market], now: datetime) -> bool:
     """True if `now` is within a weekday trading session for the market."""
     _, _, open_h, close_h = _MARKET_SESSION.get(
@@ -243,8 +265,12 @@ class AnalysisEngine:
         universe: Optional[UniverseRepository] = None,
         profit_model: Optional["ProfitModel"] = None,
     ):
-        # Default: yfinance behind the on-disk OHLCV cache (TTL via env).
-        self._fetch = fetcher or make_cached_fetcher(_yf_fetch)
+        # Default: yfinance behind the on-disk OHLCV cache. Use a market-aware
+        # TTL so the latest candle refreshes while any session is open (avoids
+        # serving a stale intraday close) and is cached long once closed.
+        self._fetch = fetcher or make_cached_fetcher(
+            _yf_fetch, ttl_seconds=_dynamic_cache_ttl
+        )
         self._universe = universe or UniverseRepository()
         self._profit_model = profit_model if profit_model is not None \
             else ProfitModel()

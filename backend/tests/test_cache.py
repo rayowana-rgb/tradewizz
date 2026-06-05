@@ -157,3 +157,40 @@ def test_ttl_from_env(tmp_path, monkeypatch):
     clock.advance(121)
     cache.get("E.HK", "1y", "1d")
     assert fetcher.calls == 2
+
+
+def test_callable_ttl_is_evaluated_each_check(tmp_path):
+    """A callable TTL lets the cache shorten while a market session is open."""
+    fetcher = CountingFetcher()
+    clock = FakeClock()
+    state = {"ttl": 300}  # 5 min (e.g. "market open")
+    cache = OhlcvCache(
+        fetcher, cache_dir=tmp_path, ttl_seconds=lambda: state["ttl"], clock=clock
+    )
+
+    cache.get("BBCA.JK", "1y", "1d")
+    assert fetcher.calls == 1
+
+    # Within the short (open) TTL -> hit.
+    clock.advance(120)
+    cache.get("BBCA.JK", "1y", "1d")
+    assert fetcher.calls == 1
+
+    # Past the short TTL -> refetch (latest candle refreshes intraday).
+    clock.advance(200)  # total 320s > 300s
+    cache.get("BBCA.JK", "1y", "1d")
+    assert fetcher.calls == 2
+
+    # Now "market closed": long TTL keeps the (final) candle cached.
+    state["ttl"] = 21600
+    clock.advance(1000)
+    cache.get("BBCA.JK", "1y", "1d")
+    assert fetcher.calls == 2
+
+
+def test_engine_dynamic_ttl_open_is_short_closed_is_long():
+    from app import engine
+    # The open TTL must be much shorter than the closed TTL so the latest
+    # candle refreshes while a session is live.
+    assert engine._CACHE_TTL_OPEN < engine._CACHE_TTL_CLOSED
+    assert engine._CACHE_TTL_OPEN <= 600  # <= 10 min
