@@ -58,7 +58,26 @@ def test_analyze_uptrend_is_bullish_buy():
     assert res.signal == "BUY"
     assert res.score >= 66
     assert 0 <= res.score <= 100
-    assert any(h.startswith("RSI") for h in res.highlights)
+    # Investor-friendly highlights (no raw RSI/EMA/SMA/MACD).
+    assert any(h.startswith("Current Price") for h in res.highlights)
+
+
+def test_highlights_are_investor_friendly():
+    eng = AnalysisEngine(fetcher=lambda t, p, i: uptrend())
+    res = eng.analyze("BBCA", Market.IDX)
+    text = " | ".join(res.highlights)
+    # New labels present, in order.
+    for label in [
+        "Current Price", "20-Day Average Price", "Today's Volume",
+        "20-Day Average Volume", "Value Traded Today", "Volume Ratio", "ATR",
+    ]:
+        assert label in text
+    assert len(res.highlights) == 7
+    # Old technical readouts must NOT appear.
+    for banned in ["RSI(14)", "EMA20", "SMA200", "MACD hist"]:
+        assert banned not in text
+    # IDX currency prefix on price/value lines.
+    assert any(h.startswith("Current Price: Rp") for h in res.highlights)
 
 
 def test_analyze_downtrend_is_bearish_sell():

@@ -74,6 +74,38 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# Currency symbol per market for investor-friendly highlight formatting.
+_CURRENCY = {
+    Market.IDX: "Rp",
+    Market.HKEX: "HK$",
+    Market.KOSPI: "\u20a9",
+    Market.KOSDAQ: "\u20a9",
+}
+
+
+def _currency_symbol(market: Optional[Market]) -> str:
+    return _CURRENCY.get(market, "") if market is not None else ""
+
+
+def _compact(value: float) -> str:
+    """Human-readable compact number (e.g. 8.3 Million, 1.45 Billion)."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return "n/a"
+    sign = "-" if v < 0 else ""
+    n = abs(v)
+    if n >= 1_000_000_000_000:
+        return f"{sign}{n / 1_000_000_000_000:.2f} Trillion"
+    if n >= 1_000_000_000:
+        return f"{sign}{n / 1_000_000_000:.2f} Billion"
+    if n >= 1_000_000:
+        return f"{sign}{n / 1_000_000:.1f} Million"
+    if n >= 1_000:
+        return f"{sign}{n / 1_000:.1f} Thousand"
+    return f"{sign}{n:,.0f}"
+
+
 # A fetcher returns an OHLCV DataFrame (columns: Open/High/Low/Close/Volume) or
 # raises. Signature: (ticker, period, interval). Injectable so tests can supply
 # synthetic data with no network.
@@ -371,17 +403,40 @@ class AnalysisEngine:
             signal = "SELL"
         return signal, round(score, 1)
 
-    def _highlights(self, ind: dict) -> List[str]:
-        def fmt(v, p=2):
-            return f"{v:.{p}f}" if v is not None else "n/a"
+    def _highlights(
+        self, ind: dict, market: Optional[Market] = None
+    ) -> List[str]:
+        """Investor-friendly market metrics for the analysis card.
+
+        Replaces the raw technical readouts (RSI/EMA/SMA/MACD) with
+        price/volume/turnover that normal investors can interpret. Does not
+        affect scoring, signals, categories, ML, or backtest.
+        """
+        cur = _currency_symbol(market)
+
+        def money(v) -> str:
+            return f"{cur}{_compact(v)}" if v is not None else "n/a"
+
+        def count(v) -> str:
+            return _compact(v) if v is not None else "n/a"
+
+        def price(v) -> str:
+            return f"{cur}{v:,.2f}" if v is not None else "n/a"
+
+        def ratio(v) -> str:
+            return f"{v:.2f}x" if v is not None else "n/a"
+
+        def pct(v) -> str:
+            return f"{v:.2f}%" if v is not None else "n/a"
 
         return [
-            f"RSI(14): {fmt(ind.get('rsi'), 1)}",
-            f"EMA20/EMA50: {fmt(ind.get('ema20'))} / {fmt(ind.get('ema50'))}",
-            f"SMA200: {fmt(ind.get('sma200'))}",
-            f"MACD hist: {fmt(ind.get('macd_hist'), 4)}",
-            f"Volume ratio: {fmt(ind.get('volume_ratio'))}x",
-            f"ATR%: {fmt(ind.get('atr_pct'))}",
+            f"Current Price: {price(ind.get('close'))}",
+            f"20-Day Average Price: {price(ind.get('sma20'))}",
+            f"Today's Volume: {count(ind.get('volume'))}",
+            f"20-Day Average Volume: {count(ind.get('vol_mean_20'))}",
+            f"Value Traded Today: {money(ind.get('value_traded'))}",
+            f"Volume Ratio: {ratio(ind.get('volume_ratio'))}",
+            f"ATR: {pct(ind.get('atr_pct'))}",
         ]
 
     # -- Phase 3: signal confirmation / S-R / trailing stop ---------------
@@ -502,7 +557,7 @@ class AnalysisEngine:
                     f"{symbol.upper()} ({ticker}) on {market.value}: {signal} "
                     f"(score {score}). Tags: {tags}."
                 ),
-                highlights=self._highlights(ind),
+                highlights=self._highlights(ind, market),
                 generated_at=_now_iso(),
                 # --- Phase 3 additive fields ---
                 recommendation=self._recommendation(signal, cats),

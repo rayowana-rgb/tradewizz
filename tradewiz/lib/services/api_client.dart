@@ -188,10 +188,15 @@ class ApiClient {
       'summary':
           '$symbol shows a $signal bias on ${market.code}. This is placeholder '
               'output; the migrated screening engine will populate real metrics.',
+      // Investor-friendly highlights (mirror the live backend shape).
       'highlights': [
-        'Momentum: ${score > 50 ? 'positive' : 'weak'}',
-        'Relative strength vs ${market.code}: ${score > 60 ? 'leader' : 'lagger'}',
-        'Volume trend: ${score % 2 == 0 ? 'rising' : 'flat'}',
+        'Current Price: Rp${(100 + score).toStringAsFixed(2)}',
+        '20-Day Average Price: Rp${(95 + score).toStringAsFixed(2)}',
+        "Today's Volume: ${(5 + score % 6).toStringAsFixed(1)} Million",
+        '20-Day Average Volume: ${(4 + score % 5).toStringAsFixed(1)} Million',
+        'Value Traded Today: Rp${(1 + score % 9) / 10 + 1}.00 Billion',
+        'Volume Ratio: ${(0.8 + (score % 20) / 10).toStringAsFixed(2)}x',
+        'ATR: ${(2 + score % 8).toStringAsFixed(2)}%',
       ],
       'generated_at': DateTime.now().toIso8601String(),
       // Phase 3 refinement fields (mirror the live backend shape).
