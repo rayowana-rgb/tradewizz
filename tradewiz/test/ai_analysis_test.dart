@@ -82,6 +82,10 @@ void main() {
       200,
       scrollable: find.byType(Scrollable).first,
     );
+    await tester.ensureVisible(
+      find.widgetWithText(FilledButton, 'Save to Watchlist'),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Save to Watchlist'));
     await tester.pumpAndSettle();
 

@@ -87,6 +87,61 @@ def _currency_symbol(market: Optional[Market]) -> str:
     return _CURRENCY.get(market, "") if market is not None else ""
 
 
+# Market session metadata for the analysis highlights. Simple schedule only
+# (no holiday calendar): Mon-Fri within the local open/close window.
+_MARKET_SESSION = {
+    # market: (IANA timezone, tz-abbrev, open_hour, close_hour)
+    Market.IDX: ("Asia/Jakarta", "WIB", 9, 16),
+    Market.HKEX: ("Asia/Hong_Kong", "HKT", 9, 16),
+    Market.KOSPI: ("Asia/Seoul", "KST", 9, 16),
+    Market.KOSDAQ: ("Asia/Seoul", "KST", 9, 16),
+}
+
+
+def _market_now(market: Optional[Market]) -> datetime:
+    """Current time in the market's local timezone (defaults to IDX/Jakarta)."""
+    from zoneinfo import ZoneInfo
+
+    tz = _MARKET_SESSION.get(market, _MARKET_SESSION[Market.IDX])[0]
+    return datetime.now(ZoneInfo(tz))
+
+
+def _is_market_open(market: Optional[Market], now: datetime) -> bool:
+    """True if `now` is within a weekday trading session for the market."""
+    _, _, open_h, close_h = _MARKET_SESSION.get(
+        market, _MARKET_SESSION[Market.IDX]
+    )
+    if now.weekday() >= 5:  # Saturday=5, Sunday=6
+        return False
+    open_minutes = open_h * 60
+    close_minutes = close_h * 60
+    cur_minutes = now.hour * 60 + now.minute
+    return open_minutes <= cur_minutes <= close_minutes
+
+
+def _market_status_lines(
+    market: Optional[Market],
+    last_data_date: Optional[datetime] = None,
+    now: Optional[datetime] = None,
+) -> List[str]:
+    """Two leading highlight lines: market status + data timestamp.
+
+    `now` is injectable for testing; defaults to the market-local current time.
+    """
+    tz_abbr = _MARKET_SESSION.get(market, _MARKET_SESSION[Market.IDX])[1]
+    current = now if now is not None else _market_now(market)
+    if _is_market_open(market, current):
+        return [
+            "Market Status: OPEN",
+            f"Data Timestamp: {current.strftime('%d %b %Y %H:%M')} {tz_abbr}",
+        ]
+    close_dt = last_data_date if last_data_date is not None else current
+    return [
+        "Market Status: CLOSED",
+        f"Last Market Close: {close_dt.strftime('%d %b %Y')}",
+    ]
+
+
 def _compact(value: float) -> str:
     """Human-readable compact number (e.g. 8.3 Million, 1.45 Billion)."""
     try:
@@ -404,13 +459,17 @@ class AnalysisEngine:
         return signal, round(score, 1)
 
     def _highlights(
-        self, ind: dict, market: Optional[Market] = None
+        self,
+        ind: dict,
+        market: Optional[Market] = None,
+        last_data_date: Optional["datetime"] = None,
     ) -> List[str]:
         """Investor-friendly market metrics for the analysis card.
 
         Replaces the raw technical readouts (RSI/EMA/SMA/MACD) with
-        price/volume/turnover that normal investors can interpret. Does not
-        affect scoring, signals, categories, ML, or backtest.
+        price/volume/turnover that normal investors can interpret, prefixed by
+        market status + data timestamp. Does not affect scoring, signals,
+        categories, ML, or backtest.
         """
         cur = _currency_symbol(market)
 
@@ -429,7 +488,7 @@ class AnalysisEngine:
         def pct(v) -> str:
             return f"{v:.2f}%" if v is not None else "n/a"
 
-        return [
+        return _market_status_lines(market, last_data_date) + [
             f"Current Price: {price(ind.get('close'))}",
             f"20-Day Average Price: {price(ind.get('sma20'))}",
             f"Today's Volume: {count(ind.get('volume'))}",
@@ -542,6 +601,12 @@ class AnalysisEngine:
             signal, score = self._signal_and_score(ind, cats)
             tags = ", ".join(c.value for c in cats) or "none"
             ts_pct, ts_price = self._trailing_stop(ind, cats)
+            # Last completed bar's date (for the CLOSED "Last Market Close").
+            last_date = None
+            try:
+                last_date = df.index[-1].to_pydatetime()
+            except Exception:  # noqa: BLE001 - date is best-effort
+                last_date = None
             # Real RandomForest profit probability; placeholder if untrainable.
             profit_prob = self._profit_model.probability(
                 df, market.value, symbol.upper()
@@ -557,7 +622,7 @@ class AnalysisEngine:
                     f"{symbol.upper()} ({ticker}) on {market.value}: {signal} "
                     f"(score {score}). Tags: {tags}."
                 ),
-                highlights=self._highlights(ind, market),
+                highlights=self._highlights(ind, market, last_date),
                 generated_at=_now_iso(),
                 # --- Phase 3 additive fields ---
                 recommendation=self._recommendation(signal, cats),

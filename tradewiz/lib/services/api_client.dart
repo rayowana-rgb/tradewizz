@@ -173,6 +173,28 @@ class ApiClient {
   // Mock payload builders (placeholder data shaped like the real API).
   // ---------------------------------------------------------------------------
 
+  /// Two leading highlight lines mirroring the backend's market-status block.
+  /// Simple IDX schedule (Mon-Fri 09:00-16:00 WIB); placeholder for offline.
+  List<String> _mockMarketStatusLines() {
+    // WIB = UTC+7.
+    final wib = DateTime.now().toUtc().add(const Duration(hours: 7));
+    final weekday = wib.weekday; // Mon=1 .. Sun=7
+    final minutes = wib.hour * 60 + wib.minute;
+    final open = weekday <= 5 && minutes >= 9 * 60 && minutes <= 16 * 60;
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    String d(DateTime t) =>
+        '${t.day.toString().padLeft(2, '0')} ${months[t.month - 1]} ${t.year}';
+    if (open) {
+      final hhmm =
+          '${wib.hour.toString().padLeft(2, '0')}:${wib.minute.toString().padLeft(2, '0')}';
+      return ['Market Status: OPEN', 'Data Timestamp: ${d(wib)} $hhmm WIB'];
+    }
+    return ['Market Status: CLOSED', 'Last Market Close: ${d(wib)}'];
+  }
+
   Map<String, dynamic> _mockAnalyze(String symbol, Market market) {
     final score = _seed(symbol) % 100;
     final signal = score > 66
@@ -188,8 +210,10 @@ class ApiClient {
       'summary':
           '$symbol shows a $signal bias on ${market.code}. This is placeholder '
               'output; the migrated screening engine will populate real metrics.',
-      // Investor-friendly highlights (mirror the live backend shape).
+      // Investor-friendly highlights (mirror the live backend shape): two
+      // market-status lines, then the metrics.
       'highlights': [
+        ..._mockMarketStatusLines(),
         'Current Price: Rp${(100 + score).toStringAsFixed(2)}',
         '20-Day Average Price: Rp${(95 + score).toStringAsFixed(2)}',
         "Today's Volume: ${(5 + score % 6).toStringAsFixed(1)} Million",
