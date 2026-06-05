@@ -190,7 +190,12 @@ class ApiClient {
     if (open) {
       final hhmm =
           '${wib.hour.toString().padLeft(2, '0')}:${wib.minute.toString().padLeft(2, '0')}';
-      return ['Market Status: OPEN', 'Data Timestamp: ${d(wib)} $hhmm WIB'];
+      // Mock fabricates today's session, so report it as live-session data.
+      return [
+        'Market Status: OPEN',
+        'Data Source Status: LIVE SESSION DATA',
+        'Data Timestamp: ${d(wib)} $hhmm WIB',
+      ];
     }
     return ['Market Status: CLOSED', 'Last Market Close: ${d(wib)}'];
   }

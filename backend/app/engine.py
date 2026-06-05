@@ -131,6 +131,25 @@ def _market_status_lines(
     tz_abbr = _MARKET_SESSION.get(market, _MARKET_SESSION[Market.IDX])[1]
     current = now if now is not None else _market_now(market)
     if _is_market_open(market, current):
+        # Data-freshness check: is the latest candle from today's session?
+        latest_is_today = (
+            last_data_date is not None
+            and last_data_date.date() == current.date()
+        )
+        if latest_is_today:
+            return [
+                "Market Status: OPEN",
+                "Data Source Status: LIVE SESSION DATA",
+                f"Data Timestamp: {current.strftime('%d %b %Y %H:%M')} {tz_abbr}",
+            ]
+        # Provider still serving a prior session's candle while market is open.
+        if last_data_date is not None:
+            return [
+                "Market Status: OPEN",
+                "Data Source Status: PREVIOUS SESSION DATA",
+                f"Last Market Data: {last_data_date.strftime('%d %b %Y')}",
+            ]
+        # No data date available: report open without a freshness claim.
         return [
             "Market Status: OPEN",
             f"Data Timestamp: {current.strftime('%d %b %Y %H:%M')} {tz_abbr}",

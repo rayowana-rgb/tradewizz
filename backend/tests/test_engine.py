@@ -72,8 +72,8 @@ def test_highlights_are_investor_friendly():
         "20-Day Average Volume", "Value Traded Today", "Volume Ratio", "ATR",
     ]:
         assert label in text
-    # 2 market-status lines + 7 investor metrics.
-    assert len(res.highlights) == 9
+    # status lines (2 or 3 with freshness sub-status) + 7 investor metrics.
+    assert len(res.highlights) in (9, 10)
     assert res.highlights[0].startswith("Market Status: ")
     # Old technical readouts must NOT appear.
     for banned in ["RSI(14)", "EMA20", "SMA200", "MACD hist"]:
