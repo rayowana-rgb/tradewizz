@@ -105,6 +105,66 @@ class ApiClient {
   }
 
   // ---------------------------------------------------------------------------
+  // Broker (Moomoo) endpoints. These NEVER fall back to mock data: trading
+  // calls must be real or fail clearly. Server `detail` errors are surfaced.
+  // ---------------------------------------------------------------------------
+
+  Future<Map<String, dynamic>> brokerGet(String path) =>
+      _brokerCall('GET', path);
+
+  Future<Map<String, dynamic>> brokerPost(
+    String path,
+    Map<String, dynamic> body,
+  ) =>
+      _brokerCall('POST', path, body: body);
+
+  Future<Map<String, dynamic>> _brokerCall(
+    String method,
+    String path, {
+    Map<String, dynamic>? body,
+  }) async {
+    final uri = Uri.parse('$baseUrl$path');
+    try {
+      final response = method == 'POST'
+          ? await _http
+              .post(
+                uri,
+                headers: const {
+                  'Accept': 'application/json',
+                  'Content-Type': 'application/json',
+                },
+                body: jsonEncode(body ?? const {}),
+              )
+              .timeout(_config.requestTimeout)
+          : await _http
+              .get(uri, headers: const {'Accept': 'application/json'})
+              .timeout(_config.requestTimeout);
+
+      final decoded =
+          response.body.isEmpty ? <String, dynamic>{} : jsonDecode(response.body);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        if (decoded is Map<String, dynamic>) return decoded;
+        throw ApiException('Unexpected response format from server.');
+      }
+      // Surface the server's error detail (e.g. 'not tradable', 'expired').
+      final detail = decoded is Map<String, dynamic>
+          ? (decoded['detail']?.toString() ?? _friendlyStatus(response.statusCode))
+          : _friendlyStatus(response.statusCode);
+      throw ApiException(detail, statusCode: response.statusCode);
+    } on ApiException {
+      rethrow;
+    } on TimeoutException {
+      throw ApiException('The request timed out.');
+    } on SocketException {
+      throw ApiException('Could not reach the server.');
+    } on http.ClientException {
+      throw ApiException('Network error contacting the server.');
+    } on FormatException {
+      throw ApiException('Could not read the server response.');
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // HTTP transport with timeout, friendly errors, and mock fallback.
   // ---------------------------------------------------------------------------
 

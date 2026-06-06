@@ -46,12 +46,19 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=False,
-    allow_methods=["GET", "OPTIONS"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
 
 # Real analysis engine (yfinance-backed, with mock fallback on failure).
 engine = AnalysisEngine()
+
+# Manual broker (Moomoo) endpoints under /v1/broker. Paper by default; every
+# order requires explicit confirmation. Registered as a router so the existing
+# analyze/screen/backtest contracts are untouched.
+from .broker.router import router as broker_router  # noqa: E402
+
+app.include_router(broker_router)
 
 
 def _parse_market(market: str) -> Market:

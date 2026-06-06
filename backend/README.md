@@ -124,6 +124,13 @@ All under the `/v1` prefix.
 | GET    | `/v1/screen/{market}`         | `ScreenerResult`   |
 | GET    | `/v1/predict_weekly/{symbol}` | `WeeklyPrediction` |
 | GET    | `/v1/backtest/{symbol}`       | `BacktestResult`   |
+| GET    | `/v1/broker/status`           | `BrokerStatus`     |
+| GET    | `/v1/broker/account`          | `AccountSummary`   |
+| GET    | `/v1/broker/positions`        | `PositionsResponse`|
+| POST   | `/v1/broker/order/preview`    | `OrderPreview`     |
+| POST   | `/v1/broker/order/place`      | `OrderResult`      |
+| GET    | `/v1/broker/orders`           | `OrdersResponse`   |
+| POST   | `/v1/broker/order/cancel`     | `CancelResult`     |
 
 - `analyze` accepts an optional `?market=IDX|HKEX|KOSPI|KOSDAQ` query param.
 - `screen` returns 404 for unknown markets, and supports:
@@ -147,6 +154,28 @@ All under the `/v1` prefix.
   → a zeroed 200. `profit_factor` is capped finite (999) when there are no
   losing trades (JSON has no Infinity).
 - Interactive docs: `http://localhost:8000/docs`.
+
+### Manual broker trading (Moomoo OpenD)
+
+`/v1/broker/*` provides **manual** Buy/Sell order placement via the Moomoo
+OpenD local gateway. Safety model:
+
+- **Paper by default.** `TRADEWIZZ_TRADING_ENV=paper` (SIMULATE). Real trading
+  requires `TRADEWIZZ_TRADING_ENV=real`, and `/v1/broker/status` then returns a
+  loud `warning`.
+- **No auto-trading.** Nothing places orders from screener/analyze signals.
+- **Preview never places.** `order/preview` validates and returns an
+  `OrderPreview` with a signed, short-lived `confirmation_token`.
+- **Place requires confirmation.** `order/place` re-validates and rejects unless
+  the `confirmation_token` matches the exact order (HMAC-signed, TTL-bounded).
+- **Risk controls:** max order value/quantity, market/symbol tradability
+  (only HK via Moomoo today; IDX/KOSPI/KOSDAQ return "not tradable"),
+  duplicate-order guard within a short window.
+- **Credentials** come from env only (see `.env.example`); the trade password
+  stays server-side and is never returned to the app. Flutter talks only to the
+  backend; the backend talks to OpenD.
+
+Run OpenD locally, set env in `.env`, then the endpoints connect on demand.
 
 ## Setup
 

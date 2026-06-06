@@ -1,4 +1,5 @@
 import '../models/analysis_result.dart';
+import '../models/broker.dart';
 import '../models/market.dart';
 import '../models/screener_result.dart';
 import '../services/api_client.dart';
@@ -60,5 +61,58 @@ class StockRepository {
       forwardDays: forwardDays,
     );
     return Sourced(BacktestResult.fromJson(res.data), res.source);
+  }
+
+  // --- Broker (Moomoo) manual trading ---------------------------------------
+
+  /// Broker connection + trading-env status. Backs `/v1/broker/status`.
+  Future<BrokerStatus> brokerStatus() async {
+    final j = await _client.brokerGet('/broker/status');
+    return BrokerStatus.fromJson(j);
+  }
+
+  /// Preview an order (validates, does NOT place). `/v1/broker/order/preview`.
+  Future<OrderPreview> previewOrder({
+    required String symbol,
+    required Market market,
+    required OrderSide side,
+    required double quantity,
+    required OrderTypeKind orderType,
+    double? price,
+  }) async {
+    final body = <String, dynamic>{
+      'symbol': symbol,
+      'market': market.code,
+      'side': side.wire,
+      'quantity': quantity,
+      'order_type': orderType.wire,
+    };
+    if (price != null) body['price'] = price;
+    final j = await _client.brokerPost('/broker/order/preview', body);
+    return OrderPreview.fromJson(j);
+  }
+
+  /// Place an order — requires the confirmation token from a preview.
+  /// Backs `/v1/broker/order/place`.
+  Future<OrderResult> placeOrder({
+    required String symbol,
+    required Market market,
+    required OrderSide side,
+    required double quantity,
+    required OrderTypeKind orderType,
+    double? price,
+    required String confirmationToken,
+  }) async {
+    final body = <String, dynamic>{
+      'symbol': symbol,
+      'market': market.code,
+      'side': side.wire,
+      'quantity': quantity,
+      'order_type': orderType.wire,
+      'confirmation_token': confirmationToken,
+    };
+    if (price != null) body['price'] = price;
+    final j = await _client.brokerPost('/broker/order/place', body);
+    return OrderResult.fromJson(j);
   }
 }

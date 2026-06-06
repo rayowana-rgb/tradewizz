@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../models/analysis_result.dart';
+import '../models/broker.dart';
 import '../models/market.dart';
 import '../models/watchlist_item.dart';
 import '../repositories/stock_repository.dart';
+import 'order_ticket_page.dart';
 import '../services/api_client.dart';
 import '../services/data_source.dart';
 import '../services/repository_scope.dart';
@@ -206,6 +208,12 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
           ],
           const SizedBox(height: 12),
           _SaveToWatchlistButton(result: _result!),
+          const SizedBox(height: 12),
+          _BuySellButtons(
+            symbol: _result!.symbol,
+            market: _result!.market,
+            repository: _repo,
+          ),
           if (_prediction != null) ...[
             const SizedBox(height: 16),
             _PredictionCard(prediction: _prediction!),
@@ -290,6 +298,85 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
 }
 
 /// Adds the analyzed symbol to the shared watchlist (reflects saved state).
+/// Buy / Sell buttons. Only shown for markets tradable via Moomoo (HKEX);
+/// for others, shows a clear 'not tradable' note. Opens the manual order
+/// ticket -> preview -> confirm flow (never auto-submits).
+class _BuySellButtons extends StatelessWidget {
+  const _BuySellButtons({
+    required this.symbol,
+    required this.market,
+    required this.repository,
+  });
+
+  final String symbol;
+  final Market market;
+  final StockRepository repository;
+
+  // Mirrors the backend symbol_map: only HKEX is tradable via Moomoo today.
+  bool get _tradable => market == Market.hkex;
+
+  void _open(BuildContext context, OrderSide side) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => OrderTicketPage(
+          symbol: symbol,
+          market: market,
+          side: side,
+          repository: repository,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_tradable) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(children: [
+            const Icon(Icons.block, size: 18, color: Colors.grey),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '${market.code} is not tradable via Moomoo.',
+                style: const TextStyle(color: Colors.grey, fontSize: 13),
+              ),
+            ),
+          ]),
+        ),
+      );
+    }
+    return Row(children: [
+      Expanded(
+        child: FilledButton.icon(
+          key: const Key('buy_button'),
+          onPressed: () => _open(context, OrderSide.buy),
+          icon: const Icon(Icons.trending_up),
+          label: const Text('Buy'),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.up,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+          ),
+        ),
+      ),
+      const SizedBox(width: 12),
+      Expanded(
+        child: FilledButton.icon(
+          key: const Key('sell_button'),
+          onPressed: () => _open(context, OrderSide.sell),
+          icon: const Icon(Icons.trending_down),
+          label: const Text('Sell'),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.down,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+          ),
+        ),
+      ),
+    ]);
+  }
+}
+
 class _SaveToWatchlistButton extends StatelessWidget {
   const _SaveToWatchlistButton({required this.result});
   final AnalysisResult result;
