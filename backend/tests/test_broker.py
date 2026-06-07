@@ -249,3 +249,77 @@ def test_api_unsupported_symbol_is_400(client):
     })
     assert r.status_code == 400
     assert "not tradable" in r.json()["detail"]
+
+
+# --- OpenD-down resilience (port closed) -------------------------------------
+
+def _free_port():
+    """Return a definitely-closed local port (bind, read, release)."""
+    import socket as _s
+    s = _s.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
+def test_real_client_disconnected_fast_when_port_closed():
+    import time as _t
+    from app.broker.client import MoomooBrokerClient
+
+    cfg = BrokerConfig(host="127.0.0.1", port=_free_port())
+    client = MoomooBrokerClient(cfg)
+    t0 = _t.time()
+    connected = client.is_connected()
+    elapsed = _t.time() - t0
+    assert connected is False
+    # Fast pre-flight: well under the SDK reconnect timeout.
+    assert elapsed < 2.0
+
+
+def test_sdk_not_called_when_socket_check_fails(monkeypatch):
+    # If the SDK were imported/called, this would blow up; the port probe must
+    # short-circuit before any SDK usage.
+    from app.broker import client as bc
+
+    cfg = BrokerConfig(host="127.0.0.1", port=_free_port())
+    monkeypatch.setattr(bc, "_port_open", lambda *a, **k: False)
+    called = {"sdk": False}
+
+    def _boom(self):
+        called["sdk"] = True
+        raise AssertionError("SDK context must not be created when port closed")
+
+    monkeypatch.setattr(bc.MoomooBrokerClient, "_context", _boom)
+    client = bc.MoomooBrokerClient(cfg)
+    assert client.is_connected() is False
+    assert called["sdk"] is False
+
+
+def test_status_endpoint_does_not_crash_when_opend_missing():
+    from app.broker.client import MoomooBrokerClient
+
+    cfg = BrokerConfig(host="127.0.0.1", port=_free_port(), trading_env="paper")
+    svc = BrokerService(config=cfg, client=MoomooBrokerClient(cfg))
+    status = svc.status()
+    assert status.connected is False
+    assert status.trading_env == "PAPER"
+    assert status.message == "Moomoo OpenD not reachable"
+    assert status.warning is None
+
+
+def test_status_endpoint_real_mode_warns_when_opend_missing():
+    from app.broker.client import MoomooBrokerClient
+
+    cfg = BrokerConfig(host="127.0.0.1", port=_free_port(), trading_env="real")
+    svc = BrokerService(config=cfg, client=MoomooBrokerClient(cfg))
+    status = svc.status()
+    assert status.connected is False
+    assert status.is_real is True
+    assert status.warning and "REAL TRADING" in status.warning
+
+
+def test_port_open_false_for_closed_port():
+    from app.broker.client import _port_open
+
+    assert _port_open("127.0.0.1", _free_port(), timeout=0.5) is False

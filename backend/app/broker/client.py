@@ -13,12 +13,29 @@ from __future__ import annotations
 
 import itertools
 import logging
+import socket
 import time
 from typing import Dict, List, Optional, Protocol
 
 from .config import BrokerConfig
 
 logger = logging.getLogger("tradewizz.broker")
+
+# Fast pre-flight: how long to wait for the OpenD TCP port before giving up.
+_PORT_PROBE_TIMEOUT = 1.0
+
+
+def _port_open(host: str, port: int, timeout: float = _PORT_PROBE_TIMEOUT) -> bool:
+    """True if a TCP connection to host:port succeeds within `timeout`.
+
+    A cheap, bounded check used before touching the Moomoo SDK, so a closed
+    OpenD port fails fast instead of triggering slow SDK reconnect loops.
+    """
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
 
 
 class BrokerError(Exception):
@@ -130,7 +147,16 @@ class MoomooBrokerClient:
         return TrdEnv.REAL if self._config.is_real else TrdEnv.SIMULATE
 
     def _context(self):
-        """Open a trade context to OpenD (caller closes it)."""
+        """Open a trade context to OpenD (caller closes it).
+
+        Fails fast (no SDK call) if the OpenD port is not even open, so a
+        missing OpenD never triggers the SDK's slow reconnect loop.
+        """
+        if not _port_open(self._config.host, self._config.port):
+            raise BrokerError(
+                f"Moomoo OpenD not reachable at "
+                f"{self._config.host}:{self._config.port}"
+            )
         try:
             from moomoo import OpenSecTradeContext, TrdMarket, SecurityFirm
         except Exception as exc:  # noqa: BLE001
@@ -151,6 +177,10 @@ class MoomooBrokerClient:
     # -- public ----------------------------------------------------------
 
     def is_connected(self) -> bool:
+        # Fast path: if the OpenD port is closed, report disconnected without
+        # constructing an SDK context (which would retry and hang).
+        if not _port_open(self._config.host, self._config.port):
+            return False
         try:
             ctx = self._context()
         except BrokerError:
