@@ -2,6 +2,7 @@ import '../models/analysis_result.dart';
 import '../models/broker.dart';
 import '../models/broker_connection.dart';
 import '../models/market.dart';
+import '../models/market_index.dart';
 import '../models/portfolio.dart';
 import '../models/screener_result.dart';
 import '../models/user.dart';
@@ -42,6 +43,15 @@ class StockRepository {
       categories: categories,
     );
     return Sourced(ScreenerResult.fromJson(res.data), res.source);
+  }
+
+  /// Latest index quotes for all markets. Backs `/v1/market/indices`.
+  ///
+  /// Never falls back to mock data: a failure throws [ApiException] so the
+  /// Dashboard can show "Index data unavailable" instead of wrong values.
+  Future<List<MarketIndex>> marketIndices() async {
+    final j = await _client.authGet('/market/indices');
+    return parseMarketIndices(j);
   }
 
   /// Weekly prediction for a symbol. Backs `/predict_weekly/{symbol}`.

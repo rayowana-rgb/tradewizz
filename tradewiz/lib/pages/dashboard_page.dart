@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/market.dart';
+import '../models/market_index.dart';
 import '../models/screener_result.dart';
 import '../repositories/stock_repository.dart';
 import '../services/api_client.dart';
@@ -25,6 +26,8 @@ class _DashboardPageState extends State<DashboardPage> {
   bool _loading = false;
   DataSource? _source;
   List<ScreenerMatch> _movers = const [];
+  MarketIndex? _index;
+  bool _indexUnavailable = false;
 
   @override
   void didChangeDependencies() {
@@ -41,6 +44,13 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
+    // Index data and movers load independently: a movers/screen failure must
+    // not blank the index, and vice versa.
+    await Future.wait([_loadMovers(), _loadIndex()]);
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _loadMovers() async {
     try {
       final res = await _repo!.screen(widget.market);
       if (!mounted) return;
@@ -56,8 +66,27 @@ class _DashboardPageState extends State<DashboardPage> {
         _movers = const [];
         _source = e.statusCode == null ? DataSource.offline : DataSource.error;
       });
-    } finally {
-      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadIndex() async {
+    try {
+      final indices = await _repo!.marketIndices();
+      if (!mounted) return;
+      final match = indices.where((i) => i.market == widget.market.code);
+      final idx = match.isNotEmpty ? match.first : null;
+      setState(() {
+        _index = idx;
+        // Unavailable when the backend reported no data for this index.
+        _indexUnavailable = idx == null || !idx.hasData;
+      });
+    } on ApiException {
+      // Never fall back to fake index values: show the warning instead.
+      if (!mounted) return;
+      setState(() {
+        _index = null;
+        _indexUnavailable = true;
+      });
     }
   }
 
@@ -87,12 +116,10 @@ class _DashboardPageState extends State<DashboardPage> {
           Row(
             children: [
               Expanded(
-                child: _SummaryCard(
-                  label: 'Index',
-                  value: '${market.code} Comp.',
-                  sub: '+0.84%',
-                  subColor: AppColors.up,
-                  icon: Icons.show_chart,
+                child: _IndexCard(
+                  index: _index,
+                  unavailable: _indexUnavailable,
+                  loading: _loading && _index == null && !_indexUnavailable,
                 ),
               ),
               const SizedBox(width: 12),
@@ -220,6 +247,164 @@ class _MarketHeader extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Real market-index card driven by `GET /v1/market/indices`. Shows the index
+/// name, latest price, change, change %, status and update time. On a backend
+/// failure (or no data) it shows a clear "Index data unavailable" warning
+/// instead of any mock/hardcoded value.
+class _IndexCard extends StatelessWidget {
+  const _IndexCard({
+    required this.index,
+    required this.unavailable,
+    required this.loading,
+  });
+
+  final MarketIndex? index;
+  final bool unavailable;
+  final bool loading;
+
+  String _fmtPrice(double v) {
+    // Group thousands; 2 decimals.
+    final s = v.toStringAsFixed(2);
+    final parts = s.split('.');
+    final intPart = parts[0].replaceAllMapped(
+      RegExp(r'(\d)(?=(\d{3})+$)'),
+      (m) => '${m[1]},',
+    );
+    return '$intPart.${parts[1]}';
+  }
+
+  String _fmtUpdated(String? iso) {
+    if (iso == null) return '';
+    final dt = DateTime.tryParse(iso)?.toLocal();
+    if (dt == null) return '';
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(dt.hour)}:${two(dt.minute)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final idx = index;
+    if (unavailable || idx == null || !idx.hasData) {
+      return Card(
+        key: const Key('dashboard_index_unavailable'),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.show_chart, color: Colors.grey, size: 22),
+              const SizedBox(height: 12),
+              const Text('Index',
+                  style: TextStyle(color: Colors.grey, fontSize: 12)),
+              const SizedBox(height: 2),
+              if (loading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 6),
+                  child: SizedBox(
+                    height: 16,
+                    width: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+              else ...[
+                const Text(
+                  'Index data unavailable',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: AppColors.down,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Could not load live index data.',
+                  style: TextStyle(color: Colors.grey, fontSize: 11),
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+
+    final up = idx.isUp;
+    final color = up ? AppColors.up : AppColors.down;
+    final sign = up ? '+' : '';
+    final change = idx.change ?? 0;
+    final pct = idx.changePercent ?? 0;
+    final updated = _fmtUpdated(idx.updatedAt);
+    return Card(
+      key: const Key('dashboard_index_card'),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.show_chart, color: AppColors.seed, size: 22),
+                const Spacer(),
+                _StatusChip(status: idx.status),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(idx.name,
+                key: const Key('dashboard_index_name'),
+                style: const TextStyle(color: Colors.grey, fontSize: 12)),
+            const SizedBox(height: 2),
+            Text(
+              _fmtPrice(idx.price!),
+              key: const Key('dashboard_index_price'),
+              style: const TextStyle(
+                  fontWeight: FontWeight.w700, fontSize: 16),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '$sign${change.toStringAsFixed(2)} '
+              '($sign${pct.toStringAsFixed(2)}%)',
+              key: const Key('dashboard_index_change'),
+              style: TextStyle(
+                  color: color, fontWeight: FontWeight.w600, fontSize: 12),
+            ),
+            if (updated.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Updated $updated',
+                key: const Key('dashboard_index_updated'),
+                style: const TextStyle(color: Colors.grey, fontSize: 10),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({required this.status});
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final open = status == 'OPEN';
+    final color = open ? AppColors.up : Colors.grey;
+    return Container(
+      key: const Key('dashboard_index_status'),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        status,
+        style: TextStyle(
+          color: color, fontWeight: FontWeight.w700, fontSize: 10),
       ),
     );
   }

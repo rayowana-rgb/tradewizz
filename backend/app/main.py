@@ -102,6 +102,19 @@ _SCREENER_CACHE_DB = os.environ.get(
 )
 screener_snapshot_store = SqliteScreenerSnapshotStore(_SCREENER_CACHE_DB)
 
+# Dashboard market index quotes (^JKSE / ^HSI / ^KS11 / ^KQ11) via Yahoo, with
+# a short in-memory cache (5 min). Independent of the screener snapshot cache
+# and of the scoring/analysis engine.
+from .market import MarketIndicesService  # noqa: E402
+
+market_indices_service = MarketIndicesService()
+
+
+def set_market_indices_service(service) -> None:
+    """Test hook: swap the indices service (e.g. with a fake fetcher)."""
+    global market_indices_service
+    market_indices_service = service
+
 # Optional test hook: override the market-local "now" used by the screener
 # cache so tests can pin OPEN/CLOSED deterministically. None => real clock.
 _screener_now_override = None  # type: Optional[object]
@@ -128,6 +141,20 @@ def _parse_market(market: str) -> Market:
 def health() -> HealthResponse:
     """Liveness check."""
     return HealthResponse(version=VERSION)
+
+
+@app.get(f"{API_PREFIX}/market/indices")
+def market_indices() -> dict:
+    """Latest index quote for each supported market (Dashboard).
+
+    Returns the correct Yahoo index per market (^JKSE / ^HSI / ^KS11 / ^KQ11)
+    with price/change/change_percent/status/updated_at, cached ~5 minutes. On a
+    data-source failure the affected index reports `available=false` with null
+    numbers (never fabricated values), so the app can warn instead of showing
+    wrong data.
+    """
+    quotes = market_indices_service.get_indices()
+    return {"indices": [q.to_dict() for q in quotes]}
 
 
 @app.get(f"{API_PREFIX}/analyze/{{symbol}}", response_model=AnalysisResult)
