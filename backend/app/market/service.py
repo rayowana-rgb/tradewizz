@@ -7,8 +7,12 @@ schedule, and serve it behind a short in-memory cache (default 5 minutes).
 
 Design notes:
 - The price fetch is injectable (`Fetcher`) so tests run with no network. The
-  default reuses the engine's `_yf_fetch` (same Yahoo pattern / browser
-  impersonation as the rest of the app). No new data provider is introduced.
+  default is an *index-tolerant* Yahoo fetch (`_index_fetch`) using the same
+  Yahoo pattern / browser impersonation, but requiring only a `Close` column.
+  The engine's strict `_yf_fetch` requires a full OHLCV frame (it is shared
+  with analysis/screener which need volume); index symbols (^JKSE etc.) often
+  come back without Volume, so reusing the strict fetcher wrongly marked them
+  unavailable. No new data provider is introduced and `_yf_fetch` is untouched.
 - On any fetch failure we return a *safe unavailable* quote (price=None,
   status preserved) rather than fabricating numbers — the Dashboard then shows
   a clear "Index data unavailable" warning instead of wrong values.
@@ -27,11 +31,52 @@ import pandas as pd
 
 from ..engine import (
     Fetcher,
+    _YF_TIMEOUT,
+    _impersonating_session,
     _is_market_open,
     _market_now,
-    _yf_fetch,
 )
 from ..models import Market
+
+
+def _index_fetch(
+    ticker: str, period: str = "5d", interval: str = "1d"
+) -> pd.DataFrame:
+    """Yahoo fetch tuned for *indices* (only ``Close`` is required).
+
+    The engine's ``_yf_fetch`` is intentionally strict: it requires a full
+    OHLCV frame (Open/High/Low/Close/Volume) because stock analysis + the
+    screener need volume / value-traded. Index symbols (``^JKSE`` etc.) often
+    come back from Yahoo with Volume missing or all-NaN/zero, which would make
+    that strict gate raise and wrongly mark the index unavailable.
+
+    This fetcher uses the same Yahoo pattern / browser impersonation but only
+    requires a ``Close`` column, so an index with a valid Close is usable even
+    when Volume / OHLC are absent. It does NOT replace ``_yf_fetch`` and is
+    used only by the index service.
+    """
+    import yfinance as yf
+
+    kwargs = dict(
+        period=period,
+        interval=interval,
+        auto_adjust=False,
+        progress=False,
+        threads=False,
+        timeout=_YF_TIMEOUT,
+    )
+    session = _impersonating_session()
+    if session is not None:
+        kwargs["session"] = session
+    df = yf.download(ticker, **kwargs)
+    if df is None or df.empty:
+        raise ValueError(f"No data for {ticker}")
+    # yfinance may return a column MultiIndex for a single ticker; flatten it.
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    if "Close" not in df.columns:
+        raise ValueError(f"Missing Close column for {ticker}: {df.columns}")
+    return df
 
 
 @dataclass(frozen=True)
@@ -102,8 +147,10 @@ class MarketIndicesService:
         clock: Callable[[], float] = time.time,
         now_provider: Optional[Callable[[Market], datetime]] = None,
     ):
-        # Default fetcher = the engine's Yahoo fetch (same pattern as analysis).
-        self._fetch: Fetcher = fetcher or _yf_fetch
+        # Default fetcher = an index-tolerant Yahoo fetch that requires only
+        # Close (indices often lack Volume), distinct from the strict OHLCV
+        # _yf_fetch used by analysis/screener.
+        self._fetch: Fetcher = fetcher or _index_fetch
         self._ttl = ttl_seconds
         self._clock = clock
         self._now = now_provider or _market_now
@@ -182,10 +229,20 @@ class MarketIndicesService:
     def _extract(
         df: pd.DataFrame,
     ) -> tuple[Optional[float], Optional[float], Optional[float]]:
-        """Latest close + change vs the prior close from an OHLCV frame."""
+        """Latest valid close + change vs the prior valid close.
+
+        Index-tolerant: only ``Close`` is needed (Volume / OHLC may be absent).
+        NaN closes are dropped, so a NaN latest row falls back to the last
+        valid Close. With a single valid Close the price is returned while
+        change / change_percent stay None (still ``available``).
+        """
         if df is None or df.empty or "Close" not in df.columns:
             return None, None, None
-        closes = df["Close"].dropna()
+        close = df["Close"]
+        # Guard against a duplicate 'Close' producing a DataFrame slice.
+        if isinstance(close, pd.DataFrame):
+            close = close.iloc[:, 0]
+        closes = pd.to_numeric(close, errors="coerce").dropna()
         if closes.empty:
             return None, None, None
         last = float(closes.iloc[-1])
@@ -194,6 +251,7 @@ class MarketIndicesService:
             change = last - prev
             change_pct = (change / prev * 100.0) if prev != 0 else None
         else:
+            # Only one valid Close: price available, change unknown.
             change = None
             change_pct = None
         return last, change, change_pct

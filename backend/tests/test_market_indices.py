@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import numpy as np
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
@@ -65,6 +66,12 @@ def _fake_ok_fetch(ticker, period="5d", interval="1d"):
     if ticker not in _PRICES:
         raise ValueError(f"unexpected ticker {ticker}")
     return _ohlcv(_PRICES[ticker])
+
+
+def _close_only(closes):
+    """Frame with ONLY a Close column (no Volume / OHLC) -> index-like."""
+    idx = pd.date_range("2026-06-01", periods=len(closes), freq="D")
+    return pd.DataFrame({"Close": closes}, index=idx)
 
 
 def _fake_fail_fetch(ticker, period="5d", interval="1d"):
@@ -127,6 +134,63 @@ def test_empty_frame_is_unavailable():
     svc = MarketIndicesService(fetcher=empty_fetch, now_provider=_closed_now)
     assert all(q.available is False and q.price is None
                for q in svc.get_indices())
+
+
+# --------------------------------------------------------------------------- #
+# Index tolerance: Close only, single row, NaN latest                         #
+# --------------------------------------------------------------------------- #
+def test_close_only_frame_without_volume_is_available():
+    # Yahoo index frames often lack Volume; Close alone must be enough.
+    def fetch(ticker, period="5d", interval="1d"):
+        return _close_only(_PRICES[ticker])
+
+    svc = MarketIndicesService(fetcher=fetch, now_provider=_closed_now)
+    q = {q.market: q for q in svc.get_indices()}[Market.IDX]
+    assert q.available is True
+    assert q.price == 7100.0
+    assert q.change == 100.0
+    assert q.change_percent == pytest.approx(1.43, abs=0.01)
+
+
+def test_single_close_row_is_available_with_null_change():
+    def fetch(ticker, period="5d", interval="1d"):
+        return _close_only([7100.0])
+
+    svc = MarketIndicesService(fetcher=fetch, now_provider=_closed_now)
+    q = {q.market: q for q in svc.get_indices()}[Market.IDX]
+    assert q.available is True
+    assert q.price == 7100.0
+    assert q.change is None
+    assert q.change_percent is None
+
+
+def test_nan_latest_close_falls_back_to_last_valid():
+    # Latest row NaN -> use the last valid Close (7100), change vs prior 7000.
+    def fetch(ticker, period="5d", interval="1d"):
+        return _close_only([7000.0, 7100.0, np.nan])
+
+    svc = MarketIndicesService(fetcher=fetch, now_provider=_closed_now)
+    q = {q.market: q for q in svc.get_indices()}[Market.IDX]
+    assert q.available is True
+    assert q.price == 7100.0
+    assert q.change == 100.0
+
+
+def test_index_fetch_default_requires_only_close(monkeypatch):
+    # The default index fetcher must NOT reject a Close-only frame the way the
+    # strict engine _yf_fetch would (that strictness caused the IHSG bug).
+    import app.market.service as svc_mod
+
+    def fake_download(ticker, **kwargs):
+        return _close_only([7000.0, 7100.0])
+
+    monkeypatch.setattr("yfinance.download", fake_download)
+    monkeypatch.setattr(svc_mod, "_impersonating_session", lambda: None)
+    df = svc_mod._index_fetch("^JKSE")
+    assert "Close" in df.columns
+    assert "Volume" not in df.columns  # tolerated, not required
+    price, change, _ = MarketIndicesService._extract(df)
+    assert price == 7100.0 and change == 100.0
 
 
 def test_cache_avoids_repeated_fetches():
@@ -206,6 +270,22 @@ def test_api_success_has_real_numbers(client_with):
     assert ihsg["price"] == 7100.0
     assert ihsg["change"] == 100.0
     assert ihsg["available"] is True
+
+
+def test_api_ihsg_available_when_jkse_has_close_only(client_with):
+    # Endpoint contract: IHSG (^JKSE) must be available=true when only Close
+    # exists (no Volume) -- the exact case that previously showed unavailable.
+    def fetch(ticker, period="5d", interval="1d"):
+        return _close_only(_PRICES[ticker])
+
+    client = client_with(fetch)
+    ihsg = next(
+        i for i in client.get("/v1/market/indices").json()["indices"]
+        if i["symbol"] == "^JKSE"
+    )
+    assert ihsg["available"] is True
+    assert ihsg["price"] == 7100.0
+    assert ihsg["name"] == "IHSG"
 
 
 def test_api_failure_reports_unavailable_not_fake(client_with):
