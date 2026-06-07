@@ -18,4 +18,40 @@ void main() {
     expect(find.text('Analyze a Stock'), findsOneWidget);
     expect(find.widgetWithText(TextFormField, 'Stock symbol'), findsOneWidget);
   });
+
+  testWidgets('bottom navigation has the 5 expected tabs and no Portfolio',
+      (tester) async {
+    await tester.pumpWidget(const TradeWizApp());
+    await tester.pumpAndSettle();
+
+    final navBar = find.byType(NavigationBar);
+    expect(navBar, findsOneWidget);
+
+    // The five destinations, in order.
+    for (final label in [
+      'Dashboard',
+      'Screener',
+      'Watchlist',
+      'AI Analysis',
+      'Account',
+    ]) {
+      expect(
+        find.descendant(of: navBar, matching: find.text(label)),
+        findsOneWidget,
+        reason: 'expected "$label" destination in bottom navigation',
+      );
+    }
+
+    // Portfolio is no longer a bottom-navigation destination.
+    expect(
+      find.descendant(of: navBar, matching: find.text('Portfolio')),
+      findsNothing,
+    );
+    // And its old icon is gone from the nav bar.
+    expect(
+      find.descendant(
+          of: navBar, matching: find.byIcon(Icons.pie_chart_outline)),
+      findsNothing,
+    );
+  });
 }
