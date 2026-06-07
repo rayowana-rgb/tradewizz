@@ -33,6 +33,7 @@ from ..models import Market
 from .ibkr_client import (
     IBKRClient,
     IBKRError,
+    IBKRInsufficientFundsError,
     IBKRReadOnlyError,
     MockIBKRClient,
 )
@@ -40,6 +41,13 @@ from .ibkr_client import (
 READ_ONLY_NOTE = (
     "IB Gateway is in Read-Only API mode; order requests are unavailable. "
     "Account and positions are unaffected."
+)
+
+# Clear, user-facing message when Read-Only API mode blocks an order. Surfaced
+# verbatim to the app instead of a generic 'Order failed'.
+READ_ONLY_ORDER_MESSAGE = (
+    "IB Gateway is currently running in Read-Only API mode. "
+    "Disable Read-Only to place orders."
 )
 from .ibkr_config import IBKRConfig
 from .ibkr_symbols import IBKRSymbolNotTradable, to_ibkr_contract
@@ -219,7 +227,14 @@ class IBKRService:
 
     # -- preview / place / orders / cancel -------------------------------
 
-    def preview(self, symbol, market, side, quantity, order_type, price):
+    def preview(self, symbol, market, side, quantity, order_type, price,
+                user_id=None):
+        logger.info(
+            "order-preview broker=IBKR symbol=%s market=%s side=%s qty=%s "
+            "type=%s price=%s user=%s env=%s",
+            symbol, self._market_label(market), side.value, quantity,
+            order_type.value, price, user_id, self._config.trading_env_label,
+        )
         spec, est_value, warnings = self._validate(
             symbol, market, side, quantity, order_type, price
         )
@@ -249,12 +264,22 @@ class IBKRService:
         )
 
     def place(self, symbol, market, side, quantity, order_type, price,
-              confirmation_token):
+              confirmation_token, user_id=None):
         spec, _, _ = self._validate(
             symbol, market, side, quantity, order_type, price
         )
         signature = self._signature(
             symbol, market, side, quantity, order_type, price
+        )
+        # Structured per-attempt diagnostics: broker, symbol, side, qty, type,
+        # price, user, token status, then preview/IBKR result below.
+        token_status = "present" if confirmation_token else "missing"
+        logger.info(
+            "order-attempt broker=IBKR symbol=%s market=%s side=%s qty=%s "
+            "type=%s price=%s user=%s env=%s token=%s",
+            symbol, self._market_label(market), side.value, quantity,
+            order_type.value, price, user_id, self._config.trading_env_label,
+            token_status,
         )
         if not confirmation_token:
             raise IBKROrderValidationError(
@@ -269,13 +294,43 @@ class IBKRService:
             raise IBKROrderValidationError(
                 "Duplicate order detected; please wait before retrying."
             )
-        if not self._client.is_connected():
+        try:
+            connected = self._client.is_connected()
+        except IBKRReadOnlyError as exc:
+            logger.warning("order-reject broker=IBKR reason=read-only user=%s",
+                           user_id)
+            raise IBKROrderValidationError(
+                READ_ONLY_ORDER_MESSAGE, status_code=409
+            ) from exc
+        if not connected:
             raise IBKRError("IB Gateway is not reachable; order not placed.")
 
-        result = self._client.place_order(
-            spec, side.value, quantity, order_type.value, price
-        )
+        try:
+            result = self._client.place_order(
+                spec, side.value, quantity, order_type.value, price
+            )
+        except IBKRReadOnlyError as exc:
+            # Read-Only API mode blocks transmit even though connect succeeded.
+            logger.warning("order-reject broker=IBKR reason=read-only user=%s",
+                           user_id)
+            raise IBKROrderValidationError(
+                READ_ONLY_ORDER_MESSAGE, status_code=409
+            ) from exc
+        except IBKRInsufficientFundsError as exc:
+            logger.warning(
+                "order-reject broker=IBKR reason=insufficient-funds user=%s",
+                user_id,
+            )
+            raise IBKROrderValidationError(
+                "Insufficient buying power to place this order.",
+                status_code=400,
+            ) from exc
         self._recent[signature] = now
+        logger.info(
+            "order-result broker=IBKR symbol=%s order_id=%s status=%s user=%s",
+            symbol, result.get("order_id", ""), result.get("status", ""),
+            user_id,
+        )
         return OrderResult(
             order_id=str(result.get("order_id", "")),
             symbol=symbol.upper(),

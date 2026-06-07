@@ -33,6 +33,21 @@ class IBKRReadOnlyError(IBKRError):
     """
 
 
+class IBKRInsufficientFundsError(IBKRError):
+    """Order rejected for insufficient buying power / margin (IB error 201)."""
+
+
+# IB error 201 == 'Order rejected - reason: ... insufficient ... margin'.
+_INSUFFICIENT_HINTS = (
+    "insufficient", "buying power", "margin", "error 201", " 201",
+)
+
+
+def _looks_insufficient(text: str) -> bool:
+    t = text.lower()
+    return any(h in t for h in _INSUFFICIENT_HINTS)
+
+
 # IB error 321 == 'The API interface is currently in Read-Only mode.'
 _READ_ONLY_HINTS = ("read-only", "readonly", "error 321", " 321")
 
@@ -252,9 +267,29 @@ class IBKRClient:
                 order = LimitOrder(action, quantity, price or 0)
             trade = ib.placeOrder(contract, order)
             ib.sleep(0.2)
+            status = str(trade.orderStatus.status) or "SUBMITTED"
+            # Detect a broker rejection and surface the reason clearly instead
+            # of returning a generic 'submitted'. ib_insync exposes the reason
+            # on the order status / log.
+            reason = " ".join(
+                str(getattr(e, "errorMsg", "") or getattr(e, "message", ""))
+                for e in (getattr(trade, "log", []) or [])
+            )
+            combined = f"{status} {reason}".strip()
+            if _looks_read_only(combined):
+                raise IBKRReadOnlyError(combined)
+            if status.upper() in ("REJECTED", "CANCELLED") and \
+                    _looks_insufficient(combined):
+                raise IBKRInsufficientFundsError(
+                    reason or "Insufficient buying power."
+                )
+            if status.upper() == "REJECTED":
+                raise IBKRError(
+                    f"Order rejected by broker: {reason or 'no reason given'}"
+                )
             return {
                 "order_id": str(trade.order.orderId),
-                "status": str(trade.orderStatus.status) or "SUBMITTED",
+                "status": status,
             }
         finally:
             self._safe_disconnect(ib)
@@ -275,11 +310,14 @@ class IBKRClient:
 class MockIBKRClient:
     """In-memory IBKR client for tests / paper demo. Never contacts a venue."""
 
-    def __init__(self, connected: bool = True, read_only: bool = False):
+    def __init__(self, connected: bool = True, read_only: bool = False,
+                 insufficient: bool = False):
         # ``read_only`` simulates IB Gateway Read-Only API mode: account and
         # positions work, but order requests raise IBKRReadOnlyError.
+        # ``insufficient`` simulates a buying-power rejection on place.
         self._connected = connected
         self._read_only = read_only
+        self._insufficient = insufficient
         self._orders: Dict[str, dict] = {}
         self._ids = itertools.count(1)
 
@@ -319,6 +357,10 @@ class MockIBKRClient:
         if self._read_only:
             raise IBKRReadOnlyError(
                 "The API interface is currently in Read-Only mode."
+            )
+        if getattr(self, "_insufficient", False):
+            raise IBKRInsufficientFundsError(
+                "Order rejected - insufficient buying power / margin."
             )
         oid = f"IBKR-{next(self._ids)}"
         self._orders[oid] = {

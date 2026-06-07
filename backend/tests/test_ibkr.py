@@ -4,7 +4,13 @@ import pytest
 
 from app.broker.models import OrderSide, OrderType
 from app.brokers.adapter import IBKRAdapter
-from app.brokers.ibkr_client import IBKRClient, IBKRError, MockIBKRClient
+from app.brokers.ibkr_client import (
+    IBKRClient,
+    IBKRError,
+    IBKRInsufficientFundsError,
+    IBKRReadOnlyError,
+    MockIBKRClient,
+)
 from app.brokers.ibkr_config import IBKRConfig
 from app.brokers.ibkr_service import IBKROrderValidationError, IBKRService
 from app.brokers.ibkr_symbols import (
@@ -162,6 +168,49 @@ def test_real_trading_warning_in_preview():
     pv = svc.preview("AAPL", None, OrderSide.BUY, 10, OrderType.LIMIT, 180.0)
     assert pv.is_real is True
     assert any("REAL IBKR" in w for w in pv.warnings)
+
+
+# --- order rejections: read-only / insufficient funds -----------------------
+
+def test_place_in_read_only_mode_returns_clear_message():
+    svc = IBKRService(
+        config=IBKRConfig(),
+        client=MockIBKRClient(connected=True, read_only=True),
+    )
+    pv = svc.preview("AAPL", None, OrderSide.BUY, 10, OrderType.LIMIT, 180.0)
+    with pytest.raises(IBKROrderValidationError) as ei:
+        svc.place("AAPL", None, OrderSide.BUY, 10, OrderType.LIMIT, 180.0,
+                  pv.confirmation_token)
+    # Exact, actionable message -- never a generic failure.
+    assert "Read-Only" in ei.value.message
+    assert "Disable Read-Only" in ei.value.message
+    assert ei.value.status_code == 409
+
+
+def test_place_insufficient_funds_returns_clear_message():
+    svc = IBKRService(
+        config=IBKRConfig(),
+        client=MockIBKRClient(connected=True, insufficient=True),
+    )
+    pv = svc.preview("AAPL", None, OrderSide.BUY, 10, OrderType.LIMIT, 180.0)
+    with pytest.raises(IBKROrderValidationError) as ei:
+        svc.place("AAPL", None, OrderSide.BUY, 10, OrderType.LIMIT, 180.0,
+                  pv.confirmation_token)
+    assert "Insufficient buying power" in ei.value.message
+
+
+def test_mock_client_read_only_blocks_place():
+    c = MockIBKRClient(read_only=True)
+    with pytest.raises(IBKRReadOnlyError):
+        c.place_order({"symbol": "AAPL", "exchange": "SMART",
+                       "currency": "USD"}, "BUY", 1, "MARKET", None)
+
+
+def test_mock_client_insufficient_blocks_place():
+    c = MockIBKRClient(insufficient=True)
+    with pytest.raises(IBKRInsufficientFundsError):
+        c.place_order({"symbol": "AAPL", "exchange": "SMART",
+                       "currency": "USD"}, "BUY", 1, "MARKET", None)
 
 
 # --- adapter wiring ---------------------------------------------------------

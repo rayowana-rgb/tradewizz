@@ -1,9 +1,12 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 
 import '../models/broker.dart';
 import '../models/market.dart';
 import '../repositories/stock_repository.dart';
 import '../services/api_client.dart';
+import '../services/auth_scope.dart';
 import '../theme.dart';
 
 /// Manual order ticket: quantity/type/price -> preview -> confirm -> place.
@@ -52,20 +55,35 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
   Future<void> _doPreview() async {
     if (!_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
+    final token = AuthScope.read(context).token;
+    if (token == null) {
+      setState(() => _error = 'Please sign in to place orders.');
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
     });
+    final qty = double.parse(_qtyController.text.trim());
+    final price = _orderType == OrderTypeKind.limit
+        ? double.parse(_priceController.text.trim())
+        : null;
+    // Log the request payload before submission (diagnostics).
+    developer.log(
+      'IBKR preview -> symbol=${widget.symbol} market=${widget.market.code} '
+      'side=${widget.side.wire} qty=$qty type=${_orderType.wire} '
+      'price=$price',
+      name: 'tradewizz.order',
+    );
     try {
       final pv = await widget.repository.previewOrder(
+        token: token,
         symbol: widget.symbol,
         market: widget.market,
         side: widget.side,
-        quantity: double.parse(_qtyController.text.trim()),
+        quantity: qty,
         orderType: _orderType,
-        price: _orderType == OrderTypeKind.limit
-            ? double.parse(_priceController.text.trim())
-            : null,
+        price: price,
       );
       if (!mounted) return;
       setState(() {
@@ -84,12 +102,25 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
   Future<void> _doPlace() async {
     final pv = _preview;
     if (pv == null) return;
+    final token = AuthScope.read(context).token;
+    if (token == null) {
+      setState(() => _error = 'Please sign in to place orders.');
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
     });
+    // Log the request payload before submission (diagnostics).
+    developer.log(
+      'IBKR place -> symbol=${widget.symbol} market=${widget.market.code} '
+      'side=${widget.side.wire} qty=${pv.quantity} type=${pv.orderType.wire} '
+      'price=${pv.price} token=${pv.confirmationToken.isNotEmpty}',
+      name: 'tradewizz.order',
+    );
     try {
       final res = await widget.repository.placeOrder(
+        token: token,
         symbol: widget.symbol,
         market: widget.market,
         side: widget.side,

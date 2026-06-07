@@ -94,8 +94,11 @@ class StockRepository {
     return BrokerStatus.fromJson(j);
   }
 
-  /// Preview an order (validates, does NOT place). `/v1/broker/order/preview`.
+  /// Preview an IBKR order (validates, does NOT place). Authenticated; backs
+  /// `POST /v1/brokers/ibkr/order/preview`. Orders go to the user's connected
+  /// IBKR (paper) account, not the legacy single-broker Moomoo endpoint.
   Future<OrderPreview> previewOrder({
+    required String token,
     required String symbol,
     required Market market,
     required OrderSide side,
@@ -111,13 +114,19 @@ class StockRepository {
       'order_type': orderType.wire,
     };
     if (price != null) body['price'] = price;
-    final j = await _client.brokerPost('/broker/order/preview', body);
+    final j = await _client.authPost(
+      '/brokers/ibkr/order/preview',
+      body,
+      bearer: token,
+    );
     return OrderPreview.fromJson(j);
   }
 
-  /// Place an order — requires the confirmation token from a preview.
-  /// Backs `/v1/broker/order/place`.
+  /// Place an IBKR order — requires the confirmation token from a preview.
+  /// Authenticated; backs `POST /v1/brokers/ibkr/order/place`. The backend
+  /// surfaces clear errors (Read-Only mode, insufficient funds, rejected).
   Future<OrderResult> placeOrder({
+    required String token,
     required String symbol,
     required Market market,
     required OrderSide side,
@@ -135,7 +144,11 @@ class StockRepository {
       'confirmation_token': confirmationToken,
     };
     if (price != null) body['price'] = price;
-    final j = await _client.brokerPost('/broker/order/place', body);
+    final j = await _client.authPost(
+      '/brokers/ibkr/order/place',
+      body,
+      bearer: token,
+    );
     return OrderResult.fromJson(j);
   }
 
