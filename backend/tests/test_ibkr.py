@@ -6,10 +6,13 @@ from app.broker.models import OrderSide, OrderType
 from app.brokers.adapter import IBKRAdapter
 from app.brokers.ibkr_client import (
     IBKRClient,
+    IBKRClientIdInUseError,
+    IBKRConnectionError,
     IBKRError,
     IBKRInsufficientFundsError,
     IBKRReadOnlyError,
     MockIBKRClient,
+    _classify_connect_error,
 )
 from app.brokers.ibkr_config import IBKRConfig
 from app.brokers.ibkr_service import IBKROrderValidationError, IBKRService
@@ -292,3 +295,137 @@ def test_account_disconnected_only_when_fetch_fails():
     svc = _svc(connected=False)
     assert svc.account().connected is False
     assert svc.positions().connected is False
+
+
+# --- no raw-socket pre-flight (the 502 root cause) --------------------------
+
+class _FakeIB:
+    """Stand-in for ib_insync.IB that records the API handshake call."""
+
+    connects: list = []
+
+    def __init__(self):
+        self._connected = False
+
+    def connect(self, host, port, clientId, timeout, readonly):
+        type(self).connects.append(
+            dict(host=host, port=port, clientId=clientId, timeout=timeout,
+                 readonly=readonly)
+        )
+        self._connected = True
+
+    def isConnected(self):
+        return self._connected
+
+    def qualifyContracts(self, contract):
+        return [contract]
+
+    def placeOrder(self, contract, order):
+        class _T:
+            class orderStatus:
+                status = "SUBMITTED"
+
+            class order:
+                orderId = 99
+
+            log = []
+        return _T()
+
+    def sleep(self, *_a):
+        pass
+
+    def disconnect(self):
+        self._connected = False
+
+
+def _no_raw_socket(monkeypatch):
+    """Make ANY raw socket.create_connection blow up, proving the order path
+    never opens a bare TCP socket before the ib_insync handshake."""
+    import socket as _socket
+
+    def _boom(*_a, **_k):
+        raise AssertionError(
+            "raw socket pre-flight is forbidden on the IBKR order path"
+        )
+
+    monkeypatch.setattr(_socket, "create_connection", _boom)
+
+
+def _fake_ib_insync(monkeypatch):
+    import sys
+    import types
+
+    mod = types.ModuleType("ib_insync")
+    mod.IB = _FakeIB
+    mod.Stock = lambda *a, **k: {"contract": a}
+    mod.LimitOrder = lambda *a, **k: {"limit": a}
+    mod.MarketOrder = lambda *a, **k: {"market": a}
+    monkeypatch.setitem(sys.modules, "ib_insync", mod)
+
+
+def test_place_order_uses_ib_insync_connect_no_raw_socket(monkeypatch):
+    _FakeIB.connects = []
+    _no_raw_socket(monkeypatch)
+    _fake_ib_insync(monkeypatch)
+    client = IBKRClient(IBKRConfig(host="127.0.0.1", port=7497, client_id=21))
+    res = client.place_order(
+        {"symbol": "700", "exchange": "SEHK", "currency": "HKD"},
+        "BUY", 100, "LIMIT", 320.0,
+    )
+    assert res["status"] == "SUBMITTED"
+    # Exactly one ib_insync handshake, with the configured params; no raw
+    # socket was opened (else _no_raw_socket would have raised).
+    assert len(_FakeIB.connects) == 1
+    c = _FakeIB.connects[0]
+    assert c["host"] == "127.0.0.1" and c["port"] == 7497
+    assert c["clientId"] == 21
+    assert c["timeout"] == IBKRConfig().connect_timeout
+
+
+# --- connect-error classification ------------------------------------------
+
+def test_classify_connection_timeout():
+    err = _classify_connect_error(TimeoutError("timed out"))
+    assert isinstance(err, IBKRConnectionError)
+    assert "timed out" in str(err) or "refused" in str(err)
+
+
+def test_classify_client_id_in_use():
+    err = _classify_connect_error(
+        Exception("Unable to connect as the client id is already in use")
+    )
+    assert isinstance(err, IBKRClientIdInUseError)
+    assert "clientId is already in use" in str(err)
+
+
+def test_classify_read_only_connect():
+    err = _classify_connect_error(
+        Exception("The API interface is currently in Read-Only mode.")
+    )
+    assert isinstance(err, IBKRReadOnlyError)
+
+
+def test_place_order_connect_failure_raises_connection_error(monkeypatch):
+    """A connect timeout on the order path -> IBKRConnectionError (clear 502
+    reason), never a silent generic failure."""
+    import sys
+    import types
+
+    class _TimeoutIB(_FakeIB):
+        def connect(self, *a, **k):
+            raise TimeoutError("connect timed out")
+
+    mod = types.ModuleType("ib_insync")
+    mod.IB = _TimeoutIB
+    mod.Stock = lambda *a, **k: {}
+    mod.LimitOrder = lambda *a, **k: {}
+    mod.MarketOrder = lambda *a, **k: {}
+    monkeypatch.setitem(sys.modules, "ib_insync", mod)
+
+    client = IBKRClient(IBKRConfig())
+    with pytest.raises(IBKRConnectionError) as ei:
+        client.place_order(
+            {"symbol": "700", "exchange": "SEHK", "currency": "HKD"},
+            "BUY", 100, "LIMIT", 320.0,
+        )
+    assert "timed out" in str(ei.value) or "refused" in str(ei.value)

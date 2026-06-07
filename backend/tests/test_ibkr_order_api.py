@@ -18,7 +18,11 @@ from fastapi.testclient import TestClient
 
 from app import main
 from app.brokers import router as brokers_router
-from app.brokers.ibkr_client import MockIBKRClient
+from app.brokers.ibkr_client import (
+    IBKRClientIdInUseError,
+    IBKRConnectionError,
+    MockIBKRClient,
+)
 from app.brokers.ibkr_config import IBKRConfig
 from app.brokers.ibkr_service import IBKRService
 
@@ -131,3 +135,58 @@ def test_place_with_bad_token_rejected(client):
                                 confirmation_token="bogus.token"))
     assert r.status_code == 400
     assert "token" in r.json()["detail"].lower()
+
+
+def test_place_connection_failure_returns_clear_502(client):
+    """A connect timeout/refused must surface a specific 502 reason, never the
+    generic 'IB Gateway is not reachable; order not placed.'"""
+    H = _auth_header(client)
+    _install(MockIBKRClient(
+        connected=True,
+        place_error=IBKRConnectionError(
+            "IB Gateway connection timed out / refused: timed out"
+        ),
+    ))
+    pv = client.post("/v1/brokers/ibkr/order/preview", headers=H,
+                     json=_order(side="BUY", quantity=10)).json()
+    r = client.post("/v1/brokers/ibkr/order/place", headers=H,
+                    json=_order(side="BUY", quantity=10,
+                                confirmation_token=pv["confirmation_token"]))
+    assert r.status_code == 502
+    detail = r.json()["detail"]
+    assert "timed out" in detail or "refused" in detail
+    assert "not reachable; order not placed" not in detail
+
+
+def test_place_client_id_conflict_returns_clear_message(client):
+    """clientId already in use -> a clear, specific message (409), not 502."""
+    H = _auth_header(client)
+    _install(MockIBKRClient(
+        connected=True,
+        place_error=IBKRClientIdInUseError(
+            "IB Gateway clientId is already in use by another connection. "
+            "Close the other session or change TRADEWIZZ_IBKR_CLIENT_ID."
+        ),
+    ))
+    pv = client.post("/v1/brokers/ibkr/order/preview", headers=H,
+                     json=_order(side="BUY", quantity=10)).json()
+    r = client.post("/v1/brokers/ibkr/order/place", headers=H,
+                    json=_order(side="BUY", quantity=10,
+                                confirmation_token=pv["confirmation_token"]))
+    assert r.status_code == 409
+    assert "clientId is already in use" in r.json()["detail"]
+
+
+def test_place_unsupported_hkex_symbol_fails_safely(client):
+    """A non-tradable symbol is rejected at validation (400) before any
+    connection is attempted — it can never reach place_order."""
+    H = _auth_header(client)
+    _install(MockIBKRClient(
+        connected=True,
+        place_error=AssertionError("place_order must NOT be called"),
+    ))
+    r = client.post("/v1/brokers/ibkr/order/preview", headers=H,
+                    json={"symbol": "KOSPI200", "market": "KOSPI",
+                          "side": "BUY", "quantity": 5, "order_type": "MARKET"})
+    assert r.status_code == 400
+    assert "not tradable via IBKR" in r.json()["detail"]

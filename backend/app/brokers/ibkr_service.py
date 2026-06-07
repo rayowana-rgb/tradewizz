@@ -32,6 +32,8 @@ from ..broker.models import (
 from ..models import Market
 from .ibkr_client import (
     IBKRClient,
+    IBKRClientIdInUseError,
+    IBKRConnectionError,
     IBKRError,
     IBKRInsufficientFundsError,
     IBKRReadOnlyError,
@@ -294,17 +296,10 @@ class IBKRService:
             raise IBKROrderValidationError(
                 "Duplicate order detected; please wait before retrying."
             )
-        try:
-            connected = self._client.is_connected()
-        except IBKRReadOnlyError as exc:
-            logger.warning("order-reject broker=IBKR reason=read-only user=%s",
-                           user_id)
-            raise IBKROrderValidationError(
-                READ_ONLY_ORDER_MESSAGE, status_code=409
-            ) from exc
-        if not connected:
-            raise IBKRError("IB Gateway is not reachable; order not placed.")
-
+        # Place directly. place_order opens a single ib_insync connection (no
+        # raw-socket pre-flight, no redundant is_connected() connect that used
+        # to triple-connect and race the clientId -> generic 502). Each failure
+        # mode is surfaced as a specific, typed error below.
         try:
             result = self._client.place_order(
                 spec, side.value, quantity, order_type.value, price
@@ -325,6 +320,21 @@ class IBKRService:
                 "Insufficient buying power to place this order.",
                 status_code=400,
             ) from exc
+        except IBKRClientIdInUseError as exc:
+            logger.warning(
+                "order-reject broker=IBKR reason=client-id-in-use user=%s",
+                user_id,
+            )
+            # 409 conflict: another API session holds the clientId.
+            raise IBKROrderValidationError(str(exc), status_code=409) from exc
+        except IBKRConnectionError as exc:
+            # Clear, specific 502 reason (timeout / refused) — never the generic
+            # 'IB Gateway is not reachable; order not placed.'
+            logger.warning(
+                "order-reject broker=IBKR reason=connection user=%s detail=%s",
+                user_id, exc,
+            )
+            raise IBKRError(str(exc)) from exc
         self._recent[signature] = now
         logger.info(
             "order-result broker=IBKR symbol=%s order_id=%s status=%s user=%s",
