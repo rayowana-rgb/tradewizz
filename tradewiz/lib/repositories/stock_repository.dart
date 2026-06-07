@@ -2,6 +2,7 @@ import '../models/analysis_result.dart';
 import '../models/broker.dart';
 import '../models/market.dart';
 import '../models/screener_result.dart';
+import '../models/user.dart';
 import '../services/api_client.dart';
 import '../services/data_source.dart';
 
@@ -114,5 +115,36 @@ class StockRepository {
     if (price != null) body['price'] = price;
     final j = await _client.brokerPost('/broker/order/place', body);
     return OrderResult.fromJson(j);
+  }
+
+  // --- Auth -----------------------------------------------------------------
+
+  /// Register a new account. Backs `/v1/auth/register`.
+  Future<AuthResult> register(String email, String password) async {
+    final j = await _client.authPost(
+      '/auth/register',
+      {'email': email, 'password': password},
+    );
+    return AuthResult.fromJson(j);
+  }
+
+  /// Log in. Backs `/v1/auth/login`.
+  Future<AuthResult> login(String email, String password) async {
+    final j = await _client.authPost(
+      '/auth/login',
+      {'email': email, 'password': password},
+    );
+    return AuthResult.fromJson(j);
+  }
+
+  /// Current user profile for a token. Backs `/v1/auth/me`.
+  Future<UserProfile> me(String token) async {
+    final j = await _client.authGet('/auth/me', bearer: token);
+    return UserProfile.fromJson(j);
+  }
+
+  /// Log out (server is stateless; this just notifies). `/v1/auth/logout`.
+  Future<void> logout(String token) async {
+    await _client.authPost('/auth/logout', const {}, bearer: token);
   }
 }

@@ -118,26 +118,38 @@ class ApiClient {
   ) =>
       _brokerCall('POST', path, body: body);
 
+  /// Auth calls (register/login/me/logout). Never fall back to mock; surface
+  /// the server's `detail` error. `bearer` adds an Authorization header.
+  Future<Map<String, dynamic>> authGet(String path, {String? bearer}) =>
+      _brokerCall('GET', path, bearer: bearer);
+
+  Future<Map<String, dynamic>> authPost(
+    String path,
+    Map<String, dynamic> body, {
+    String? bearer,
+  }) =>
+      _brokerCall('POST', path, body: body, bearer: bearer);
+
   Future<Map<String, dynamic>> _brokerCall(
     String method,
     String path, {
     Map<String, dynamic>? body,
+    String? bearer,
   }) async {
     final uri = Uri.parse('$baseUrl$path');
+    final headers = <String, String>{'Accept': 'application/json'};
+    if (bearer != null) headers['Authorization'] = 'Bearer $bearer';
     try {
       final response = method == 'POST'
           ? await _http
               .post(
                 uri,
-                headers: const {
-                  'Accept': 'application/json',
-                  'Content-Type': 'application/json',
-                },
+                headers: {...headers, 'Content-Type': 'application/json'},
                 body: jsonEncode(body ?? const {}),
               )
               .timeout(_config.requestTimeout)
           : await _http
-              .get(uri, headers: const {'Accept': 'application/json'})
+              .get(uri, headers: headers)
               .timeout(_config.requestTimeout);
 
       final decoded =

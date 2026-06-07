@@ -4,3 +4,7 @@ __pycache__/
 .pytest_cache/
 .cache/
 .env
+# SQLite user DB (runtime data; never commit user data)
+data/*.db
+data/*.db-journal
+data/*.db-wal

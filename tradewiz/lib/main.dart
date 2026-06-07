@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
 import 'models/market.dart';
+import 'pages/account_page.dart';
 import 'pages/ai_analysis_page.dart';
 import 'pages/dashboard_page.dart';
 import 'pages/screener_page.dart';
 import 'pages/watchlist_page.dart';
 import 'repositories/stock_repository.dart';
+import 'services/auth_scope.dart';
+import 'services/auth_store.dart';
 import 'services/repository_scope.dart';
 import 'services/watchlist_scope.dart';
 import 'services/watchlist_store.dart';
@@ -26,17 +29,21 @@ class TradeWizApp extends StatefulWidget {
 class _TradeWizAppState extends State<TradeWizApp> {
   final WatchlistStore _watchlist =
       WatchlistStore(persistence: SharedPrefsWatchlistPersistence());
+  final AuthStore _auth =
+      AuthStore(persistence: SharedPrefsAuthPersistence());
   final StockRepository _repository = StockRepository();
 
   @override
   void initState() {
     super.initState();
     _watchlist.load();
+    _auth.load();
   }
 
   @override
   void dispose() {
     _watchlist.dispose();
+    _auth.dispose();
     super.dispose();
   }
 
@@ -44,13 +51,16 @@ class _TradeWizAppState extends State<TradeWizApp> {
   Widget build(BuildContext context) {
     return RepositoryScope(
       repository: _repository,
-      child: WatchlistScope(
-        store: _watchlist,
-        child: MaterialApp(
-          title: 'TradeWiz',
-          debugShowCheckedModeBanner: false,
-          theme: buildTradeWizTheme(),
-          home: const HomeShell(),
+      child: AuthScope(
+        store: _auth,
+        child: WatchlistScope(
+          store: _watchlist,
+          child: MaterialApp(
+            title: 'TradeWiz',
+            debugShowCheckedModeBanner: false,
+            theme: buildTradeWizTheme(),
+            home: const HomeShell(),
+          ),
         ),
       ),
     );
@@ -80,9 +90,12 @@ class _HomeShellState extends State<HomeShell> {
       ScreenerPage(market: _market),
       WatchlistPage(market: _market),
       AiAnalysisPage(market: _market),
+      const AccountPage(),
     ];
 
-    final titles = ['Dashboard', 'Screener', 'Watchlist', 'AI Analysis'];
+    final titles = [
+      'Dashboard', 'Screener', 'Watchlist', 'AI Analysis', 'Account',
+    ];
 
     return Scaffold(
       appBar: AppBar(
@@ -91,7 +104,7 @@ class _HomeShellState extends State<HomeShell> {
           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 22),
         ),
         actions: [
-          if (_index != 1 && _index != 3)
+          if (_index != 1 && _index != 3 && _index != 4)
             Padding(
               padding: const EdgeInsets.only(right: 12),
               child: MarketSelector(
@@ -125,6 +138,11 @@ class _HomeShellState extends State<HomeShell> {
             icon: Icon(Icons.auto_awesome_outlined),
             selectedIcon: Icon(Icons.auto_awesome),
             label: 'AI Analysis',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'Account',
           ),
         ],
       ),

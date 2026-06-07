@@ -60,6 +60,12 @@ from .broker.router import router as broker_router  # noqa: E402
 
 app.include_router(broker_router)
 
+# User account / auth endpoints under /v1/auth (JWT + bcrypt). Registered as a
+# router so existing analyze/screen/backtest/broker contracts are untouched.
+from .auth.router import router as auth_router  # noqa: E402
+
+app.include_router(auth_router)
+
 
 def _parse_market(market: str) -> Market:
     try:
