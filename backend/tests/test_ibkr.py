@@ -14,10 +14,10 @@ from app.brokers.ibkr_symbols import (
 from app.models import Market
 
 
-def _svc(trading_env="paper", connected=True, **cfg):
+def _svc(trading_env="paper", connected=True, read_only=False, **cfg):
     return IBKRService(
         config=IBKRConfig(trading_env=trading_env, **cfg),
-        client=MockIBKRClient(connected=connected),
+        client=MockIBKRClient(connected=connected, read_only=read_only),
     )
 
 
@@ -171,3 +171,39 @@ def test_adapter_delegates_to_service():
     assert a.account().currency == "USD"
     assert a.positions().positions[0].symbol == "AAPL"
     assert a.status().connected is True
+
+
+# --- Read-Only API mode handling --------------------------------------------
+# IB Gateway Read-Only API mode: account summary + positions work, but order
+# requests are blocked (Error 321). This must NOT mark the broker disconnected.
+
+def test_account_succeeds_in_read_only_mode():
+    svc = _svc(read_only=True)
+    acc = svc.account()
+    assert acc.connected is True
+    assert acc.cash == 50_000.0
+    assert acc.total_assets == 75_000.0
+
+
+def test_positions_succeed_in_read_only_mode():
+    svc = _svc(read_only=True)
+    pos = svc.positions()
+    assert pos.connected is True
+    assert len(pos.positions) == 1
+    assert pos.positions[0].symbol == "AAPL"
+
+
+def test_orders_read_only_error_does_not_disconnect():
+    svc = _svc(read_only=True)
+    resp = svc.orders()
+    # Still connected, just no orders + an explanatory note.
+    assert resp.connected is True
+    assert resp.orders == []
+    assert resp.note is not None
+    assert "Read-Only" in resp.note
+
+
+def test_status_connected_in_read_only_mode():
+    # Read-Only mode is reported as connected (account/positions usable).
+    svc = _svc(read_only=True)
+    assert svc.status().connected is True

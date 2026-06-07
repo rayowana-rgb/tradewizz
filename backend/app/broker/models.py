@@ -114,6 +114,9 @@ class OpenOrder(BaseModel):
 class OrdersResponse(BaseModel):
     connected: bool = True
     orders: List[OpenOrder] = []
+    # Optional non-fatal note, e.g. IBKR Read-Only API mode blocking order
+    # requests. Default None preserves existing Moomoo responses unchanged.
+    note: Optional[str] = None
 
 
 class CancelRequest(BaseModel):

@@ -151,21 +151,21 @@ def test_api_empty_then_with_moomoo(client):
 
 # --- portfolio aggregates Moomoo + IBKR ------------------------------------
 
-def _ibkr_adapter(connected=True):
+def _ibkr_adapter(connected=True, read_only=False):
     from app.brokers.adapter import IBKRAdapter
     from app.brokers.ibkr_client import MockIBKRClient
     from app.brokers.ibkr_config import IBKRConfig
     from app.brokers.ibkr_service import IBKRService
     return IBKRAdapter(service=IBKRService(
         config=IBKRConfig(trading_env="paper"),
-        client=MockIBKRClient(connected=connected)))
+        client=MockIBKRClient(connected=connected, read_only=read_only)))
 
 
-def _both_factory(ibkr_up=True):
+def _both_factory(ibkr_up=True, ibkr_read_only=False):
     def factory(bt):
         if bt == BrokerType.MOOMOO:
             return _moomoo_adapter()
-        return _ibkr_adapter(connected=ibkr_up)
+        return _ibkr_adapter(connected=ibkr_up, read_only=ibkr_read_only)
     return factory
 
 
@@ -196,3 +196,34 @@ def test_ibkr_gateway_down_does_not_break_portfolio():
     assert any(pos.broker == "MOOMOO" for pos in p.positions)
     # IBKR down -> recorded as a non-fatal error.
     assert any(e.broker == "IBKR" for e in p.errors)
+
+
+# --- IBKR Read-Only API mode in portfolio aggregation -----------------------
+
+def test_portfolio_includes_ibkr_when_read_only():
+    # Read-Only API mode blocks ORDERS only; account+positions still work, so
+    # IBKR cash/equity must be aggregated.
+    conns = _conns()
+    conns.connect(1, BrokerType.MOOMOO)
+    conns.connect(1, BrokerType.IBKR)
+    svc = PortfolioService(
+        connections=conns,
+        adapter_factory=_both_factory(ibkr_up=True, ibkr_read_only=True))
+    p = svc.for_user(1)
+    assert set(p.brokers) == {"MOOMOO", "IBKR"}
+    # 150k Moomoo equity + 75k IBKR equity.
+    assert p.summary.total_equity == 225000.0
+    # 100k Moomoo cash + 50k IBKR cash.
+    assert p.summary.cash == 150000.0
+
+
+def test_portfolio_no_not_reachable_error_when_ibkr_read_only():
+    conns = _conns()
+    conns.connect(1, BrokerType.MOOMOO)
+    conns.connect(1, BrokerType.IBKR)
+    svc = PortfolioService(
+        connections=conns,
+        adapter_factory=_both_factory(ibkr_up=True, ibkr_read_only=True))
+    p = svc.for_user(1)
+    assert not any("not reachable" in e.message for e in p.errors)
+    assert not any(e.broker == "IBKR" for e in p.errors)

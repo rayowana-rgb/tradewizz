@@ -30,7 +30,17 @@ from ..broker.models import (
     PositionsResponse,
 )
 from ..models import Market
-from .ibkr_client import IBKRClient, IBKRError, MockIBKRClient
+from .ibkr_client import (
+    IBKRClient,
+    IBKRError,
+    IBKRReadOnlyError,
+    MockIBKRClient,
+)
+
+READ_ONLY_NOTE = (
+    "IB Gateway is in Read-Only API mode; order requests are unavailable. "
+    "Account and positions are unaffected."
+)
 from .ibkr_config import IBKRConfig
 from .ibkr_symbols import IBKRSymbolNotTradable, to_ibkr_contract
 
@@ -269,8 +279,16 @@ class IBKRService:
     def orders(self) -> OrdersResponse:
         if not self._client.is_connected():
             return OrdersResponse(connected=False, orders=[])
+        try:
+            rows = self._client.orders()
+        except IBKRReadOnlyError:
+            # Read-Only API mode blocks order requests but the broker is still
+            # connected (account/positions work). Do NOT mark disconnected.
+            logger.info("IBKR orders blocked by Read-Only API mode.")
+            return OrdersResponse(connected=True, orders=[],
+                                  note=READ_ONLY_NOTE)
         out = []
-        for r in self._client.orders():
+        for r in rows:
             side = OrderSide.BUY if str(r.get("side", "")).upper().startswith(
                 "BUY"
             ) else OrderSide.SELL
