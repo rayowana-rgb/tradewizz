@@ -288,6 +288,8 @@ class MockIBKRClient:
         return self._connected
 
     def account_summary(self) -> dict:
+        if not self._connected:
+            raise IBKRError("IB Gateway not reachable")
         return {
             "currency": "USD",
             "cash": 50_000.0,
@@ -296,6 +298,8 @@ class MockIBKRClient:
         }
 
     def positions(self) -> List[dict]:
+        if not self._connected:
+            raise IBKRError("IB Gateway not reachable")
         return [{
             "symbol": "AAPL",
             "exchange": "SMART",

@@ -207,3 +207,39 @@ def test_status_connected_in_read_only_mode():
     # Read-Only mode is reported as connected (account/positions usable).
     svc = _svc(read_only=True)
     assert svc.status().connected is True
+
+
+# --- account()/positions() derive connected from the fetch (no redundant
+#     is_connected() pre-probe that raced a live gateway) ---------------------
+
+def test_account_connected_without_pre_probe():
+    # account() must report connected without calling is_connected() first.
+    calls = {"is_connected": 0}
+    base = MockIBKRClient()
+
+    class NoProbeClient:
+        def is_connected(self):
+            calls["is_connected"] += 1
+            return base.is_connected()
+
+        def account_summary(self):
+            return base.account_summary()
+
+        def positions(self):
+            return base.positions()
+
+    svc = IBKRService(config=IBKRConfig(trading_env="paper"),
+                      client=NoProbeClient())
+    acc = svc.account()
+    assert acc.connected is True
+    assert acc.cash == 50_000.0
+    pos = svc.positions()
+    assert pos.connected is True and len(pos.positions) == 1
+    # The fix: no redundant is_connected() pre-probe on the read paths.
+    assert calls["is_connected"] == 0
+
+
+def test_account_disconnected_only_when_fetch_fails():
+    svc = _svc(connected=False)
+    assert svc.account().connected is False
+    assert svc.positions().connected is False

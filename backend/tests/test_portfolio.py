@@ -227,3 +227,60 @@ def test_portfolio_no_not_reachable_error_when_ibkr_read_only():
     p = svc.for_user(1)
     assert not any("not reachable" in e.message for e in p.errors)
     assert not any(e.broker == "IBKR" for e in p.errors)
+
+
+# --- regression: no false 'IBKR is not reachable' when account/positions work
+
+def _ibkr_only_conns():
+    conns = _conns()
+    conns.connect(1, BrokerType.IBKR)
+    return conns
+
+
+def test_ibkr_account_connected_produces_no_error():
+    conns = _ibkr_only_conns()
+    svc = PortfolioService(
+        connections=conns,
+        adapter_factory=lambda bt: _ibkr_adapter(connected=True))
+    p = svc.for_user(1)
+    assert "IBKR" in p.brokers
+    assert p.summary.cash == 50_000.0
+    assert not p.errors
+
+
+def test_ibkr_positions_connected_produces_no_error():
+    conns = _ibkr_only_conns()
+    svc = PortfolioService(
+        connections=conns,
+        adapter_factory=lambda bt: _ibkr_adapter(connected=True))
+    p = svc.for_user(1)
+    assert any(pos.broker == "IBKR" and pos.symbol == "AAPL"
+               for pos in p.positions)
+    assert not any("not reachable" in e.message for e in p.errors)
+
+
+def test_ibkr_orders_unavailable_produces_no_not_reachable_error():
+    # accountSummary + positions succeed; orders API blocked (read-only).
+    # Portfolio aggregation only reads account+positions, so there must be no
+    # 'not reachable' error and IBKR data must be present.
+    conns = _ibkr_only_conns()
+    svc = PortfolioService(
+        connections=conns,
+        adapter_factory=lambda bt: _ibkr_adapter(connected=True,
+                                                 read_only=True))
+    p = svc.for_user(1)
+    assert "IBKR" in p.brokers
+    assert p.summary.total_equity == 75_000.0
+    assert not any("not reachable" in e.message for e in p.errors)
+
+
+def test_ibkr_true_connection_failure_still_reports_not_reachable():
+    # Only a real connection/account failure produces the 'not reachable' error.
+    conns = _ibkr_only_conns()
+    svc = PortfolioService(
+        connections=conns,
+        adapter_factory=lambda bt: _ibkr_adapter(connected=False))
+    p = svc.for_user(1)
+    assert any(e.broker == "IBKR" and "not reachable" in e.message
+               for e in p.errors)
+    assert "IBKR" not in p.brokers

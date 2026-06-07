@@ -8,9 +8,11 @@ non-fatal errors so the rest of the portfolio still aggregates.
 
 from __future__ import annotations
 
+import logging
 from typing import Callable, List, Optional
 
 from ..brokers.adapter import make_adapter
+from ..brokers.models import BrokerType
 from ..brokers.service import BrokerConnectionService
 from .models import (
     BrokerError,
@@ -18,6 +20,8 @@ from .models import (
     PortfolioSummary,
     UnifiedPortfolio,
 )
+
+logger = logging.getLogger("tradewizz.portfolio")
 
 
 class PortfolioService:
@@ -40,10 +44,37 @@ class PortfolioService:
                 continue
             broker = conn.broker_type.value
             adapter = self._adapter_factory(conn.broker_type)
+            is_ibkr = conn.broker_type is BrokerType.IBKR
+            if is_ibkr:
+                logger.info(
+                    "IBKR portfolio diagnostics: adapter=%s",
+                    type(adapter).__name__,
+                )
+                try:
+                    st = adapter.status()
+                    logger.info(
+                        "IBKR portfolio diagnostics: status.connected=%s "
+                        "host=%s port=%s",
+                        getattr(st, "connected", None),
+                        getattr(st, "host", None),
+                        getattr(st, "port", None),
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    logger.info(
+                        "IBKR portfolio diagnostics: status() raised %s", exc
+                    )
             contributed = False
             # Account-level figures.
             try:
                 acct = adapter.account()
+                if is_ibkr:
+                    logger.info(
+                        "IBKR portfolio diagnostics: account.connected=%s "
+                        "cash=%s total_assets=%s",
+                        getattr(acct, "connected", None),
+                        getattr(acct, "cash", None),
+                        getattr(acct, "total_assets", None),
+                    )
                 if getattr(acct, "connected", True):
                     summary.cash += float(getattr(acct, "cash", 0) or 0)
                     summary.buying_power += float(
@@ -67,22 +98,35 @@ class PortfolioService:
             # Positions.
             try:
                 pos_resp = adapter.positions()
-                for p in getattr(pos_resp, "positions", []) or []:
-                    mv = float(getattr(p, "market_value", 0) or 0)
-                    pl = float(getattr(p, "pl_value", 0) or 0)
-                    summary.market_value += mv
-                    summary.floating_pnl += pl
-                    positions.append(PortfolioPosition(
-                        symbol=p.symbol,
-                        market=p.market,
-                        broker=broker,
-                        quantity=float(getattr(p, "quantity", 0) or 0),
-                        average_cost=float(getattr(p, "cost_price", 0) or 0),
-                        current_price=float(getattr(p, "current_price", 0) or 0),
-                        market_value=mv,
-                        unrealized_pnl=pl,
-                    ))
-                contributed = True
+                if is_ibkr:
+                    logger.info(
+                        "IBKR portfolio diagnostics: positions.connected=%s "
+                        "count=%d",
+                        getattr(pos_resp, "connected", None),
+                        len(getattr(pos_resp, "positions", []) or []),
+                    )
+                if getattr(pos_resp, "connected", True):
+                    for p in getattr(pos_resp, "positions", []) or []:
+                        mv = float(getattr(p, "market_value", 0) or 0)
+                        pl = float(getattr(p, "pl_value", 0) or 0)
+                        summary.market_value += mv
+                        summary.floating_pnl += pl
+                        positions.append(PortfolioPosition(
+                            symbol=p.symbol,
+                            market=p.market,
+                            broker=broker,
+                            quantity=float(getattr(p, "quantity", 0) or 0),
+                            average_cost=float(
+                                getattr(p, "cost_price", 0) or 0),
+                            current_price=float(
+                                getattr(p, "current_price", 0) or 0),
+                            market_value=mv,
+                            unrealized_pnl=pl,
+                        ))
+                    # Only count as contributing when positions are actually
+                    # reachable; a disconnected positions response must not
+                    # mark a down broker as connected.
+                    contributed = True
             except Exception as exc:  # noqa: BLE001 - non-fatal per broker
                 errors.append(BrokerError(broker=broker, message=str(exc)))
 

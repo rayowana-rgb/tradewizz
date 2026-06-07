@@ -101,11 +101,20 @@ class IBKRService:
         )
 
     def account(self) -> AccountSummary:
-        if not self._client.is_connected():
+        # Attempt the real account summary directly. We deliberately do NOT
+        # pre-probe with a separate is_connected() connect: against a live IB
+        # Gateway, two back-to-back connects on the same clientId race (the
+        # first disconnect overlaps the second connect), which intermittently
+        # made this report connected=False -> a false 'IBKR is not reachable'
+        # error in the portfolio even though accountSummary works. connected
+        # is derived from whether the fetch itself succeeds.
+        try:
+            d = self._client.account_summary()
+        except IBKRError as exc:
+            logger.warning("IBKR account_summary failed: %s", exc)
             return AccountSummary(
                 connected=False, trading_env=self._config.trading_env_label
             )
-        d = self._client.account_summary()
         return AccountSummary(
             connected=True,
             currency=d.get("currency", ""),
@@ -116,10 +125,15 @@ class IBKRService:
         )
 
     def positions(self) -> PositionsResponse:
-        if not self._client.is_connected():
+        # Fetch positions directly; derive connected from success (no redundant
+        # is_connected() pre-probe — see account() for the rationale).
+        try:
+            rows = self._client.positions()
+        except IBKRError as exc:
+            logger.warning("IBKR positions failed: %s", exc)
             return PositionsResponse(connected=False, positions=[])
         out = []
-        for r in self._client.positions():
+        for r in rows:
             # US positions are the common case; market is best-effort.
             market = Market.HKEX if r.get("currency") == "HKD" else Market.IDX
             out.append(Position(
