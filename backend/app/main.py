@@ -6,6 +6,7 @@ models. Replace the `mock_*` calls with the real screening engine later.
 
 from __future__ import annotations
 
+import os
 from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException, Query
@@ -83,6 +84,34 @@ from .portfolio.router import router as portfolio_router  # noqa: E402
 
 app.include_router(portfolio_router)
 
+# Market-close screener cache. Heavy screening runs once per market/category
+# after market close; the saved snapshot is reused until the next close. This
+# is a thin cache around the existing engine.screen() (scoring/indicators/
+# Yahoo/analysis untouched).
+from .screener_cache import (  # noqa: E402
+    SqliteScreenerSnapshotStore,
+)
+from .screener_cache.service import (  # noqa: E402
+    ScreenerCacheService,
+    make_cache_key,
+)
+
+_SCREENER_CACHE_DB = os.environ.get(
+    "TRADEWIZ_SCREENER_CACHE_DB",
+    os.path.join(".cache", "screener_snapshots.db"),
+)
+screener_snapshot_store = SqliteScreenerSnapshotStore(_SCREENER_CACHE_DB)
+
+# Optional test hook: override the market-local "now" used by the screener
+# cache so tests can pin OPEN/CLOSED deterministically. None => real clock.
+_screener_now_override = None  # type: Optional[object]
+
+
+def set_screener_now_override(provider) -> None:
+    """Test hook: set a callable(Market)->datetime, or None to reset."""
+    global _screener_now_override
+    _screener_now_override = provider
+
 
 def _parse_market(market: str) -> Market:
     try:
@@ -125,6 +154,16 @@ def _parse_categories(raw: Optional[str]) -> Optional[List[ScreenerCategory]]:
     return out or None
 
 
+def _category_cache_token(cats: Optional[List[ScreenerCategory]]) -> str:
+    """Stable, order-independent category token for the screener cache key.
+
+    Empty/None filter -> "" (the "all categories" snapshot).
+    """
+    if not cats:
+        return ""
+    return ",".join(sorted(c.value for c in cats))
+
+
 @app.get(f"{API_PREFIX}/screen/{{market}}", response_model=ScreenerResult)
 def screen(
     market: str,
@@ -139,8 +178,18 @@ def screen(
         description="Liquidity floor (turnover) in market currency. Omit for the "
         "per-market default (~2B IDR); pass 0 to disable.",
     ),
+    force_refresh: bool = Query(
+        False,
+        description="Re-run heavy screening and save a fresh snapshot. Allowed "
+        "only when the market is CLOSED; ignored (with a warning) when OPEN.",
+    ),
 ) -> ScreenerResult:
-    """Screener results for a market.
+    """Screener results for a market (market-close cached).
+
+    Heavy screening runs once per market/category/params after market close;
+    the saved snapshot is then reused until the next market close. While the
+    market is OPEN the latest saved snapshot is served (``cached=true``) and no
+    heavy screening runs, so reopening the app stays fast.
 
     Query params:
       - ``limit``: max matches (1..200, default 50).
@@ -148,6 +197,10 @@ def screen(
       - ``categories``: comma-separated category filter (match must carry one).
       - ``min_value_traded``: liquidity floor; omitted => per-market default,
         0 => disabled.
+      - ``force_refresh``: re-run + save once (CLOSED only; OPEN -> warning).
+
+    Response metadata: ``cached``, ``generated_at``, ``market_date``,
+    ``market_status``, ``next_refresh_rule`` (and ``warning`` when relevant).
 
     Results are sorted by score desc, value_traded desc (liquidity tiebreaker),
     then change_percent desc.
@@ -158,12 +211,30 @@ def screen(
         if min_value_traded is None
         else min_value_traded
     )
-    return engine.screen(
-        parsed_market,
+    parsed_cats = _parse_categories(categories)
+    cache_key = make_cache_key(
+        category=_category_cache_token(parsed_cats),
         limit=limit,
         min_score=min_score,
-        categories=_parse_categories(categories),
         min_value_traded=floor,
+    )
+
+    def _run() -> ScreenerResult:
+        return engine.screen(
+            parsed_market,
+            limit=limit,
+            min_score=min_score,
+            categories=parsed_cats,
+            min_value_traded=floor,
+        )
+
+    service = ScreenerCacheService(
+        screener_snapshot_store,
+        _run,
+        now_provider=_screener_now_override,
+    )
+    return service.get(
+        parsed_market, cache_key, force_refresh=force_refresh
     )
 
 

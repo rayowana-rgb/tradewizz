@@ -93,6 +93,15 @@ class ScreenerResult(BaseModel):
     limit: int = 50
     min_score: float = 0.0
     categories: List[ScreenerCategory] = []
+    # --- Market-close caching metadata (additive, optional) ----------------
+    # Heavy screening runs once per market/category after market close; the
+    # saved snapshot is reused until the next market-close run. Older clients
+    # simply ignore these fields.
+    cached: bool = False  # True => served from a saved market-close snapshot
+    market_status: Optional[str] = None  # "OPEN" or "CLOSED"
+    market_date: Optional[str] = None  # YYYY-MM-DD (market-local) of snapshot
+    next_refresh_rule: Optional[str] = None  # human-readable refresh policy
+    warning: Optional[str] = None  # e.g. force_refresh denied while open
 
 
 class BacktestResult(BaseModel):

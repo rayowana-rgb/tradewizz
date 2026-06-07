@@ -56,6 +56,52 @@ StockRepository _paginatedRepo(int total) {
   );
 }
 
+/// Repository whose /screen response carries market-close cache metadata.
+StockRepository _cachedRepo({
+  required bool cached,
+  required String marketStatus, // 'OPEN' | 'CLOSED'
+  String? warning,
+}) {
+  final live = MockClient((req) async {
+    final body = <String, dynamic>{
+      'market': 'HKEX',
+      'matches': [
+        {
+          'symbol': '0700',
+          'name': 'Tencent',
+          'score': 91.0,
+          'signal': 'BUY',
+          'price': 412.6,
+          'change_percent': 1.2,
+          'categories': ['bullish'],
+        },
+      ],
+      'generated_at': '2026-06-07T08:30:00Z',
+      'total_count': 1,
+      'returned_count': 1,
+      'limit': 50,
+      'min_score': 0,
+      'categories': <String>[],
+      'cached': cached,
+      'market_status': marketStatus,
+      'market_date': '2026-06-07',
+      'next_refresh_rule': 'Will refresh after next market close',
+    };
+    if (warning != null) body['warning'] = warning;
+    return http.Response(
+      jsonEncode(body),
+      200,
+      headers: {'content-type': 'application/json'},
+    );
+  });
+  return StockRepository(
+    client: ApiClient(
+      config: const AppConfig(baseUrl: 'https://test.tradewiz.app/v1'),
+      httpClient: live,
+    ),
+  );
+}
+
 Future<void> _loadScreener(WidgetTester tester) async {
   await tester.pumpWidget(
     wrapApp(
@@ -160,5 +206,69 @@ void main() {
     );
     expect(find.text('Showing 120 of 120'), findsOneWidget);
     expect(find.widgetWithText(OutlinedButton, 'Load more'), findsNothing);
+  });
+
+  // --- Market-close cache banner ------------------------------------------
+  testWidgets('cached badge + generated_at render (market closed)',
+      (tester) async {
+    await tester.pumpWidget(
+      wrapApp(ScreenerPage(
+        market: Market.hkex,
+        repository: _cachedRepo(cached: true, marketStatus: 'CLOSED'),
+      )),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('screener_cache_label')), findsOneWidget);
+    expect(find.text('Cached market-close result'), findsOneWidget);
+    // generated_at is rendered (formatted from 2026-06-07T08:30:00Z).
+    expect(find.byKey(const Key('screener_generated_at')), findsOneWidget);
+    // Closed market shows the refresh rule, not the open-hours warning.
+    expect(find.byKey(const Key('screener_refresh_rule')), findsOneWidget);
+    expect(find.byKey(const Key('screener_open_warning')), findsNothing);
+  });
+
+  testWidgets('open-market warning renders when market is open',
+      (tester) async {
+    await tester.pumpWidget(
+      wrapApp(ScreenerPage(
+        market: Market.hkex,
+        repository: _cachedRepo(cached: true, marketStatus: 'OPEN'),
+      )),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('screener_cache_label')), findsOneWidget);
+    expect(find.byKey(const Key('screener_open_warning')), findsOneWidget);
+    expect(
+      find.textContaining('latest saved result to avoid slow loading'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('server warning is surfaced when open', (tester) async {
+    await tester.pumpWidget(
+      wrapApp(ScreenerPage(
+        market: Market.hkex,
+        repository: _cachedRepo(
+          cached: true,
+          marketStatus: 'OPEN',
+          warning: 'Screening refresh is only allowed after market close.',
+        ),
+      )),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('screener_cache_warning')), findsOneWidget);
+    expect(
+      find.textContaining('only allowed after market close'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('no cache banner when server omits cache metadata',
+      (tester) async {
+    // Offline/mock repo response has no cache fields -> banner hidden.
+    await _loadScreener(tester);
+    expect(find.byKey(const Key('screener_cache_label')), findsNothing);
   });
 }

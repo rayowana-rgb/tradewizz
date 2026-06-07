@@ -54,11 +54,36 @@ class ScreenerResult {
     this.limit,
     this.minScore,
     this.categories = const [],
+    this.cached = false,
+    this.marketStatus,
+    this.marketDate,
+    this.nextRefreshRule,
+    this.warning,
   });
 
   final Market market;
   final List<ScreenerMatch> matches;
   final DateTime generatedAt;
+
+  // --- Market-close caching metadata (backward compatible) ----------------
+  /// True when these results were served from a saved market-close snapshot.
+  final bool cached;
+
+  /// "OPEN" or "CLOSED" (market-local) at the time of the response. Null on
+  /// older servers that don't report it.
+  final String? marketStatus;
+
+  /// Market-local date (YYYY-MM-DD) of the cached snapshot, if any.
+  final String? marketDate;
+
+  /// Human-readable refresh policy, e.g. "Will refresh after next market close".
+  final String? nextRefreshRule;
+
+  /// Optional warning (e.g. force_refresh refused while the market is open).
+  final String? warning;
+
+  /// True when the market is currently open (per the server's report).
+  bool get isMarketOpen => marketStatus == 'OPEN';
 
   /// Matches after filtering, BEFORE the limit. Null if the server is old and
   /// did not send pagination metadata (backward compatible).
@@ -105,6 +130,11 @@ class ScreenerResult {
       categories: (json['categories'] as List<dynamic>? ?? [])
           .map((e) => e.toString())
           .toList(),
+      cached: json['cached'] as bool? ?? false,
+      marketStatus: json['market_status'] as String?,
+      marketDate: json['market_date'] as String?,
+      nextRefreshRule: json['next_refresh_rule'] as String?,
+      warning: json['warning'] as String?,
     );
   }
 }

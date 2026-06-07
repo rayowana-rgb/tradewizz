@@ -5,6 +5,15 @@ import tempfile
 
 import pytest
 
+# Point the market-close screener cache at a throwaway SQLite file BEFORE any
+# test module imports app.main (which reads this env var at import time). Keeps
+# the cache out of the repo's .cache/ and makes runs independent.
+if "TRADEWIZ_SCREENER_CACHE_DB" not in os.environ:
+    _tw_screener_cache_dir = tempfile.mkdtemp(prefix="tw_test_screener_")
+    os.environ["TRADEWIZ_SCREENER_CACHE_DB"] = os.path.join(
+        _tw_screener_cache_dir, "screener_snapshots.db"
+    )
+
 
 @pytest.fixture(autouse=True, scope="session")
 def _isolated_model_dir():

@@ -193,6 +193,7 @@ class _ScreenerPageState extends State<ScreenerPage> {
             retrying: _loading,
           ),
         ),
+        if (_result != null) _CacheBanner(result: _result!),
         const Divider(height: 1),
         Expanded(child: _buildBody()),
       ],
@@ -238,6 +239,116 @@ class _ScreenerPageState extends State<ScreenerPage> {
             onLoadMore: _loadMore,
           );
         },
+      ),
+    );
+  }
+}
+
+/// Market-close cache status banner: shows the "Cached market-close result"
+/// label + generated_at, and an open-market notice when the market is open.
+/// Hidden when the server reports no cache metadata (older backends).
+class _CacheBanner extends StatelessWidget {
+  const _CacheBanner({required this.result});
+
+  final ScreenerResult result;
+
+  String _formatGeneratedAt() {
+    final dt = result.generatedAt.toLocal();
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${dt.year}-${two(dt.month)}-${two(dt.day)} '
+        '${two(dt.hour)}:${two(dt.minute)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Only render when the backend actually reported cache metadata.
+    final hasMeta = result.cached ||
+        result.marketStatus != null ||
+        result.nextRefreshRule != null;
+    if (!hasMeta) return const SizedBox.shrink();
+
+    final open = result.isMarketOpen;
+    final children = <Widget>[
+      Row(
+        children: [
+          Icon(
+            result.cached ? Icons.history : Icons.bolt,
+            size: 16,
+            color: AppColors.seed,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              result.cached
+                  ? 'Cached market-close result'
+                  : 'Fresh market-close result',
+              key: const Key('screener_cache_label'),
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 12.5,
+              ),
+            ),
+          ),
+          Text(
+            _formatGeneratedAt(),
+            key: const Key('screener_generated_at'),
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 11.5),
+          ),
+        ],
+      ),
+    ];
+
+    if (open) {
+      children.add(const SizedBox(height: 6));
+      children.add(
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.info_outline,
+                size: 14, color: Colors.amber.shade800),
+            const SizedBox(width: 6),
+            const Expanded(
+              child: Text(
+                'Screening uses latest saved result to avoid slow loading '
+                'during market hours.',
+                key: Key('screener_open_warning'),
+                style: TextStyle(fontSize: 11.5),
+              ),
+            ),
+          ],
+        ),
+      );
+    } else if (result.nextRefreshRule != null) {
+      children.add(const SizedBox(height: 4));
+      children.add(
+        Text(
+          result.nextRefreshRule!,
+          key: const Key('screener_refresh_rule'),
+          style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+        ),
+      );
+    }
+
+    if (result.warning != null && open) {
+      children.add(const SizedBox(height: 4));
+      children.add(
+        Text(
+          result.warning!,
+          key: const Key('screener_cache_warning'),
+          style: TextStyle(color: Colors.amber.shade900, fontSize: 11),
+        ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      color: open
+          ? Colors.amber.withValues(alpha: 0.10)
+          : AppColors.seed.withValues(alpha: 0.06),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: children,
       ),
     );
   }
