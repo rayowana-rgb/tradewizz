@@ -63,11 +63,42 @@ MARKET_SUFFIX = {
 }
 
 
+# Yahoo expects a fixed zero-padded numeric code per market: HKEX uses 4 digits
+# (e.g. 02331 -> 2331.HK, 700 -> 0700.HK); KOSPI/KOSDAQ use 6 digits (e.g.
+# 5930 -> 005930.KS). IDX uses alphabetic tickers and is left untouched.
+_YAHOO_CODE_WIDTH = {
+    Market.HKEX: 4,
+    Market.KOSPI: 6,
+    Market.KOSDAQ: 6,
+}
+
+
+def _normalize_numeric_code(sym: str, width: int) -> str:
+    """Normalize a numeric exchange code to Yahoo's expected zero-padded width.
+
+    Strips leading zeros then re-pads to `width` (so 02331 -> 2331, 700 -> 0700
+    for width 4; 5930 -> 005930 for width 6). Non-numeric input is returned
+    unchanged.
+    """
+    if not sym.isdigit():
+        return sym
+    return sym.lstrip("0").zfill(width) or "0".zfill(width)
+
+
 def yf_symbol(symbol: str, market: Market) -> str:
-    """Map a bare symbol + market to a yfinance ticker (idempotent)."""
+    """Map a bare symbol + market to a yfinance ticker (idempotent).
+
+    For HKEX/KOSPI/KOSDAQ the numeric code is normalized to Yahoo's expected
+    zero-padded width before the suffix is appended. IDX is unchanged.
+    """
     sym = symbol.upper().strip()
     suffix = MARKET_SUFFIX[market]
-    return sym if sym.endswith(suffix) else f"{sym}{suffix}"
+    if sym.endswith(suffix):
+        return sym  # idempotent: already a yfinance ticker
+    width = _YAHOO_CODE_WIDTH.get(market)
+    if width is not None:
+        sym = _normalize_numeric_code(sym, width)
+    return f"{sym}{suffix}"
 
 
 def _now_iso() -> str:
