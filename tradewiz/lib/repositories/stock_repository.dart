@@ -139,6 +139,20 @@ class StockRepository {
     return AuthResult.fromJson(j);
   }
 
+  /// Sign in / register with a Google ID token. Backs `/v1/auth/google`.
+  /// Only the resulting TradeWizz session is kept by the caller; the Google
+  /// token is not stored.
+  Future<AuthResult> googleLogin(String idToken) async {
+    final j = await _client.authPost('/auth/google', {'id_token': idToken});
+    return AuthResult.fromJson(j);
+  }
+
+  /// Sign in / register with an Apple identity token. Backs `/v1/auth/apple`.
+  Future<AuthResult> appleLogin(String idToken) async {
+    final j = await _client.authPost('/auth/apple', {'id_token': idToken});
+    return AuthResult.fromJson(j);
+  }
+
   /// Current user profile for a token. Backs `/v1/auth/me`.
   Future<UserProfile> me(String token) async {
     final j = await _client.authGet('/auth/me', bearer: token);

@@ -22,6 +22,17 @@ class AuthConfig:
     access_token_ttl_seconds: int = 7 * 24 * 60 * 60  # 7 days
     # SQLite database file for users.
     db_path: str = ""
+    # Social Sign-In audiences (OAuth client IDs). Empty => provider disabled.
+    google_client_id: str = ""
+    apple_client_id: str = ""
+
+    @property
+    def google_enabled(self) -> bool:
+        return bool(self.google_client_id.strip())
+
+    @property
+    def apple_enabled(self) -> bool:
+        return bool(self.apple_client_id.strip())
 
     @classmethod
     def from_env(cls) -> "AuthConfig":
@@ -37,4 +48,11 @@ class AuthConfig:
                 "TRADEWIZZ_JWT_TTL_SECONDS", 7 * 24 * 60 * 60
             ),
             db_path=os.environ.get("TRADEWIZZ_DB_PATH", default_db),
+            # Never bake client IDs into source; read from env only.
+            google_client_id=os.environ.get(
+                "TRADEWIZZ_GOOGLE_CLIENT_ID", ""
+            ).strip(),
+            apple_client_id=os.environ.get(
+                "TRADEWIZZ_APPLE_CLIENT_ID", ""
+            ).strip(),
         )

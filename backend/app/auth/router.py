@@ -11,6 +11,7 @@ from .models import (
     LoginRequest,
     LogoutResponse,
     RegisterRequest,
+    SocialAuthRequest,
     UserProfile,
 )
 from .service import AuthError, AuthService
@@ -48,6 +49,24 @@ def register(req: RegisterRequest) -> AuthResponse:
 def login(req: LoginRequest) -> AuthResponse:
     try:
         return get_service().login(req.email, req.password)
+    except AuthError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+
+
+@router.post("/google", response_model=AuthResponse)
+def google_login(req: SocialAuthRequest) -> AuthResponse:
+    """Sign in / register with a Google ID token. Returns a TradeWizz JWT."""
+    try:
+        return get_service().google_login(req.id_token)
+    except AuthError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+
+
+@router.post("/apple", response_model=AuthResponse)
+def apple_login(req: SocialAuthRequest) -> AuthResponse:
+    """Sign in / register with an Apple identity token. Returns a TradeWizz JWT."""
+    try:
+        return get_service().apple_login(req.id_token)
     except AuthError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message)
 

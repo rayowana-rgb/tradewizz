@@ -36,6 +36,9 @@ dependencies:
   cupertino_icons: ^1.0.8
   shared_preferences: ^2.5.5
   http: ^1.6.0
+  flutter_launcher_icons: ^0.14.4
+  google_sign_in: ^7.2.0
+  sign_in_with_apple: ^8.1.0
 
 dev_dependencies:
   flutter_test:
@@ -84,3 +87,8 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/tradewizz.png"
+  remove_alpha_ios: true

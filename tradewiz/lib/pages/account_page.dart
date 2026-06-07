@@ -5,6 +5,7 @@ import '../repositories/stock_repository.dart';
 import '../services/api_client.dart';
 import '../services/auth_scope.dart';
 import '../services/repository_scope.dart';
+import '../services/social_sign_in.dart';
 import '../theme.dart';
 import 'auth_pages.dart';
 import 'broker_connections_page.dart';
@@ -14,9 +15,13 @@ import 'portfolio_page.dart';
 /// Broker Connections, a Portfolio section (summary + entry into the full
 /// Portfolio page), and Logout.
 class AccountPage extends StatefulWidget {
-  const AccountPage({super.key, this.repository});
+  const AccountPage({super.key, this.repository, this.socialSignIn});
 
   final StockRepository? repository;
+
+  /// Injectable social sign-in (Google/Apple). Defaults to the plugin-backed
+  /// implementation; tests pass a fake.
+  final SocialSignIn? socialSignIn;
 
   @override
   State<AccountPage> createState() => _AccountPageState();
@@ -85,7 +90,10 @@ class _AccountPageState extends State<AccountPage> {
     final repo = _repo;
 
     if (!auth.isLoggedIn) {
-      return _LoggedOutView(repository: repo);
+      return _LoggedOutView(
+        repository: repo,
+        socialSignIn: widget.socialSignIn ?? PluginSocialSignIn(),
+      );
     }
     final user = auth.user!;
     return ListView(
@@ -335,14 +343,63 @@ class _PortfolioCard extends StatelessWidget {
   }
 }
 
-class _LoggedOutView extends StatelessWidget {
-  const _LoggedOutView({required this.repository});
+class _LoggedOutView extends StatefulWidget {
+  const _LoggedOutView({required this.repository, required this.socialSignIn});
   final StockRepository repository;
+  final SocialSignIn socialSignIn;
+
+  @override
+  State<_LoggedOutView> createState() => _LoggedOutViewState();
+}
+
+class _LoggedOutViewState extends State<_LoggedOutView> {
+  bool _busy = false;
+  String? _error;
+
+  Future<void> _social(
+    String provider,
+    Future<String?> Function() getIdToken,
+    Future<dynamic> Function(String idToken) exchange,
+  ) async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final auth = AuthScope.of(context);
+    try {
+      final idToken = await getIdToken();
+      if (idToken == null) {
+        // User cancelled.
+        if (mounted) setState(() => _busy = false);
+        return;
+      }
+      final res = await exchange(idToken);
+      // Persist ONLY the TradeWizz session, never the provider token.
+      await auth.setSession(res.accessToken, res.user);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _error = _humanError(provider, e));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  String _humanError(String provider, Object e) {
+    final msg = e.toString();
+    // Surface the backend's clear messages (already user-facing).
+    if (msg.contains('not configured')) return msg.replaceAll('Exception: ', '');
+    if (msg.contains('already exists')) {
+      return msg.replaceAll('Exception: ', '');
+    }
+    return '$provider sign-in failed. Please try again.';
+  }
 
   @override
   Widget build(BuildContext context) {
+    final social = widget.socialSignIn;
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -367,12 +424,15 @@ class _LoggedOutView extends StatelessWidget {
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => LoginPage(repository: repository),
-                  ),
-                ),
-                child: const Text('Log in'),
+                onPressed: _busy
+                    ? null
+                    : () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) =>
+                                LoginPage(repository: widget.repository),
+                          ),
+                        ),
+                child: const Text('Login with Email'),
               ),
             ),
             const SizedBox(height: 12),
@@ -383,14 +443,94 @@ class _LoggedOutView extends StatelessWidget {
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => RegisterPage(repository: repository),
-                  ),
-                ),
-                child: const Text('Create account'),
+                onPressed: _busy
+                    ? null
+                    : () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) =>
+                                RegisterPage(repository: widget.repository),
+                          ),
+                        ),
+                child: const Text('Register with Email'),
               ),
             ),
+            if (social.googleAvailable || social.appleAvailable) ...[
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  const Expanded(child: Divider()),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Text(
+                      'or continue with',
+                      style: TextStyle(
+                        color: Colors.grey.shade600,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  const Expanded(child: Divider()),
+                ],
+              ),
+              const SizedBox(height: 16),
+            ],
+            if (social.googleAvailable)
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  key: const Key('continue_google_button'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  onPressed: _busy
+                      ? null
+                      : () => _social(
+                            'Google',
+                            social.googleIdToken,
+                            widget.repository.googleLogin,
+                          ),
+                  icon: const Icon(Icons.g_mobiledata, size: 28),
+                  label: const Text('Continue with Google'),
+                ),
+              ),
+            if (social.appleAvailable) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  key: const Key('continue_apple_button'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  onPressed: _busy
+                      ? null
+                      : () => _social(
+                            'Apple',
+                            social.appleIdToken,
+                            widget.repository.appleLogin,
+                          ),
+                  icon: const Icon(Icons.apple, size: 22),
+                  label: const Text('Continue with Apple'),
+                ),
+              ),
+            ],
+            if (_busy) ...[
+              const SizedBox(height: 16),
+              const SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ],
+            if (_error != null) ...[
+              const SizedBox(height: 16),
+              Text(
+                _error!,
+                key: const Key('social_error'),
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.red, fontSize: 13),
+              ),
+            ],
           ],
         ),
       ),

@@ -15,6 +15,12 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=128)
 
 
+class SocialAuthRequest(BaseModel):
+    """Body for /auth/google and /auth/apple: a provider ID token."""
+
+    id_token: str = Field(min_length=1, max_length=8192)
+
+
 class UserProfile(BaseModel):
     """Public user view (never includes the password hash)."""
 
@@ -23,6 +29,8 @@ class UserProfile(BaseModel):
     created_at: str
     updated_at: str
     connected_brokers: int = 0
+    # Auth provider this account uses: EMAIL / GOOGLE / APPLE.
+    provider: str = "EMAIL"
 
 
 class AuthResponse(BaseModel):

@@ -14,6 +14,31 @@ import 'package:tradewiz/services/api_client.dart';
 import 'package:tradewiz/services/auth_scope.dart';
 import 'package:tradewiz/services/auth_store.dart';
 import 'package:tradewiz/services/repository_scope.dart';
+import 'package:tradewiz/services/social_sign_in.dart';
+
+/// Fake SocialSignIn for widget tests: returns canned id tokens (or null to
+/// simulate a user cancelling), and toggles platform availability so we can
+/// assert iOS-only Apple behaviour without a real device.
+class _FakeSocial implements SocialSignIn {
+  _FakeSocial({
+    this.googleAvailable = true,
+    this.appleAvailable = true,
+    this.googleToken = 'GID',
+    this.appleToken = 'AID',
+  });
+
+  @override
+  final bool googleAvailable;
+  @override
+  final bool appleAvailable;
+  final String? googleToken;
+  final String? appleToken;
+
+  @override
+  Future<String?> googleIdToken() async => googleToken;
+  @override
+  Future<String?> appleIdToken() async => appleToken;
+}
 
 /// Fake auth backend: register/login succeed for the right password; login with
 /// a wrong password returns 401 with a detail message.
@@ -44,6 +69,23 @@ StockRepository _authRepo() {
           'access_token': 'TOKEN-ABC',
           'token_type': 'bearer',
           'user': userJson(body['email'] as String),
+        }),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    }
+    if (req.url.path.endsWith('/auth/google') ||
+        req.url.path.endsWith('/auth/apple')) {
+      final provider =
+          req.url.path.endsWith('/auth/google') ? 'GOOGLE' : 'APPLE';
+      return http.Response(
+        jsonEncode({
+          'access_token': 'SOCIAL-$provider',
+          'token_type': 'bearer',
+          'user': {
+            ...userJson('social@$provider.com'),
+            'provider': provider,
+          },
         }),
         200,
         headers: {'content-type': 'application/json'},
@@ -187,10 +229,131 @@ void main() {
       (tester) async {
     final auth = AuthStore();
     final repo = _authRepo();
-    await tester.pumpWidget(_wrap(const AccountPage(), auth, repo));
+    await tester.pumpWidget(_wrap(
+        AccountPage(repository: repo, socialSignIn: _FakeSocial()),
+        auth, repo));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('go_login_button')), findsOneWidget);
+    // Register option is clearly present when logged out.
     expect(find.byKey(const Key('go_register_button')), findsOneWidget);
+    expect(find.text('Register with Email'), findsOneWidget);
+  });
+
+  testWidgets('Logged out shows Google + Apple buttons (both available)',
+      (tester) async {
+    final auth = AuthStore();
+    final repo = _authRepo();
+    await tester.pumpWidget(_wrap(
+        AccountPage(repository: repo, socialSignIn: _FakeSocial()),
+        auth, repo));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('continue_google_button')), findsOneWidget);
+    expect(find.byKey(const Key('continue_apple_button')), findsOneWidget);
+  });
+
+  testWidgets('Apple button hidden on Android (appleAvailable=false)',
+      (tester) async {
+    final auth = AuthStore();
+    final repo = _authRepo();
+    await tester.pumpWidget(_wrap(
+        AccountPage(
+          repository: repo,
+          socialSignIn: _FakeSocial(appleAvailable: false),
+        ),
+        auth, repo));
+    await tester.pumpAndSettle();
+    // Google still shows on Android; Apple does not.
+    expect(find.byKey(const Key('continue_google_button')), findsOneWidget);
+    expect(find.byKey(const Key('continue_apple_button')), findsNothing);
+  });
+
+  testWidgets('Google login success stores the TradeWizz session',
+      (tester) async {
+    final auth = AuthStore();
+    final repo = _authRepo();
+    await tester.pumpWidget(_wrap(
+        AccountPage(repository: repo, socialSignIn: _FakeSocial()),
+        auth, repo));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('continue_google_button')));
+    await tester.pumpAndSettle();
+
+    expect(auth.isLoggedIn, isTrue);
+    expect(auth.token, 'SOCIAL-GOOGLE'); // only the TradeWizz JWT is stored
+    expect(auth.user!.provider, 'GOOGLE');
+  });
+
+  testWidgets('Apple login success stores the TradeWizz session',
+      (tester) async {
+    final auth = AuthStore();
+    final repo = _authRepo();
+    await tester.pumpWidget(_wrap(
+        AccountPage(repository: repo, socialSignIn: _FakeSocial()),
+        auth, repo));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('continue_apple_button')));
+    await tester.pumpAndSettle();
+
+    expect(auth.isLoggedIn, isTrue);
+    expect(auth.token, 'SOCIAL-APPLE');
+    expect(auth.user!.provider, 'APPLE');
+  });
+
+  testWidgets('Cancelling Google sign-in leaves the session untouched',
+      (tester) async {
+    final auth = AuthStore();
+    final repo = _authRepo();
+    await tester.pumpWidget(_wrap(
+        AccountPage(
+          repository: repo,
+          socialSignIn: _FakeSocial(googleToken: null), // user cancels
+        ),
+        auth, repo));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('continue_google_button')));
+    await tester.pumpAndSettle();
+
+    expect(auth.isLoggedIn, isFalse);
+    expect(find.byKey(const Key('go_login_button')), findsOneWidget);
+  });
+
+  testWidgets('Cancelling Apple sign-in leaves the session untouched',
+      (tester) async {
+    final auth = AuthStore();
+    final repo = _authRepo();
+    await tester.pumpWidget(_wrap(
+        AccountPage(
+          repository: repo,
+          socialSignIn: _FakeSocial(appleToken: null), // user cancels
+        ),
+        auth, repo));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('continue_apple_button')));
+    await tester.pumpAndSettle();
+
+    expect(auth.isLoggedIn, isFalse);
+  });
+
+  testWidgets('No social buttons when neither provider is available',
+      (tester) async {
+    final auth = AuthStore();
+    final repo = _authRepo();
+    await tester.pumpWidget(_wrap(
+        AccountPage(
+          repository: repo,
+          socialSignIn:
+              _FakeSocial(googleAvailable: false, appleAvailable: false),
+        ),
+        auth, repo));
+    await tester.pumpAndSettle();
+    // Email login/register still present; no social buttons.
+    expect(find.byKey(const Key('go_login_button')), findsOneWidget);
+    expect(find.byKey(const Key('continue_google_button')), findsNothing);
+    expect(find.byKey(const Key('continue_apple_button')), findsNothing);
   });
 
   testWidgets('Account page: logged in shows email, brokers, logout',
