@@ -6,6 +6,7 @@ models. Replace the `mock_*` calls with the real screening engine later.
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import List, Optional
 
@@ -22,6 +23,7 @@ from .engine import (
     MAX_LIMIT,
     AnalysisEngine,
     default_min_value_traded,
+    yf_symbol,
 )
 from .models import (
     AnalysisResult,
@@ -35,6 +37,8 @@ from .models import (
 
 API_PREFIX = "/v1"
 VERSION = "0.1.0"
+
+logger = logging.getLogger("tradewizz.api")
 
 app = FastAPI(
     title="TradeWiz Backend",
@@ -223,6 +227,12 @@ def analyze(symbol: str, market: Market = Market.IDX) -> AnalysisResult:
     """Full analysis for a single symbol (real engine, mock fallback)."""
     if not symbol.strip():
         raise HTTPException(status_code=400, detail="symbol is required")
+    # Diagnostics: make the symbol+market -> Yahoo-ticker routing observable so
+    # an HKEX request can never be silently mistaken for IDX (e.g. .JK vs .HK).
+    logger.info(
+        "analyze symbol=%s market=%s yahoo=%s",
+        symbol, market.value, yf_symbol(symbol, market),
+    )
     return engine.analyze(symbol, market)
 
 
@@ -336,6 +346,10 @@ def predict_weekly(
     """Weekly prediction for a symbol (real engine, mock fallback)."""
     if not symbol.strip():
         raise HTTPException(status_code=400, detail="symbol is required")
+    logger.info(
+        "predict_weekly symbol=%s market=%s yahoo=%s",
+        symbol, market.value, yf_symbol(symbol, market),
+    )
     return engine.predict_weekly(symbol, market)
 
 

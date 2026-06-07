@@ -76,11 +76,19 @@ class ApiClient {
     );
   }
 
-  /// GET /predict_weekly/{symbol}
-  Future<Sourced<Map<String, dynamic>>> predictWeekly(String symbol) {
+  /// GET /predict_weekly/{symbol}?market=...
+  ///
+  /// The market MUST be sent so the backend builds the correct Yahoo ticker
+  /// (e.g. HKEX 03417 -> 3417.HK, not 03417.JK). Omitting it defaults the
+  /// backend to IDX.
+  Future<Sourced<Map<String, dynamic>>> predictWeekly(
+    String symbol,
+    Market market,
+  ) {
     final s = Uri.encodeComponent(symbol.toUpperCase());
     return _get(
       '/predict_weekly/$s',
+      query: {'market': market.code},
       fallback: () => _mockPredict(symbol),
     );
   }

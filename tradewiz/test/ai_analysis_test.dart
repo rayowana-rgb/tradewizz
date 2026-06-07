@@ -2,7 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tradewiz/models/market.dart';
+import 'package:tradewiz/models/user.dart';
 import 'package:tradewiz/pages/ai_analysis_page.dart';
+import 'package:tradewiz/pages/order_ticket_page.dart';
+import 'package:tradewiz/services/auth_scope.dart';
+import 'package:tradewiz/services/auth_store.dart';
 import 'package:tradewiz/services/watchlist_store.dart';
 
 import 'helpers.dart';
@@ -148,6 +152,54 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.text('Suggested trailing stop'), findsOneWidget);
+  });
+
+  testWidgets(
+      'HKEX analysis -> Buy opens an OrderTicket that preserves market=HKEX',
+      (tester) async {
+    final auth = AuthStore();
+    auth.setSession(
+      'JWT',
+      const UserProfile(
+        id: 1,
+        email: 'x@x.com',
+        createdAt: '2026-06-08T00:00:00Z',
+        updatedAt: '2026-06-08T00:00:00Z',
+      ),
+    );
+    await tester.pumpWidget(
+      AuthScope(
+        store: auth,
+        child: wrapApp(
+          AiAnalysisPage(
+            market: Market.hkex,
+            initialSymbol: '03417',
+            autoRun: true,
+            repository: offlineRepository(),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
+
+    // Buy is offered for HKEX; tap it to open the order ticket.
+    await tester.scrollUntilVisible(
+      find.widgetWithText(FilledButton, 'Buy'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Buy'));
+    await tester.pumpAndSettle();
+
+    // The pushed OrderTicketPage carries HKEX, not the IDX fallback.
+    final ticket = tester.widget<OrderTicketPage>(
+      find.byType(OrderTicketPage),
+    );
+    expect(ticket.market, Market.hkex);
+    expect(ticket.symbol, '03417');
+    expect(find.textContaining('HKEX'), findsWidgets);
   });
 
   testWidgets('shows the Backtest section with stats', (tester) async {

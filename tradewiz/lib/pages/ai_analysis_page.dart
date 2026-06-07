@@ -118,7 +118,7 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
 
     try {
       final analysis = await _repo.analyze(symbol, _market);
-      final prediction = await _repo.predictWeekly(symbol);
+      final prediction = await _repo.predictWeekly(symbol, _market);
       final backtest = await _repo.backtest(symbol, _market);
       if (!mounted) return;
       setState(() {
@@ -211,7 +211,11 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
           const SizedBox(height: 12),
           _BuySellButtons(
             symbol: _result!.symbol,
-            market: _result!.market,
+            // Use the user-selected market (single source of truth), not the
+            // market parsed from the response. Response parsing falls back to
+            // IDX when the field is missing, which would mis-route an HKEX
+            // order (e.g. 03417 -> 03417.JK). _market is what the user chose.
+            market: _market,
             repository: _repo,
           ),
           if (_prediction != null) ...[

@@ -24,6 +24,8 @@ class _FakeIbkr {
 
   final List<String> calls = [];
   final List<String?> bearers = [];
+  final List<String?> previewMarkets = [];
+  final List<String?> placeMarkets = [];
   String? lastPlaceToken;
 
   /// HTTP status to return from /place (e.g. 409 read-only, 400 funds).
@@ -40,6 +42,7 @@ class _FakeIbkr {
         : jsonDecode(req.body) as Map<String, dynamic>;
 
     if (req.url.path.endsWith('/brokers/ibkr/order/preview')) {
+      previewMarkets.add(body['market'] as String?);
       return http.Response(
         jsonEncode({
           'symbol': body['symbol'],
@@ -64,6 +67,7 @@ class _FakeIbkr {
     }
     if (req.url.path.endsWith('/brokers/ibkr/order/place')) {
       lastPlaceToken = body['confirmation_token'] as String?;
+      placeMarkets.add(body['market'] as String?);
       if (placeStatus != 200) {
         return http.Response(
           jsonEncode({'detail': placeDetail}),
@@ -166,6 +170,40 @@ void main() {
     ]);
     expect(broker.lastPlaceToken, 'TOKEN-123');
     expect(broker.bearers.last, 'Bearer JWT-TEST');
+  });
+
+  testWidgets('HKEX order sends market=HKEX in preview AND place payloads',
+      (tester) async {
+    final broker = _FakeIbkr();
+    await tester.pumpWidget(_wrap(OrderTicketPage(
+      symbol: '03417',
+      market: Market.hkex,
+      side: OrderSide.buy,
+      repository: _repo(broker),
+    )));
+    await _fillAndPreview(tester);
+    await tester.tap(find.byKey(const Key('confirm_place_button')));
+    await tester.pumpAndSettle();
+
+    expect(broker.previewMarkets, ['HKEX']);
+    expect(broker.placeMarkets, ['HKEX']);
+    // The symbol is carried verbatim (no .JK ever appended client-side).
+    expect(broker.calls, [
+      'POST /v1/brokers/ibkr/order/preview',
+      'POST /v1/brokers/ibkr/order/place',
+    ]);
+  });
+
+  testWidgets('IDX order sends market=IDX in preview payload', (tester) async {
+    final broker = _FakeIbkr();
+    await tester.pumpWidget(_wrap(OrderTicketPage(
+      symbol: 'BBCA',
+      market: Market.idx,
+      side: OrderSide.buy,
+      repository: _repo(broker),
+    )));
+    await _fillAndPreview(tester);
+    expect(broker.previewMarkets, ['IDX']);
   });
 
   testWidgets('PAPER env chip is shown on the preview', (tester) async {

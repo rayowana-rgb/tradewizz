@@ -65,8 +65,12 @@ class StockRepository {
   }
 
   /// Weekly prediction for a symbol. Backs `/predict_weekly/{symbol}`.
-  Future<Sourced<WeeklyPrediction>> predictWeekly(String symbol) async {
-    final res = await _client.predictWeekly(symbol);
+  /// Market is required so the backend builds the correct Yahoo ticker.
+  Future<Sourced<WeeklyPrediction>> predictWeekly(
+    String symbol,
+    Market market,
+  ) async {
+    final res = await _client.predictWeekly(symbol, market);
     return Sourced(WeeklyPrediction.fromJson(res.data), res.source);
   }
 

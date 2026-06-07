@@ -79,7 +79,7 @@ void main() {
   });
 
   test('predictWeekly() returns LIVE data', () async {
-    final res = await repo.predictWeekly('0700');
+    final res = await repo.predictWeekly('0700', Market.hkex);
     expect(res.source, DataSource.live);
     expect(res.data.symbol, '0700');
     expect(res.data.direction, anyOf('UP', 'DOWN', 'FLAT'));

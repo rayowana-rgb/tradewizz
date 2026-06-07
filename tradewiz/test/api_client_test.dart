@@ -135,7 +135,7 @@ void main() {
     final client = ApiClient(config: _config(), httpClient: mock);
 
     await expectLater(
-      () => client.predictWeekly('ABCD'),
+      () => client.predictWeekly('ABCD', Market.idx),
       throwsA(
         isA<ApiException>()
             .having((e) => e.statusCode, 'statusCode', 500)
