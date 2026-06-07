@@ -312,8 +312,8 @@ class _BuySellButtons extends StatelessWidget {
   final Market market;
   final StockRepository repository;
 
-  // Mirrors the backend symbol_map: only HKEX is tradable via Moomoo today.
-  bool get _tradable => market == Market.hkex;
+  // Single source of truth on the Market enum (mirrors backend symbol_map).
+  bool get _tradable => market.tradableViaMoomoo;
 
   void _open(BuildContext context, OrderSide side) {
     Navigator.of(context).push(
