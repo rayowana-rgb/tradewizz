@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import itertools
 import logging
 import time
@@ -22,6 +23,46 @@ from typing import Dict, List, Optional
 from .ibkr_config import IBKRConfig
 
 logger = logging.getLogger("tradewizz.ibkr")
+
+
+def _ensure_event_loop() -> asyncio.AbstractEventLoop:
+    """Guarantee the current thread has an asyncio event loop.
+
+    ib_insync (via eventkit) calls ``asyncio.get_event_loop()`` both at import
+    time and during use. Under FastAPI a sync route runs in an AnyIO worker
+    thread that has NO event loop, so get_event_loop() raises::
+
+        RuntimeError: There is no current event loop in thread
+                      'AnyIO worker thread'
+
+    which previously surfaced as an Internal Server Error on order/place.
+    Creating and setting a fresh loop for the worker thread makes ib_insync
+    import and operate normally. Safe to call repeatedly (idempotent per
+    thread); the main-thread path keeps its existing loop.
+    """
+    try:
+        return asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        logger.debug(
+            "created asyncio event loop for thread without one "
+            "(ib_insync requires it)"
+        )
+        return loop
+
+
+def _import_ib_insync():
+    """Import ib_insync after ensuring an event loop exists in this thread.
+
+    Both the import and the subsequent IB() usage need a current event loop;
+    ensure one first so worker-thread requests never hit
+    'no current event loop'.
+    """
+    _ensure_event_loop()
+    import ib_insync  # noqa: F401
+
+    return ib_insync
 
 
 class IBKRError(Exception):
@@ -138,7 +179,7 @@ class IBKRClient:
         'client disconnected before version was sent'.)
         """
         try:
-            from ib_insync import IB
+            IB = _import_ib_insync().IB
         except Exception as exc:  # noqa: BLE001
             raise IBKRError(f"ib_insync unavailable: {exc}") from exc
         ib = IB()
@@ -177,7 +218,7 @@ class IBKRClient:
         API handshake is exactly what produced the 502 on the order path.
         """
         try:
-            from ib_insync import IB
+            IB = _import_ib_insync().IB
         except Exception as exc:  # noqa: BLE001
             raise IBKRError(f"ib_insync unavailable: {exc}") from exc
         ib = IB()
@@ -299,7 +340,17 @@ class IBKRClient:
 
     def place_order(self, spec: dict, side: str, quantity: float,
                     order_type: str, price: Optional[float]) -> dict:
-        from ib_insync import LimitOrder, MarketOrder, Stock
+        # Ensure an event loop exists BEFORE importing ib_insync: under FastAPI
+        # this runs in an AnyIO worker thread with no loop, and the bare
+        # `from ib_insync import ...` triggers eventkit's get_event_loop(),
+        # raising 'no current event loop' -> Internal Server Error.
+        try:
+            ib_insync = _import_ib_insync()
+        except Exception as exc:  # noqa: BLE001
+            raise IBKRError(f"ib_insync unavailable: {exc}") from exc
+        LimitOrder = ib_insync.LimitOrder
+        MarketOrder = ib_insync.MarketOrder
+        Stock = ib_insync.Stock
 
         cfg = self._config
         # Full per-attempt context so any failure is fully diagnosable from the

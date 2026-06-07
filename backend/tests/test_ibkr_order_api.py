@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 from app import main
 from app.brokers import router as brokers_router
 from app.brokers.ibkr_client import (
+    IBKRClient,
     IBKRClientIdInUseError,
     IBKRConnectionError,
     MockIBKRClient,
@@ -175,6 +176,84 @@ def test_place_client_id_conflict_returns_clear_message(client):
                                 confirmation_token=pv["confirmation_token"]))
     assert r.status_code == 409
     assert "clientId is already in use" in r.json()["detail"]
+
+
+def _loop_aware_fake_ib_insync(monkeypatch):
+    """Install a fake ib_insync whose IB() and order/contract factories call
+    asyncio.get_event_loop() — exactly like eventkit. Used with a REAL
+    IBKRClient so the place path actually imports ib_insync inside the
+    TestClient worker thread (the FastAPI AnyIO path that raised
+    'no current event loop')."""
+    import asyncio
+    import sys
+    import types
+
+    class _IB:
+        def __init__(self):
+            asyncio.get_event_loop()
+            self._c = False
+
+        def connect(self, host, port, clientId, timeout, readonly):
+            asyncio.get_event_loop()
+            self._c = True
+
+        def isConnected(self):
+            return self._c
+
+        def qualifyContracts(self, contract):
+            return [contract]
+
+        def placeOrder(self, contract, order):
+            class _T:
+                class orderStatus:
+                    status = "PendingSubmit"
+
+                class order:
+                    orderId = 4242
+
+                log = []
+            return _T()
+
+        def sleep(self, *_a):
+            pass
+
+        def disconnect(self):
+            self._c = False
+
+    def _factory(*_a, **_k):
+        asyncio.get_event_loop()
+        return {}
+
+    mod = types.ModuleType("ib_insync")
+    mod.IB = _IB
+    mod.Stock = _factory
+    mod.LimitOrder = _factory
+    mod.MarketOrder = _factory
+    monkeypatch.setitem(sys.modules, "ib_insync", mod)
+
+
+def test_place_real_client_in_worker_thread_returns_json(client, monkeypatch):
+    """Regression: the place endpoint runs the sync handler in an AnyIO worker
+    thread. With a REAL IBKRClient importing ib_insync there, the old code
+    raised 'RuntimeError: no current event loop' -> Internal Server Error.
+    It must now return clean 200 JSON."""
+    H = _auth_header(client)
+    _loop_aware_fake_ib_insync(monkeypatch)
+    brokers_router.set_ibkr_service(
+        IBKRService(config=IBKRConfig(trading_env="paper"),
+                    client=IBKRClient(IBKRConfig()))
+    )
+    pv = client.post("/v1/brokers/ibkr/order/preview", headers=H,
+                     json=_order(side="BUY", quantity=10)).json()
+    r = client.post("/v1/brokers/ibkr/order/place", headers=H,
+                    json=_order(side="BUY", quantity=10,
+                                confirmation_token=pv["confirmation_token"]))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # JSON, not Internal Server Error.
+    assert body["status"] == "PendingSubmit"
+    assert body["order_id"]
+    assert body["message"] == "Order submitted."
 
 
 def test_place_unsupported_hkex_symbol_fails_safely(client):

@@ -13,6 +13,8 @@ from app.brokers.ibkr_client import (
     IBKRReadOnlyError,
     MockIBKRClient,
     _classify_connect_error,
+    _ensure_event_loop,
+    _import_ib_insync,
 )
 from app.brokers.ibkr_config import IBKRConfig
 from app.brokers.ibkr_service import IBKROrderValidationError, IBKRService
@@ -429,3 +431,102 @@ def test_place_order_connect_failure_raises_connection_error(monkeypatch):
             "BUY", 100, "LIMIT", 320.0,
         )
     assert "timed out" in str(ei.value) or "refused" in str(ei.value)
+
+
+# --- event-loop in worker thread (the Internal Server Error root cause) -----
+# ib_insync/eventkit call asyncio.get_event_loop() at import + use. In a
+# FastAPI AnyIO worker thread there is no loop, so it raised
+# 'RuntimeError: There is no current event loop'. _ensure_event_loop /
+# _import_ib_insync must create one so order/place returns JSON, not a 500.
+
+class _LoopAwareIB(_FakeIB):
+    """Like _FakeIB but every entry point touches asyncio.get_event_loop(),
+    faithfully reproducing eventkit needing a current loop in this thread."""
+
+    def __init__(self):
+        import asyncio
+        asyncio.get_event_loop()  # raises if no loop in this thread
+        super().__init__()
+
+    def connect(self, *a, **k):
+        import asyncio
+        asyncio.get_event_loop()
+        super().connect(*a, **k)
+
+
+def _loop_aware_ib_insync(monkeypatch):
+    import asyncio
+    import sys
+    import types
+
+    def _factory(*_a, **_k):
+        asyncio.get_event_loop()  # eventkit-style loop requirement
+        return {}
+
+    mod = types.ModuleType("ib_insync")
+    mod.IB = _LoopAwareIB
+    mod.Stock = _factory
+    mod.LimitOrder = _factory
+    mod.MarketOrder = _factory
+    monkeypatch.setitem(sys.modules, "ib_insync", mod)
+
+
+def _run_in_loopless_thread(fn):
+    """Run fn() in a fresh thread that has NO event loop (like an AnyIO worker
+    thread), capturing the result or any exception that escapes."""
+    import asyncio
+    import threading
+
+    box = {}
+
+    def _target():
+        # A brand-new thread has no current loop; assert that precondition so
+        # the test genuinely exercises the worker-thread path.
+        try:
+            asyncio.get_event_loop()
+            box["had_loop"] = True
+        except RuntimeError:
+            box["had_loop"] = False
+        try:
+            box["result"] = fn()
+        except BaseException as exc:  # noqa: BLE001
+            box["error"] = exc
+
+    t = threading.Thread(target=_target)
+    t.start()
+    t.join()
+    return box
+
+
+def test_ensure_event_loop_creates_loop_in_loopless_thread():
+    box = _run_in_loopless_thread(lambda: type(_ensure_event_loop()).__name__)
+    assert box.get("had_loop") is False  # genuinely no loop to start with
+    assert "error" not in box, box.get("error")
+    assert "EventLoop" in box["result"] or box["result"].endswith("Loop")
+
+
+def test_import_ib_insync_sets_loop_then_imports(monkeypatch):
+    _loop_aware_ib_insync(monkeypatch)
+    box = _run_in_loopless_thread(lambda: _import_ib_insync().IB().isConnected())
+    # Importing + instantiating IB (which calls get_event_loop) must not raise
+    # in a loopless thread because _import_ib_insync set a loop first.
+    assert "error" not in box, box.get("error")
+    assert box["result"] is False
+
+
+def test_place_order_in_loopless_worker_thread_no_runtime_error(monkeypatch):
+    """Regression: place_order must NOT raise 'no current event loop' when run
+    in a worker thread without a loop (the FastAPI AnyIO path)."""
+    _LoopAwareIB.connects = []
+    _loop_aware_ib_insync(monkeypatch)
+    client = IBKRClient(IBKRConfig(host="127.0.0.1", port=7497, client_id=21))
+
+    box = _run_in_loopless_thread(lambda: client.place_order(
+        {"symbol": "700", "exchange": "SEHK", "currency": "HKD"},
+        "BUY", 100, "LIMIT", 320.0,
+    ))
+    assert box.get("had_loop") is False
+    # No RuntimeError (or anything) escaped, and we got a real order result.
+    assert "error" not in box, box.get("error")
+    assert box["result"]["status"] == "SUBMITTED"
+    assert len(_LoopAwareIB.connects) == 1
