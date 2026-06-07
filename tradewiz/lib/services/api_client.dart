@@ -260,6 +260,20 @@ class ApiClient {
     return ['Market Status: CLOSED', 'Last Market Close: ${d(wib)}'];
   }
 
+  /// Currency symbol for mock-fallback highlight formatting, mirroring the
+  /// backend (IDX->Rp, HKEX->HK\$, KOSPI/KOSDAQ->won).
+  String _mockCurrencySymbol(Market market) {
+    switch (market) {
+      case Market.hkex:
+        return 'HK\$';
+      case Market.kospi:
+      case Market.kosdaq:
+        return '\u20a9'; // won symbol
+      case Market.idx:
+        return 'Rp';
+    }
+  }
+
   Map<String, dynamic> _mockAnalyze(String symbol, Market market) {
     final score = _seed(symbol) % 100;
     final signal = score > 66
@@ -267,6 +281,7 @@ class ApiClient {
         : score > 33
             ? 'HOLD'
             : 'SELL';
+    final cur = _mockCurrencySymbol(market);
     return {
       'symbol': symbol.toUpperCase(),
       'market': market.code,
@@ -276,14 +291,14 @@ class ApiClient {
           '$symbol shows a $signal bias on ${market.code}. This is placeholder '
               'output; the migrated screening engine will populate real metrics.',
       // Investor-friendly highlights (mirror the live backend shape): two
-      // market-status lines, then the metrics.
+      // market-status lines, then the metrics. Currency-aware per market.
       'highlights': [
         ..._mockMarketStatusLines(),
-        'Current Price: Rp${(100 + score).toStringAsFixed(2)}',
-        '20-Day Average Price: Rp${(95 + score).toStringAsFixed(2)}',
+        'Current Price: $cur${(100 + score).toStringAsFixed(2)}',
+        '20-Day Average Price: $cur${(95 + score).toStringAsFixed(2)}',
         "Today's Volume: ${(5 + score % 6).toStringAsFixed(1)} Million",
         '20-Day Average Volume: ${(4 + score % 5).toStringAsFixed(1)} Million',
-        'Value Traded Today: Rp${(1 + score % 9) / 10 + 1}.00 Billion',
+        'Value Traded Today: $cur${(1 + score % 9) / 10 + 1}.00 Billion',
         'Volume Ratio: ${(0.8 + (score % 20) / 10).toStringAsFixed(2)}x',
         'ATR: ${(2 + score % 8).toStringAsFixed(2)}%',
       ],
