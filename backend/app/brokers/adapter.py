@@ -69,32 +69,42 @@ class MoomooAdapter:
 
 
 class IBKRAdapter:
-    """Stub IBKR adapter — architecture only, NOT live.
+    """Adapts the IBKR service (ib_insync / IB Gateway) to BrokerAdapter.
 
-    Every method raises BrokerNotImplemented so no real IBKR call is made.
+    Paper by default. A down IB Gateway does NOT hang (socket pre-flight) and
+    surfaces as 'disconnected' rather than raising. Order safety (preview +
+    confirmation token) mirrors Moomoo.
     """
 
     broker_type = BrokerType.IBKR
 
-    _MSG = "IBKR integration is not implemented yet."
+    def __init__(self, service=None):
+        if service is None:
+            from .ibkr_service import IBKRService
+
+            service = IBKRService()
+        self._service = service
+
+    def status(self):
+        return self._service.status()
 
     def account(self):
-        raise BrokerNotImplemented(self._MSG)
+        return self._service.account()
 
     def positions(self):
-        raise BrokerNotImplemented(self._MSG)
+        return self._service.positions()
 
     def orders(self):
-        raise BrokerNotImplemented(self._MSG)
+        return self._service.orders()
 
     def preview_order(self, **kwargs):
-        raise BrokerNotImplemented(self._MSG)
+        return self._service.preview(**kwargs)
 
     def place_order(self, **kwargs):
-        raise BrokerNotImplemented(self._MSG)
+        return self._service.place(**kwargs)
 
     def cancel_order(self, order_id: str):
-        raise BrokerNotImplemented(self._MSG)
+        return self._service.cancel(order_id)
 
 
 def make_adapter(broker_type: BrokerType) -> BrokerAdapter:

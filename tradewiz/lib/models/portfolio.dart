@@ -66,17 +66,32 @@ class PortfolioPosition {
       );
 }
 
+/// A non-fatal per-broker error (e.g. gateway down) from the portfolio.
+class PortfolioBrokerError {
+  const PortfolioBrokerError({required this.broker, required this.message});
+  final String broker;
+  final String message;
+
+  factory PortfolioBrokerError.fromJson(Map<String, dynamic> j) =>
+      PortfolioBrokerError(
+        broker: j['broker'] as String? ?? '',
+        message: j['message'] as String? ?? '',
+      );
+}
+
 /// Unified portfolio: summary + positions (+ broker list / errors).
 class UnifiedPortfolio {
   const UnifiedPortfolio({
     required this.summary,
     this.positions = const [],
     this.brokers = const [],
+    this.errors = const [],
   });
 
   final PortfolioSummary summary;
   final List<PortfolioPosition> positions;
   final List<String> brokers;
+  final List<PortfolioBrokerError> errors;
 
   factory UnifiedPortfolio.fromJson(Map<String, dynamic> j) => UnifiedPortfolio(
         summary: PortfolioSummary.fromJson(
@@ -86,6 +101,10 @@ class UnifiedPortfolio {
             .toList(),
         brokers: (j['brokers'] as List<dynamic>? ?? [])
             .map((e) => e.toString())
+            .toList(),
+        errors: (j['errors'] as List<dynamic>? ?? [])
+            .map((e) =>
+                PortfolioBrokerError.fromJson(e as Map<String, dynamic>))
             .toList(),
       );
 }

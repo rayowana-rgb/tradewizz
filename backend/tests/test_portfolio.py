@@ -147,3 +147,52 @@ def test_api_empty_then_with_moomoo(client):
     assert len(full["positions"]) == 1
     assert full["positions"][0]["broker"] == "MOOMOO"
     assert "MOOMOO" in full["brokers"]
+
+
+# --- portfolio aggregates Moomoo + IBKR ------------------------------------
+
+def _ibkr_adapter(connected=True):
+    from app.brokers.adapter import IBKRAdapter
+    from app.brokers.ibkr_client import MockIBKRClient
+    from app.brokers.ibkr_config import IBKRConfig
+    from app.brokers.ibkr_service import IBKRService
+    return IBKRAdapter(service=IBKRService(
+        config=IBKRConfig(trading_env="paper"),
+        client=MockIBKRClient(connected=connected)))
+
+
+def _both_factory(ibkr_up=True):
+    def factory(bt):
+        if bt == BrokerType.MOOMOO:
+            return _moomoo_adapter()
+        return _ibkr_adapter(connected=ibkr_up)
+    return factory
+
+
+def test_portfolio_aggregates_moomoo_and_ibkr():
+    conns = _conns()
+    conns.connect(1, BrokerType.MOOMOO)
+    conns.connect(1, BrokerType.IBKR)
+    svc = PortfolioService(connections=conns,
+                           adapter_factory=_both_factory(ibkr_up=True))
+    p = svc.for_user(1)
+    assert set(p.brokers) == {"MOOMOO", "IBKR"}
+    # 150k Moomoo + 75k IBKR.
+    assert p.summary.total_equity == 225000.0
+    brokers_in_positions = {pos.broker for pos in p.positions}
+    assert brokers_in_positions == {"MOOMOO", "IBKR"}
+    assert not p.errors
+
+
+def test_ibkr_gateway_down_does_not_break_portfolio():
+    conns = _conns()
+    conns.connect(1, BrokerType.MOOMOO)
+    conns.connect(1, BrokerType.IBKR)
+    svc = PortfolioService(connections=conns,
+                           adapter_factory=_both_factory(ibkr_up=False))
+    p = svc.for_user(1)
+    # Moomoo still aggregated.
+    assert p.summary.total_equity == 150000.0
+    assert any(pos.broker == "MOOMOO" for pos in p.positions)
+    # IBKR down -> recorded as a non-fatal error.
+    assert any(e.broker == "IBKR" for e in p.errors)

@@ -13,8 +13,8 @@ class BrokerType(str, Enum):
     IBKR = "IBKR"
 
 
-# Brokers that are implemented (can actually connect/trade) vs stubs.
-IMPLEMENTED_BROKERS = {BrokerType.MOOMOO}
+# Brokers that are implemented (can actually connect/trade).
+IMPLEMENTED_BROKERS = {BrokerType.MOOMOO, BrokerType.IBKR}
 
 
 class BrokerConnection(BaseModel):

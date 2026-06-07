@@ -109,6 +109,7 @@ class _SummaryTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = portfolio?.summary ?? const PortfolioSummary();
     final brokers = portfolio?.brokers ?? const <String>[];
+    final errors = portfolio?.errors ?? const <PortfolioBrokerError>[];
     Widget tile(String label, double value, {Color? color, Key? key}) => Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -154,6 +155,27 @@ class _SummaryTab extends StatelessWidget {
               : 'Aggregated from: ${brokers.join(', ')}',
           style: const TextStyle(color: Colors.grey, fontSize: 12),
         ),
+        if (errors.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          for (final e in errors)
+            Card(
+              key: Key('portfolio_error_${e.broker}'),
+              color: AppColors.down.withValues(alpha: 0.06),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(children: [
+                  const Icon(Icons.warning_amber_rounded,
+                      size: 18, color: AppColors.down),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text('${e.broker}: ${e.message}',
+                        style: const TextStyle(
+                            color: AppColors.down, fontSize: 12)),
+                  ),
+                ]),
+              ),
+            ),
+        ],
       ],
     );
   }

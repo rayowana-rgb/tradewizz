@@ -53,6 +53,15 @@ class PortfolioService:
                         getattr(acct, "total_assets", 0) or 0
                     )
                     contributed = True
+                else:
+                    # Broker is connected as an account but its gateway is down
+                    # (e.g. IB Gateway / OpenD not running). Surface it so the
+                    # rest of the portfolio still returns.
+                    errors.append(BrokerError(
+                        broker=broker,
+                        message=f"{broker} is not reachable; "
+                        "its data is excluded.",
+                    ))
             except Exception as exc:  # noqa: BLE001 - non-fatal per broker
                 errors.append(BrokerError(broker=broker, message=str(exc)))
             # Positions.

@@ -6,8 +6,8 @@ extension BrokerTypeX on BrokerType {
   String get label =>
       this == BrokerType.moomoo ? 'Moomoo' : 'Interactive Brokers';
 
-  /// Only Moomoo is implemented today; IBKR is an architecture stub.
-  bool get isAvailable => this == BrokerType.moomoo;
+  /// Both Moomoo and IBKR are implemented (IBKR via IB Gateway / TWS).
+  bool get isAvailable => true;
 
   static BrokerType fromWire(String? w) =>
       (w?.toUpperCase() == 'IBKR') ? BrokerType.ibkr : BrokerType.moomoo;

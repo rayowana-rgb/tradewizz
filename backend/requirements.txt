@@ -10,6 +10,7 @@ openpyxl==3.1.5
 scikit-learn==1.6.1
 joblib==1.4.2
 moomoo-api==10.7.6708
+ib_insync==0.9.86
 pyjwt==2.10.1
 bcrypt==4.2.1
 email-validator==2.2.0

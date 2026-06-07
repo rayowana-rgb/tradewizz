@@ -28,14 +28,11 @@ class _FakeBrokers {
     if (req.method == 'POST' && p.endsWith('/brokers/connect')) {
       final body = jsonDecode(req.body) as Map<String, dynamic>;
       final type = body['broker_type'] as String;
-      if (type == 'IBKR') {
-        return _json({'detail': 'IBKR is not available yet.'}, 400);
-      }
       final c = {
         'id': _next++,
         'user_id': 1,
         'broker_type': type,
-        'display_name': 'Moomoo',
+        'display_name': type == 'IBKR' ? 'Interactive Brokers' : 'Moomoo',
         'is_active': true,
         'created_at': '2026-06-07T00:00:00Z',
       };
@@ -87,11 +84,22 @@ void main() {
 
     expect(find.text('Moomoo'), findsOneWidget);
     expect(find.text('Interactive Brokers'), findsOneWidget);
-    // IBKR connect button is disabled (stub).
+    // IBKR is now implemented -> its Connect button is enabled.
     final ibkrConnect = tester.widget<FilledButton>(
         find.byKey(const Key('connect_IBKR')));
-    expect(ibkrConnect.onPressed, isNull);
-    expect(find.text('Coming soon'), findsOneWidget);
+    expect(ibkrConnect.onPressed, isNotNull);
+    expect(find.text('Coming soon'), findsNothing);
+  });
+
+  testWidgets('connect IBKR flow', (tester) async {
+    final broker = _FakeBrokers();
+    final repo = _repo(broker);
+    await tester.pumpWidget(_wrap(BrokerConnectionsPage(repository: repo), repo));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('connect_IBKR')));
+    await tester.pumpAndSettle();
+    expect(broker.conns.any((c) => c['broker_type'] == 'IBKR'), isTrue);
+    expect(find.byKey(const Key('disconnect_IBKR')), findsOneWidget);
   });
 
   testWidgets('connect Moomoo then disconnect', (tester) async {
@@ -116,7 +124,7 @@ void main() {
 
   test('BrokerType availability + wire mapping', () {
     expect(BrokerType.moomoo.isAvailable, isTrue);
-    expect(BrokerType.ibkr.isAvailable, isFalse);
+    expect(BrokerType.ibkr.isAvailable, isTrue);
     expect(BrokerType.moomoo.wire, 'MOOMOO');
     expect(BrokerType.ibkr.wire, 'IBKR');
     expect(BrokerTypeX.fromWire('IBKR'), BrokerType.ibkr);

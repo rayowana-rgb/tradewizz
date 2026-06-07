@@ -41,12 +41,13 @@ def test_connect_custom_display_name():
     assert conn.display_name == "My Paper Acct"
 
 
-def test_connect_ibkr_not_available_yet():
+def test_connect_ibkr_is_enabled():
+    # IBKR is now an implemented broker -> connecting succeeds.
     svc = _svc()
-    with pytest.raises(ConnectionError_) as ei:
-        svc.connect(1, BrokerType.IBKR)
-    assert ei.value.status_code == 400
-    assert "not available" in ei.value.message
+    conn = svc.connect(1, BrokerType.IBKR)
+    assert conn.broker_type == BrokerType.IBKR
+    assert conn.is_active is True
+    assert svc.count_active(1) == 1
 
 
 def test_duplicate_active_connection_rejected():
@@ -117,15 +118,17 @@ def test_moomoo_adapter_delegates_to_service():
     assert a.cancel_order("X") == "CANCEL:X"
 
 
-def test_ibkr_adapter_is_stub_and_not_live():
-    a = IBKRAdapter()
-    for call in (
-        a.account, a.positions, a.orders,
-        lambda: a.preview_order(), lambda: a.place_order(),
-        lambda: a.cancel_order("X"),
-    ):
-        with pytest.raises(BrokerNotImplemented):
-            call()
+def test_ibkr_adapter_is_live_and_delegates():
+    # IBKR adapter now delegates to a service (no longer a NotImplemented stub).
+    from app.brokers.ibkr_client import MockIBKRClient
+    from app.brokers.ibkr_config import IBKRConfig
+    from app.brokers.ibkr_service import IBKRService
+
+    a = IBKRAdapter(service=IBKRService(
+        config=IBKRConfig(trading_env="paper"), client=MockIBKRClient()))
+    assert a.account().connected is True
+    assert a.positions().positions  # has mock positions
+    assert a.status().trading_env == "PAPER"
 
 
 # --- API (auth-scoped) ------------------------------------------------------
@@ -160,9 +163,11 @@ def test_api_list_connect_disconnect(client):
     assert d.status_code == 200 and d.json()["disconnected"] is True
 
 
-def test_api_connect_ibkr_400(client):
+def test_api_connect_ibkr_enabled(client):
+    # IBKR connect now succeeds (broker is implemented).
     r = client.post("/v1/brokers/connect", json={"broker_type": "IBKR"})
-    assert r.status_code == 400
+    assert r.status_code == 200
+    assert r.json()["broker_type"] == "IBKR"
 
 
 def test_api_requires_auth():
