@@ -186,4 +186,15 @@ class StockRepository {
     final j = await _client.authGet('/portfolio', bearer: token);
     return UnifiedPortfolio.fromJson(j);
   }
+
+  /// Portfolio performance analytics. Backs `GET /v1/portfolio/performance`.
+  Future<PortfolioPerformance> portfolioPerformance(String token) async {
+    final j = await _client.authGet('/portfolio/performance', bearer: token);
+    return PortfolioPerformance.fromJson(j);
+  }
+
+  /// Capture a portfolio snapshot. Backs `POST /v1/portfolio/snapshot`.
+  Future<void> capturePortfolioSnapshot(String token) async {
+    await _client.authPost('/portfolio/snapshot', const {}, bearer: token);
+  }
 }

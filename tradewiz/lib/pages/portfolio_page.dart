@@ -22,6 +22,7 @@ class _PortfolioPageState extends State<PortfolioPage> {
   bool _loading = false;
   String? _error;
   UnifiedPortfolio? _portfolio;
+  PortfolioPerformance? _performance;
 
   StockRepository get _repo => widget.repository ?? RepositoryScope.of(context);
   String? get _token => AuthScope.of(context).token;
@@ -43,8 +44,12 @@ class _PortfolioPageState extends State<PortfolioPage> {
     });
     try {
       final p = await _repo.portfolio(token);
+      final perf = await _repo.portfolioPerformance(token);
       if (!mounted) return;
-      setState(() => _portfolio = p);
+      setState(() {
+        _portfolio = p;
+        _performance = perf;
+      });
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } finally {
@@ -69,14 +74,16 @@ class _PortfolioPageState extends State<PortfolioPage> {
     }
 
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Column(
         children: [
           const TabBar(
+            isScrollable: true,
             tabs: [
               Tab(text: 'Summary'),
               Tab(text: 'Positions'),
               Tab(text: 'Orders'),
+              Tab(text: 'Performance'),
             ],
           ),
           Expanded(
@@ -91,6 +98,7 @@ class _PortfolioPageState extends State<PortfolioPage> {
                             _SummaryTab(portfolio: _portfolio),
                             _PositionsTab(portfolio: _portfolio),
                             const _OrdersTab(),
+                            _PerformanceTab(performance: _performance),
                           ],
                         ),
                       ),
@@ -262,6 +270,167 @@ class _OrdersTab extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _PerformanceTab extends StatelessWidget {
+  const _PerformanceTab({required this.performance});
+  final PortfolioPerformance? performance;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = performance ?? const PortfolioPerformance();
+    Color pnlColor(double v) => v >= 0 ? AppColors.up : AppColors.down;
+    String money(double v) => '${v >= 0 ? '+' : ''}${v.toStringAsFixed(2)}';
+
+    Widget metric(String label, double v, {String? key, bool pct = false}) =>
+        Expanded(
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                  const SizedBox(height: 4),
+                  Text(
+                    pct ? '${money(v)}%' : money(v),
+                    key: key == null ? null : Key(key),
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                        color: pnlColor(v)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      children: [
+        Row(children: [
+          metric('Total P/L', p.totalPnl, key: 'perf_total_pnl'),
+          const SizedBox(width: 10),
+          metric('Daily P/L', p.dailyPnl, key: 'perf_daily_pnl'),
+        ]),
+        const SizedBox(height: 10),
+        Row(children: [
+          metric('Floating P/L', p.floatingPnl, key: 'perf_floating_pnl'),
+          const SizedBox(width: 10),
+          metric('Realized P/L', p.realizedPnl, key: 'perf_realized_pnl'),
+        ]),
+        for (final note in p.notes)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(note,
+                key: note.startsWith('Realized')
+                    ? const Key('realized_note')
+                    : null,
+                style: const TextStyle(color: Colors.grey, fontSize: 11)),
+          ),
+
+        const SizedBox(height: 16),
+        const _SectionLabel('Broker Breakdown'),
+        if (p.brokerBreakdown.isEmpty)
+          const _Muted('No broker data.')
+        else
+          for (final b in p.brokerBreakdown)
+            Card(
+              key: Key('broker_bd_${b.broker}'),
+              child: ListTile(
+                title: Text(b.broker,
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: Text(
+                    'Value ${b.marketValue.toStringAsFixed(2)} · '
+                    'Floating ${money(b.floatingPnl)}'),
+              ),
+            ),
+
+        const SizedBox(height: 16),
+        const _SectionLabel('Top Winners'),
+        if (p.topWinners.isEmpty)
+          const _Muted('No winners yet.')
+        else
+          for (final w in p.topWinners)
+            _PnlRow(item: w, up: true),
+
+        const SizedBox(height: 16),
+        const _SectionLabel('Top Losers'),
+        if (p.topLosers.isEmpty)
+          const _Muted('No losers yet.')
+        else
+          for (final l in p.topLosers)
+            _PnlRow(item: l, up: false),
+
+        const SizedBox(height: 16),
+        const _SectionLabel('Equity Curve'),
+        if (!p.hasHistory)
+          const _Muted('No performance history yet.')
+        else
+          Card(
+            child: Column(
+              children: [
+                for (final pt in p.equityCurve)
+                  ListTile(
+                    dense: true,
+                    title: Text(pt.timestamp.split('T').first),
+                    trailing: Text(pt.totalEquity.toStringAsFixed(2),
+                        style:
+                            const TextStyle(fontWeight: FontWeight.w600)),
+                  ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel(this.text);
+  final String text;
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text(text,
+            style:
+                const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+      );
+}
+
+class _Muted extends StatelessWidget {
+  const _Muted(this.text);
+  final String text;
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Text(text, style: const TextStyle(color: Colors.grey)),
+      );
+}
+
+class _PnlRow extends StatelessWidget {
+  const _PnlRow({required this.item, required this.up});
+  final PositionPnL item;
+  final bool up;
+  @override
+  Widget build(BuildContext context) {
+    final color = up ? AppColors.up : AppColors.down;
+    return Card(
+      child: ListTile(
+        dense: true,
+        title: Text('${item.symbol}  ·  ${item.broker}',
+            style: const TextStyle(fontWeight: FontWeight.w600)),
+        trailing: Text(
+          '${item.unrealizedPnl >= 0 ? '+' : ''}'
+          '${item.unrealizedPnl.toStringAsFixed(2)}  '
+          '(${item.unrealizedPnlPercent.toStringAsFixed(2)}%)',
+          style: TextStyle(color: color, fontWeight: FontWeight.w700),
+        ),
+      ),
     );
   }
 }

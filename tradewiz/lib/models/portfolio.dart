@@ -66,6 +66,136 @@ class PortfolioPosition {
       );
 }
 
+/// Portfolio performance analytics (GET /v1/portfolio/performance).
+class EquityPoint {
+  const EquityPoint({required this.timestamp, required this.totalEquity});
+  final String timestamp;
+  final double totalEquity;
+  factory EquityPoint.fromJson(Map<String, dynamic> j) => EquityPoint(
+        timestamp: j['timestamp'] as String? ?? '',
+        totalEquity: (j['total_equity'] as num?)?.toDouble() ?? 0,
+      );
+}
+
+class BrokerBreakdown {
+  const BrokerBreakdown({
+    required this.broker,
+    required this.equity,
+    required this.cash,
+    required this.marketValue,
+    required this.floatingPnl,
+  });
+  final String broker;
+  final double equity;
+  final double cash;
+  final double marketValue;
+  final double floatingPnl;
+  factory BrokerBreakdown.fromJson(Map<String, dynamic> j) => BrokerBreakdown(
+        broker: j['broker'] as String? ?? '',
+        equity: (j['equity'] as num?)?.toDouble() ?? 0,
+        cash: (j['cash'] as num?)?.toDouble() ?? 0,
+        marketValue: (j['market_value'] as num?)?.toDouble() ?? 0,
+        floatingPnl: (j['floating_pnl'] as num?)?.toDouble() ?? 0,
+      );
+}
+
+class AssetBreakdown {
+  const AssetBreakdown({
+    required this.asset,
+    required this.marketValue,
+    required this.floatingPnl,
+  });
+  final String asset;
+  final double marketValue;
+  final double floatingPnl;
+  factory AssetBreakdown.fromJson(Map<String, dynamic> j) => AssetBreakdown(
+        asset: j['asset'] as String? ?? '',
+        marketValue: (j['market_value'] as num?)?.toDouble() ?? 0,
+        floatingPnl: (j['floating_pnl'] as num?)?.toDouble() ?? 0,
+      );
+}
+
+class PositionPnL {
+  const PositionPnL({
+    required this.symbol,
+    required this.broker,
+    required this.unrealizedPnl,
+    required this.unrealizedPnlPercent,
+  });
+  final String symbol;
+  final String broker;
+  final double unrealizedPnl;
+  final double unrealizedPnlPercent;
+  factory PositionPnL.fromJson(Map<String, dynamic> j) => PositionPnL(
+        symbol: j['symbol'] as String? ?? '',
+        broker: j['broker'] as String? ?? '',
+        unrealizedPnl: (j['unrealized_pnl'] as num?)?.toDouble() ?? 0,
+        unrealizedPnlPercent:
+            (j['unrealized_pnl_percent'] as num?)?.toDouble() ?? 0,
+      );
+}
+
+class PortfolioPerformance {
+  const PortfolioPerformance({
+    this.totalEquity = 0,
+    this.cash = 0,
+    this.marketValue = 0,
+    this.floatingPnl = 0,
+    this.realizedPnl = 0,
+    this.totalPnl = 0,
+    this.dailyPnl = 0,
+    this.dailyPnlPercent = 0,
+    this.equityCurve = const [],
+    this.brokerBreakdown = const [],
+    this.assetBreakdown = const [],
+    this.topWinners = const [],
+    this.topLosers = const [],
+    this.notes = const [],
+  });
+
+  final double totalEquity;
+  final double cash;
+  final double marketValue;
+  final double floatingPnl;
+  final double realizedPnl;
+  final double totalPnl;
+  final double dailyPnl;
+  final double dailyPnlPercent;
+  final List<EquityPoint> equityCurve;
+  final List<BrokerBreakdown> brokerBreakdown;
+  final List<AssetBreakdown> assetBreakdown;
+  final List<PositionPnL> topWinners;
+  final List<PositionPnL> topLosers;
+  final List<String> notes;
+
+  bool get hasHistory => equityCurve.isNotEmpty;
+
+  factory PortfolioPerformance.fromJson(Map<String, dynamic> j) {
+    List<T> arr<T>(String k, T Function(Map<String, dynamic>) f) =>
+        (j[k] as List<dynamic>? ?? [])
+            .map((e) => f(e as Map<String, dynamic>))
+            .toList();
+    return PortfolioPerformance(
+      totalEquity: (j['total_equity'] as num?)?.toDouble() ?? 0,
+      cash: (j['cash'] as num?)?.toDouble() ?? 0,
+      marketValue: (j['market_value'] as num?)?.toDouble() ?? 0,
+      floatingPnl: (j['floating_pnl'] as num?)?.toDouble() ?? 0,
+      realizedPnl: (j['realized_pnl'] as num?)?.toDouble() ?? 0,
+      totalPnl: (j['total_pnl'] as num?)?.toDouble() ?? 0,
+      dailyPnl: (j['daily_pnl'] as num?)?.toDouble() ?? 0,
+      dailyPnlPercent: (j['daily_pnl_percent'] as num?)?.toDouble() ?? 0,
+      equityCurve: arr('equity_curve', EquityPoint.fromJson),
+      brokerBreakdown: arr('broker_breakdown', BrokerBreakdown.fromJson),
+      assetBreakdown: arr('asset_breakdown', AssetBreakdown.fromJson),
+      topWinners: arr('top_winners', PositionPnL.fromJson),
+      topLosers: arr('top_losers', PositionPnL.fromJson),
+      notes: (j['notes'] as List<dynamic>? ?? [])
+          .map((e) => e.toString())
+          .toList(),
+    );
+  }
+}
+
 /// A non-fatal per-broker error (e.g. gateway down) from the portfolio.
 class PortfolioBrokerError {
   const PortfolioBrokerError({required this.broker, required this.message});

@@ -66,15 +66,82 @@ Map<String, dynamic> _portfolioJson({
           : <Map<String, dynamic>>[],
     };
 
+Map<String, dynamic> _performanceJson({
+  bool multiBroker = false,
+  bool hasHistory = false,
+}) =>
+    {
+      'total_equity': multiBroker ? 225000.0 : 150000.0,
+      'cash': 100000.0,
+      'market_value': 41260.0,
+      'floating_pnl': 3260.0,
+      'realized_pnl': 0.0,
+      'total_pnl': 3260.0,
+      'daily_pnl': hasHistory ? 5000.0 : 0.0,
+      'daily_pnl_percent': hasHistory ? 3.45 : 0.0,
+      'equity_curve': hasHistory
+          ? [
+              {'timestamp': '2026-06-06T12:00:00Z', 'total_equity': 145000.0},
+              {'timestamp': '2026-06-07T12:00:00Z', 'total_equity': 150000.0},
+            ]
+          : <Map<String, dynamic>>[],
+      'broker_breakdown': [
+        {
+          'broker': 'MOOMOO',
+          'equity': 41260.0,
+          'cash': 0.0,
+          'market_value': 41260.0,
+          'floating_pnl': 3260.0,
+        },
+        if (multiBroker)
+          {
+            'broker': 'IBKR',
+            'equity': 1800.0,
+            'cash': 0.0,
+            'market_value': 1800.0,
+            'floating_pnl': 0.0,
+          },
+      ],
+      'asset_breakdown': [
+        {'asset': 'Cash', 'market_value': 100000.0, 'floating_pnl': 0.0},
+        {'asset': 'HKEX', 'market_value': 41260.0, 'floating_pnl': 3260.0},
+      ],
+      'top_winners': [
+        {
+          'symbol': 'HK.00700',
+          'broker': 'MOOMOO',
+          'unrealized_pnl': 3260.0,
+          'unrealized_pnl_percent': 8.58,
+        }
+      ],
+      'top_losers': <Map<String, dynamic>>[],
+      'notes': hasHistory
+          ? ['Realized P/L not available for this broker yet.']
+          : [
+              'Realized P/L not available for this broker yet.',
+              'No performance history yet.',
+            ],
+      'errors': <Map<String, dynamic>>[],
+    };
+
 StockRepository _repo({
   bool withPositions = true,
   bool multiBroker = false,
   bool ibkrError = false,
+  bool hasHistory = false,
 }) =>
     StockRepository(
       client: ApiClient(
         config: const AppConfig(baseUrl: 'https://test.tradewiz.app/v1'),
         httpClient: MockClient((req) async {
+          if (req.url.path.endsWith('/portfolio/performance')) {
+            return http.Response(
+              jsonEncode(_performanceJson(
+                multiBroker: multiBroker, hasHistory: hasHistory)),
+              200,
+              headers: {'content-type': 'application/json'},
+            );
+          }
           if (req.url.path.endsWith('/portfolio')) {
             return http.Response(
               jsonEncode(_portfolioJson(
@@ -181,5 +248,61 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('portfolio_error_IBKR')), findsOneWidget);
     expect(find.textContaining('IBKR is not reachable'), findsOneWidget);
+  });
+
+  // --- Performance tab ------------------------------------------------------
+
+  Future<void> openPerformance(WidgetTester tester) async {
+    await tester.tap(find.text('Performance'));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('Performance tab renders P/L metrics', (tester) async {
+    await tester.pumpWidget(_wrap(_repo(multiBroker: true)));
+    await tester.pumpAndSettle();
+    await openPerformance(tester);
+
+    expect(find.byKey(const Key('perf_total_pnl')), findsOneWidget);
+    expect(find.byKey(const Key('perf_daily_pnl')), findsOneWidget);
+    expect(find.byKey(const Key('perf_floating_pnl')), findsOneWidget);
+    expect(find.byKey(const Key('perf_realized_pnl')), findsOneWidget);
+  });
+
+  testWidgets('Performance tab shows broker breakdown', (tester) async {
+    await tester.pumpWidget(_wrap(_repo(multiBroker: true)));
+    await tester.pumpAndSettle();
+    await openPerformance(tester);
+    expect(find.byKey(const Key('broker_bd_MOOMOO')), findsOneWidget);
+    expect(find.byKey(const Key('broker_bd_IBKR')), findsOneWidget);
+  });
+
+  testWidgets('Performance tab shows top winners and losers', (tester) async {
+    await tester.pumpWidget(_wrap(_repo()));
+    await tester.pumpAndSettle();
+    await openPerformance(tester);
+    expect(find.text('Top Winners'), findsOneWidget);
+    expect(find.text('Top Losers'), findsOneWidget);
+    expect(find.textContaining('HK.00700'), findsOneWidget);
+    expect(find.text('No losers yet.'), findsOneWidget);
+  });
+
+  testWidgets('Performance tab: no history state', (tester) async {
+    await tester.pumpWidget(_wrap(_repo(hasHistory: false)));
+    await tester.pumpAndSettle();
+    await openPerformance(tester);
+    // Scroll to the equity-curve section.
+    await tester.dragUntilVisible(
+      find.text('No performance history yet.'),
+      find.byType(ListView).first,
+      const Offset(0, -250),
+    );
+    expect(find.text('No performance history yet.'), findsOneWidget);
+  });
+
+  testWidgets('Performance tab: realized P/L note shown', (tester) async {
+    await tester.pumpWidget(_wrap(_repo()));
+    await tester.pumpAndSettle();
+    await openPerformance(tester);
+    expect(find.byKey(const Key('realized_note')), findsOneWidget);
   });
 }
