@@ -2,6 +2,7 @@ import '../models/analysis_result.dart';
 import '../models/broker.dart';
 import '../models/broker_connection.dart';
 import '../models/market.dart';
+import '../models/portfolio.dart';
 import '../models/screener_result.dart';
 import '../models/user.dart';
 import '../services/api_client.dart';
@@ -175,5 +176,14 @@ class StockRepository {
   /// Disconnect a broker by id. Backs `DELETE /v1/brokers/{id}`.
   Future<void> disconnectBroker(String token, int id) async {
     await _client.authDelete('/brokers/$id', bearer: token);
+  }
+
+  // --- Unified portfolio ----------------------------------------------------
+
+  /// Aggregated portfolio across the user's connected brokers.
+  /// Backs `GET /v1/portfolio`.
+  Future<UnifiedPortfolio> portfolio(String token) async {
+    final j = await _client.authGet('/portfolio', bearer: token);
+    return UnifiedPortfolio.fromJson(j);
   }
 }

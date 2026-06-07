@@ -78,6 +78,11 @@ _get_auth_service().set_broker_count_provider(
     lambda user_id: _get_conn_service().count_active(user_id)
 )
 
+# Unified portfolio (aggregates across a user's connected brokers).
+from .portfolio.router import router as portfolio_router  # noqa: E402
+
+app.include_router(portfolio_router)
+
 
 def _parse_market(market: str) -> Market:
     try:

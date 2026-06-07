@@ -4,6 +4,7 @@ import 'models/market.dart';
 import 'pages/account_page.dart';
 import 'pages/ai_analysis_page.dart';
 import 'pages/dashboard_page.dart';
+import 'pages/portfolio_page.dart';
 import 'pages/screener_page.dart';
 import 'pages/watchlist_page.dart';
 import 'repositories/stock_repository.dart';
@@ -90,11 +91,13 @@ class _HomeShellState extends State<HomeShell> {
       ScreenerPage(market: _market),
       WatchlistPage(market: _market),
       AiAnalysisPage(market: _market),
+      const PortfolioPage(),
       const AccountPage(),
     ];
 
     final titles = [
-      'Dashboard', 'Screener', 'Watchlist', 'AI Analysis', 'Account',
+      'Dashboard', 'Screener', 'Watchlist', 'AI Analysis', 'Portfolio',
+      'Account',
     ];
 
     return Scaffold(
@@ -104,7 +107,7 @@ class _HomeShellState extends State<HomeShell> {
           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 22),
         ),
         actions: [
-          if (_index != 1 && _index != 3 && _index != 4)
+          if (_index != 1 && _index != 3 && _index != 4 && _index != 5)
             Padding(
               padding: const EdgeInsets.only(right: 12),
               child: MarketSelector(
@@ -138,6 +141,11 @@ class _HomeShellState extends State<HomeShell> {
             icon: Icon(Icons.auto_awesome_outlined),
             selectedIcon: Icon(Icons.auto_awesome),
             label: 'AI Analysis',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.pie_chart_outline),
+            selectedIcon: Icon(Icons.pie_chart),
+            label: 'Portfolio',
           ),
           NavigationDestination(
             icon: Icon(Icons.person_outline),
