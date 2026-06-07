@@ -5,6 +5,7 @@ import '../services/auth_scope.dart';
 import '../services/repository_scope.dart';
 import '../theme.dart';
 import 'auth_pages.dart';
+import 'broker_connections_page.dart';
 
 /// Account tab. Logged out -> Login / Register buttons. Logged in -> email,
 /// connected brokers count, and Logout.
@@ -67,6 +68,22 @@ class AccountPage extends StatelessWidget {
                   ),
                 ]),
               ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Card(
+          child: ListTile(
+            key: const Key('broker_connections_tile'),
+            leading: const Icon(Icons.account_balance_wallet_outlined,
+                color: AppColors.seed),
+            title: const Text('Broker Connections'),
+            subtitle: Text('${user.connectedBrokers} connected'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => BrokerConnectionsPage(repository: repo),
+              ),
             ),
           ),
         ),

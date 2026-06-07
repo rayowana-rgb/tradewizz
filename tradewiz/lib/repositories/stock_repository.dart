@@ -1,5 +1,6 @@
 import '../models/analysis_result.dart';
 import '../models/broker.dart';
+import '../models/broker_connection.dart';
 import '../models/market.dart';
 import '../models/screener_result.dart';
 import '../models/user.dart';
@@ -146,5 +147,33 @@ class StockRepository {
   /// Log out (server is stateless; this just notifies). `/v1/auth/logout`.
   Future<void> logout(String token) async {
     await _client.authPost('/auth/logout', const {}, bearer: token);
+  }
+
+  // --- Broker connections ---------------------------------------------------
+
+  /// List the user's broker connections. Backs `GET /v1/brokers`.
+  Future<List<BrokerConnection>> brokerConnections(String token) async {
+    final j = await _client.authGet('/brokers', bearer: token);
+    final list = (j['connections'] as List<dynamic>? ?? []);
+    return list
+        .map((e) => BrokerConnection.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Connect a broker. Backs `POST /v1/brokers/connect`.
+  Future<BrokerConnection> connectBroker(
+    String token,
+    BrokerType type, {
+    String? displayName,
+  }) async {
+    final body = <String, dynamic>{'broker_type': type.wire};
+    if (displayName != null) body['display_name'] = displayName;
+    final j = await _client.authPost('/brokers/connect', body, bearer: token);
+    return BrokerConnection.fromJson(j);
+  }
+
+  /// Disconnect a broker by id. Backs `DELETE /v1/brokers/{id}`.
+  Future<void> disconnectBroker(String token, int id) async {
+    await _client.authDelete('/brokers/$id', bearer: token);
   }
 }

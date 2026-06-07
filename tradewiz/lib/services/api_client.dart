@@ -130,6 +130,9 @@ class ApiClient {
   }) =>
       _brokerCall('POST', path, body: body, bearer: bearer);
 
+  Future<Map<String, dynamic>> authDelete(String path, {String? bearer}) =>
+      _brokerCall('DELETE', path, bearer: bearer);
+
   Future<Map<String, dynamic>> _brokerCall(
     String method,
     String path, {
@@ -140,17 +143,22 @@ class ApiClient {
     final headers = <String, String>{'Accept': 'application/json'};
     if (bearer != null) headers['Authorization'] = 'Bearer $bearer';
     try {
-      final response = method == 'POST'
-          ? await _http
-              .post(
-                uri,
-                headers: {...headers, 'Content-Type': 'application/json'},
-                body: jsonEncode(body ?? const {}),
-              )
-              .timeout(_config.requestTimeout)
-          : await _http
-              .get(uri, headers: headers)
-              .timeout(_config.requestTimeout);
+      late final http.Response response;
+      if (method == 'POST') {
+        response = await _http
+            .post(
+              uri,
+              headers: {...headers, 'Content-Type': 'application/json'},
+              body: jsonEncode(body ?? const {}),
+            )
+            .timeout(_config.requestTimeout);
+      } else if (method == 'DELETE') {
+        response =
+            await _http.delete(uri, headers: headers).timeout(_config.requestTimeout);
+      } else {
+        response =
+            await _http.get(uri, headers: headers).timeout(_config.requestTimeout);
+      }
 
       final decoded =
           response.body.isEmpty ? <String, dynamic>{} : jsonDecode(response.body);

@@ -66,6 +66,18 @@ from .auth.router import router as auth_router  # noqa: E402
 
 app.include_router(auth_router)
 
+# Per-user multi-broker connection framework under /v1/brokers.
+from .brokers.router import router as brokers_router  # noqa: E402
+from .brokers.router import get_service as _get_conn_service  # noqa: E402
+from .auth.router import get_service as _get_auth_service  # noqa: E402
+
+app.include_router(brokers_router)
+
+# Report the real active-connection count in the user profile.
+_get_auth_service().set_broker_count_provider(
+    lambda user_id: _get_conn_service().count_active(user_id)
+)
+
 
 def _parse_market(market: str) -> Market:
     try:

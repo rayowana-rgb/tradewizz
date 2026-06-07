@@ -46,10 +46,18 @@ class AuthService:
         config: Optional[AuthConfig] = None,
         store: Optional[UserStore] = None,
         clock=time.time,
+        broker_count_provider=None,
     ):
         self._config = config or AuthConfig.from_env()
         self._store = store or SqliteUserStore(self._config.db_path)
         self._clock = clock
+        # Optional callable user_id -> int active broker connections. Lets the
+        # profile report a real count without a hard dependency on the brokers
+        # package (avoids import cycles).
+        self._broker_count_provider = broker_count_provider
+
+    def set_broker_count_provider(self, provider) -> None:
+        self._broker_count_provider = provider
 
     @property
     def store(self) -> UserStore:
@@ -84,13 +92,19 @@ class AuthService:
 
     # -- profile ---------------------------------------------------------
 
-    def _profile(self, rec: UserRecord, connected_brokers: int = 0) -> UserProfile:
+    def _profile(self, rec: UserRecord) -> UserProfile:
+        connected = 0
+        if self._broker_count_provider is not None:
+            try:
+                connected = int(self._broker_count_provider(rec.id))
+            except Exception:  # noqa: BLE001 - count is best-effort
+                connected = 0
         return UserProfile(
             id=rec.id,
             email=rec.email,
             created_at=rec.created_at,
             updated_at=rec.updated_at,
-            connected_brokers=connected_brokers,
+            connected_brokers=connected,
         )
 
     # -- public ----------------------------------------------------------
