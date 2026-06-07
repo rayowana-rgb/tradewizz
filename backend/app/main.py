@@ -105,7 +105,10 @@ screener_snapshot_store = SqliteScreenerSnapshotStore(_SCREENER_CACHE_DB)
 # Dashboard market index quotes (^JKSE / ^HSI / ^KS11 / ^KQ11) via Yahoo, with
 # a short in-memory cache (5 min). Independent of the screener snapshot cache
 # and of the scoring/analysis engine.
-from .market import MarketIndicesService  # noqa: E402
+from .market import (  # noqa: E402
+    MarketIndicesService,
+    MarketOverviewService,
+)
 
 market_indices_service = MarketIndicesService()
 
@@ -114,6 +117,50 @@ def set_market_indices_service(service) -> None:
     """Test hook: swap the indices service (e.g. with a fake fetcher)."""
     global market_indices_service
     market_indices_service = service
+
+
+# Dashboard Market Overview (breadth / top mover / value traded / foreign flow).
+# It aggregates the EXISTING screener universe snapshot through the market-close
+# screener cache, so it reuses cached real data (fast, no mock) and has its own
+# short in-memory cache on top.
+def _overview_universe(market: Market) -> ScreenerResult:
+    """Full-universe screen for a market, via the market-close cache.
+
+    No liquidity floor and no category filter, so breadth/value cover the whole
+    universe. Heavy screening only runs after market close (and once on cold
+    start); otherwise the saved snapshot is reused.
+    """
+    cache_key = make_cache_key(
+        category="",
+        limit=MAX_LIMIT,
+        min_score=0.0,
+        min_value_traded=0.0,
+    )
+
+    def _run() -> ScreenerResult:
+        return engine.screen(
+            market,
+            limit=MAX_LIMIT,
+            min_score=0.0,
+            categories=None,
+            min_value_traded=0.0,
+        )
+
+    service = ScreenerCacheService(
+        screener_snapshot_store,
+        _run,
+        now_provider=_screener_now_override,
+    )
+    return service.get(market, cache_key)
+
+
+market_overview_service = MarketOverviewService(_overview_universe)
+
+
+def set_market_overview_service(service) -> None:
+    """Test hook: swap the overview service (e.g. with a fake universe)."""
+    global market_overview_service
+    market_overview_service = service
 
 # Optional test hook: override the market-local "now" used by the screener
 # cache so tests can pin OPEN/CLOSED deterministically. None => real clock.
@@ -155,6 +202,20 @@ def market_indices() -> dict:
     """
     quotes = market_indices_service.get_indices()
     return {"indices": [q.to_dict() for q in quotes]}
+
+
+@app.get(f"{API_PREFIX}/market/overview/{{market}}")
+def market_overview(market: str) -> dict:
+    """Dashboard Market Overview for a market.
+
+    Aggregated from the existing screener universe snapshot (real data, no
+    mock): breadth (advances/declines/unchanged), top gainer, top loser, total
+    value traded, and (IDX only) foreign flow. Cached ~5 minutes on top of the
+    market-close screener cache, so it loads fast. On failure it reports
+    `available=false` with null aggregates instead of fabricated values.
+    """
+    parsed_market = _parse_market(market)
+    return market_overview_service.get(parsed_market).to_dict()
 
 
 @app.get(f"{API_PREFIX}/analyze/{{symbol}}", response_model=AnalysisResult)

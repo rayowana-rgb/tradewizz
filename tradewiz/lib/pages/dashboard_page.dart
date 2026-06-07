@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/market.dart';
 import '../models/market_index.dart';
+import '../models/market_overview.dart';
 import '../models/screener_result.dart';
 import '../repositories/stock_repository.dart';
 import '../services/api_client.dart';
@@ -28,6 +29,8 @@ class _DashboardPageState extends State<DashboardPage> {
   List<ScreenerMatch> _movers = const [];
   MarketIndex? _index;
   bool _indexUnavailable = false;
+  MarketOverview? _overview;
+  bool _overviewUnavailable = false;
 
   @override
   void didChangeDependencies() {
@@ -46,7 +49,7 @@ class _DashboardPageState extends State<DashboardPage> {
     setState(() => _loading = true);
     // Index data and movers load independently: a movers/screen failure must
     // not blank the index, and vice versa.
-    await Future.wait([_loadMovers(), _loadIndex()]);
+    await Future.wait([_loadMovers(), _loadIndex(), _loadOverview()]);
     if (mounted) setState(() => _loading = false);
   }
 
@@ -86,6 +89,24 @@ class _DashboardPageState extends State<DashboardPage> {
       setState(() {
         _index = null;
         _indexUnavailable = true;
+      });
+    }
+  }
+
+  Future<void> _loadOverview() async {
+    try {
+      final ov = await _repo!.marketOverview(widget.market);
+      if (!mounted) return;
+      setState(() {
+        _overview = ov;
+        _overviewUnavailable = !ov.available;
+      });
+    } on ApiException {
+      // Never fabricate breadth/value: show unavailable instead.
+      if (!mounted) return;
+      setState(() {
+        _overview = null;
+        _overviewUnavailable = true;
       });
     }
   }
@@ -133,6 +154,15 @@ class _DashboardPageState extends State<DashboardPage> {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 24),
+          const _SectionTitle('Market Overview'),
+          const SizedBox(height: 8),
+          _OverviewSection(
+            overview: _overview,
+            unavailable: _overviewUnavailable,
+            loading: _loading && _overview == null && !_overviewUnavailable,
+            market: market,
           ),
           const SizedBox(height: 24),
           const _SectionTitle('Top Movers'),
@@ -248,6 +278,252 @@ class _MarketHeader extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Market Overview block: breadth (advances/declines/unchanged), top gainer/
+/// loser, total value traded, and (IDX only) foreign flow. Driven entirely by
+/// `GET /v1/market/overview/{market}`; on backend failure or `available=false`
+/// it shows an "unavailable" state instead of any mock values.
+class _OverviewSection extends StatelessWidget {
+  const _OverviewSection({
+    required this.overview,
+    required this.unavailable,
+    required this.loading,
+    required this.market,
+  });
+
+  final MarketOverview? overview;
+  final bool unavailable;
+  final bool loading;
+  final Market market;
+
+  String _fmtValue(double v, String currency) {
+    // Compact money: 12.3T / 4.5B / 678.9M / 1,234.
+    double n = v;
+    String suffix = '';
+    if (n.abs() >= 1e12) {
+      n /= 1e12;
+      suffix = 'T';
+    } else if (n.abs() >= 1e9) {
+      n /= 1e9;
+      suffix = 'B';
+    } else if (n.abs() >= 1e6) {
+      n /= 1e6;
+      suffix = 'M';
+    }
+    final num = suffix.isEmpty
+        ? n.toStringAsFixed(0)
+        : n.toStringAsFixed(2);
+    final cur = currency.isEmpty ? '' : '$currency ';
+    return '$cur$num$suffix';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return const Card(
+        key: Key('dashboard_overview_loading'),
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 28),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+    final ov = overview;
+    if (unavailable || ov == null || !ov.available) {
+      return Card(
+        key: const Key('dashboard_overview_unavailable'),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: const [
+              Icon(Icons.error_outline, color: AppColors.down, size: 20),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Market overview unavailable',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w600, color: AppColors.down),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final adv = ov.advances ?? 0;
+    final dec = ov.declines ?? 0;
+    final unch = ov.unchanged ?? 0;
+    final showForeign = market == Market.idx && ov.foreignFlow != null;
+
+    return Card(
+      key: const Key('dashboard_overview_card'),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Breadth.
+            const Text('Breadth',
+                style: TextStyle(color: Colors.grey, fontSize: 12)),
+            const SizedBox(height: 8),
+            Row(
+              key: const Key('dashboard_overview_breadth'),
+              children: [
+                Expanded(
+                  child: _BreadthCell(
+                    label: 'Advances', value: adv, color: AppColors.up),
+                ),
+                Expanded(
+                  child: _BreadthCell(
+                    label: 'Declines', value: dec, color: AppColors.down),
+                ),
+                Expanded(
+                  child: _BreadthCell(
+                    label: 'Unchanged', value: unch, color: Colors.grey),
+                ),
+              ],
+            ),
+            const Divider(height: 24),
+            // Top gainer / loser.
+            Row(
+              children: [
+                Expanded(
+                  child: _MoverMini(
+                    keyName: 'dashboard_overview_gainer',
+                    label: 'Top Gainer',
+                    mover: ov.topGainer,
+                    up: true,
+                  ),
+                ),
+                Expanded(
+                  child: _MoverMini(
+                    keyName: 'dashboard_overview_loser',
+                    label: 'Top Loser',
+                    mover: ov.topLoser,
+                    up: false,
+                  ),
+                ),
+              ],
+            ),
+            const Divider(height: 24),
+            // Total value traded.
+            Row(
+              key: const Key('dashboard_overview_value'),
+              children: [
+                const Icon(Icons.swap_horiz, size: 18, color: Colors.grey),
+                const SizedBox(width: 8),
+                const Text('Value Traded',
+                    style: TextStyle(color: Colors.grey, fontSize: 13)),
+                const Spacer(),
+                Text(
+                  ov.totalValueTraded == null
+                      ? '\u2014'
+                      : _fmtValue(ov.totalValueTraded!, ov.currency),
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+            // Foreign flow (IDX only).
+            if (showForeign) ...[
+              const Divider(height: 24),
+              Row(
+                key: const Key('dashboard_overview_foreign'),
+                children: [
+                  const Icon(Icons.public, size: 18, color: Colors.grey),
+                  const SizedBox(width: 8),
+                  const Text('Foreign Flow',
+                      style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  const Spacer(),
+                  Text(
+                    ov.foreignFlow!.available &&
+                            ov.foreignFlow!.netValue != null
+                        ? _fmtValue(ov.foreignFlow!.netValue!,
+                            ov.foreignFlow!.currency)
+                        : 'Unavailable',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: ov.foreignFlow!.available
+                          ? (ov.foreignFlow!.netValue ?? 0) >= 0
+                              ? AppColors.up
+                              : AppColors.down
+                          : Colors.grey,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BreadthCell extends StatelessWidget {
+  const _BreadthCell({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+  final String label;
+  final int value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text('$value',
+            style: TextStyle(
+                fontWeight: FontWeight.w700, fontSize: 18, color: color)),
+        const SizedBox(height: 2),
+        Text(label,
+            style: const TextStyle(color: Colors.grey, fontSize: 11)),
+      ],
+    );
+  }
+}
+
+class _MoverMini extends StatelessWidget {
+  const _MoverMini({
+    required this.keyName,
+    required this.label,
+    required this.mover,
+    required this.up,
+  });
+  final String keyName;
+  final String label;
+  final MoverRef? mover;
+  final bool up;
+
+  @override
+  Widget build(BuildContext context) {
+    final m = mover;
+    final color = up ? AppColors.up : AppColors.down;
+    return Column(
+      key: Key(keyName),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: const TextStyle(color: Colors.grey, fontSize: 11)),
+        const SizedBox(height: 4),
+        Text(
+          m?.symbol ?? '\u2014',
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          m == null
+              ? ''
+              : '${up ? '+' : ''}${m.changePercent.toStringAsFixed(2)}%',
+          style: TextStyle(
+              color: color, fontWeight: FontWeight.w600, fontSize: 12),
+        ),
+      ],
     );
   }
 }

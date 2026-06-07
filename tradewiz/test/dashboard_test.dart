@@ -38,6 +38,67 @@ http.Response _screenOk() => http.Response(
       headers: {'content-type': 'application/json'},
     );
 
+Map<String, dynamic> _overviewJson({
+  String market = 'IDX',
+  bool available = true,
+  int advances = 120,
+  int declines = 80,
+  int unchanged = 10,
+  double totalValueTraded = 12.5e12,
+  String currency = 'IDR',
+  bool foreign = true,
+}) {
+  if (!available) {
+    return {
+      'market': market,
+      'available': false,
+      'status': null,
+      'breadth': {
+        'advances': null,
+        'declines': null,
+        'unchanged': null,
+        'total': null,
+      },
+      'total_value_traded': null,
+      'currency': currency,
+      'top_gainer': null,
+      'top_loser': null,
+      'foreign_flow':
+          foreign ? {'available': false, 'net_value': null, 'currency': currency} : null,
+      'updated_at': '2026-06-08T03:15:00Z',
+    };
+  }
+  return {
+    'market': market,
+    'available': true,
+    'status': 'OPEN',
+    'breadth': {
+      'advances': advances,
+      'declines': declines,
+      'unchanged': unchanged,
+      'total': advances + declines + unchanged,
+    },
+    'total_value_traded': totalValueTraded,
+    'currency': currency,
+    'top_gainer': {
+      'symbol': 'BBCA',
+      'name': 'Bank Central Asia',
+      'price': 9000.0,
+      'change_percent': 5.2,
+    },
+    'top_loser': {
+      'symbol': 'GOTO',
+      'name': 'GoTo',
+      'price': 80.0,
+      'change_percent': -6.1,
+    },
+    'foreign_flow': foreign
+        ? {'available': false, 'net_value': null, 'currency': currency}
+        : null,
+    'updated_at': '2026-06-08T03:15:00Z',
+  };
+}
+
 Map<String, dynamic> _indexJson({
   required String symbol,
   required String market,
@@ -61,10 +122,21 @@ Map<String, dynamic> _indexJson({
       'available': available,
     };
 
-/// Repository serving /screen and /market/indices with real index numbers.
-StockRepository _repoWithIndices(List<Map<String, dynamic>> indices) {
+/// Repository serving /screen, /market/indices and /market/overview.
+StockRepository _repoWithIndices(
+  List<Map<String, dynamic>> indices, {
+  Map<String, dynamic>? overview,
+}) {
+  final ov = overview ?? _overviewJson();
   final live = MockClient((req) async {
     final path = req.url.path;
+    if (path.contains('/market/overview/')) {
+      return http.Response(
+        jsonEncode(ov),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    }
     if (path.endsWith('/market/indices')) {
       return http.Response(
         jsonEncode({'indices': indices}),
@@ -83,9 +155,17 @@ StockRepository _repoWithIndices(List<Map<String, dynamic>> indices) {
   );
 }
 
-/// Repository whose /market/indices fails (500); /screen still works.
+/// Repository whose /market/indices AND /market/overview fail (500); /screen
+/// still works.
 StockRepository _repoIndicesFail() {
   final live = MockClient((req) async {
+    if (req.url.path.contains('/market/overview/')) {
+      return http.Response(
+        jsonEncode({'detail': 'upstream error'}),
+        500,
+        headers: {'content-type': 'application/json'},
+      );
+    }
     if (req.url.path.endsWith('/market/indices')) {
       return http.Response(
         jsonEncode({'detail': 'upstream error'}),
@@ -224,5 +304,123 @@ void main() {
     expect(find.text('Hang Seng'), findsOneWidget);
     expect(find.text('IHSG'), findsNothing);
     expect(find.text('19,500.00'), findsOneWidget);
+  });
+
+  // --- Market Overview --------------------------------------------------- //
+  testWidgets('Dashboard renders market overview (breadth + movers + value)',
+      (tester) async {
+    final repo = _repoWithIndices(
+      [
+        _indexJson(
+          symbol: '^JKSE', market: 'IDX', name: 'IHSG',
+          price: 7250.55, change: 35.40, changePercent: 0.49,
+        ),
+      ],
+      overview: _overviewJson(
+        advances: 120, declines: 80, unchanged: 10,
+        totalValueTraded: 12.5e12,
+      ),
+    );
+    await tester.pumpWidget(wrapApp(
+      const DashboardPage(market: Market.idx),
+      repository: repo,
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('dashboard_overview_card')), findsOneWidget);
+    // Breadth values.
+    expect(find.text('120'), findsOneWidget);
+    expect(find.text('80'), findsOneWidget);
+    expect(find.text('10'), findsOneWidget);
+    expect(find.text('Advances'), findsOneWidget);
+    expect(find.text('Declines'), findsOneWidget);
+    expect(find.text('Unchanged'), findsOneWidget);
+    // Top gainer / loser.
+    expect(find.text('BBCA'), findsOneWidget);
+    expect(find.text('GOTO'), findsOneWidget);
+    expect(find.text('Top Gainer'), findsOneWidget);
+    expect(find.text('Top Loser'), findsOneWidget);
+    // Total value traded (compact).
+    expect(find.text('Value Traded'), findsOneWidget);
+    expect(find.text('IDR 12.50T'), findsOneWidget);
+  });
+
+  testWidgets('Dashboard shows Foreign Flow row for IDX', (tester) async {
+    final repo = _repoWithIndices(
+      [
+        _indexJson(
+          symbol: '^JKSE', market: 'IDX', name: 'IHSG',
+          price: 7250.55, change: 35.40, changePercent: 0.49,
+        ),
+      ],
+      overview: _overviewJson(foreign: true),
+    );
+    await tester.pumpWidget(wrapApp(
+      const DashboardPage(market: Market.idx),
+      repository: repo,
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Foreign Flow'), findsOneWidget);
+    // No real source yet -> Unavailable, never a fake number.
+    expect(find.byKey(const Key('dashboard_overview_foreign')), findsOneWidget);
+    expect(find.text('Unavailable'), findsOneWidget);
+  });
+
+  testWidgets('Dashboard hides Foreign Flow for non-IDX market',
+      (tester) async {
+    final repo = _repoWithIndices(
+      [
+        _indexJson(
+          symbol: '^HSI', market: 'HKEX', name: 'Hang Seng',
+          price: 19500.0, change: -120.0, changePercent: -0.61,
+        ),
+      ],
+      overview: _overviewJson(
+          market: 'HKEX', currency: 'HKD', foreign: false),
+    );
+    await tester.pumpWidget(wrapApp(
+      const DashboardPage(market: Market.hkex),
+      repository: repo,
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Foreign Flow'), findsNothing);
+  });
+
+  testWidgets('Dashboard shows overview unavailable on backend failure',
+      (tester) async {
+    final repo = _repoIndicesFail();
+    await tester.pumpWidget(wrapApp(
+      const DashboardPage(market: Market.idx),
+      repository: repo,
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('dashboard_overview_unavailable')),
+        findsOneWidget);
+    expect(find.text('Market overview unavailable'), findsOneWidget);
+    expect(find.byKey(const Key('dashboard_overview_card')), findsNothing);
+  });
+
+  testWidgets('Dashboard shows overview unavailable when backend has no data',
+      (tester) async {
+    final repo = _repoWithIndices(
+      [
+        _indexJson(
+          symbol: '^JKSE', market: 'IDX', name: 'IHSG',
+          price: 7250.55, change: 35.40, changePercent: 0.49,
+        ),
+      ],
+      overview: _overviewJson(available: false),
+    );
+    await tester.pumpWidget(wrapApp(
+      const DashboardPage(market: Market.idx),
+      repository: repo,
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('dashboard_overview_unavailable')),
+        findsOneWidget);
   });
 }

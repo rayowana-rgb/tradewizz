@@ -3,6 +3,7 @@ import '../models/broker.dart';
 import '../models/broker_connection.dart';
 import '../models/market.dart';
 import '../models/market_index.dart';
+import '../models/market_overview.dart';
 import '../models/portfolio.dart';
 import '../models/screener_result.dart';
 import '../models/user.dart';
@@ -52,6 +53,15 @@ class StockRepository {
   Future<List<MarketIndex>> marketIndices() async {
     final j = await _client.authGet('/market/indices');
     return parseMarketIndices(j);
+  }
+
+  /// Dashboard Market Overview. Backs `/v1/market/overview/{market}`.
+  ///
+  /// Never falls back to mock data: a failure throws [ApiException] so the
+  /// Dashboard can show an "overview unavailable" state.
+  Future<MarketOverview> marketOverview(Market market) async {
+    final j = await _client.authGet('/market/overview/${market.code}');
+    return MarketOverview.fromJson(j);
   }
 
   /// Weekly prediction for a symbol. Backs `/predict_weekly/{symbol}`.
