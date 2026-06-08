@@ -5,6 +5,7 @@ All endpoints require a valid Bearer JWT (the user owns their connections).
 
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException
@@ -19,6 +20,7 @@ from ..broker.models import (
     PlaceOrderRequest,
 )
 from .ibkr_client import IBKRError
+from .ibkr_config import IBKRConfig
 from .ibkr_service import IBKROrderValidationError, IBKRService
 from .models import (
     BrokerConnection,
@@ -28,11 +30,21 @@ from .models import (
 )
 from .service import BrokerConnectionService, ConnectionError_
 
+logger = logging.getLogger("tradewizz.api")
+
 router = APIRouter(prefix="/v1/brokers", tags=["brokers"])
 
 _service = BrokerConnectionService()
-# IBKR order service (paper by default). Tests override via set_ibkr_service.
-_ibkr_service = IBKRService()
+
+# IBKR order service.
+#
+# Do NOT cache a module-level IBKRService for runtime: it would be built once
+# at import with whatever env (or defaults) existed then, holding a STALE
+# config/client. That is exactly why GET /v1/brokers/ibkr/status reported
+# 'IB Gateway not reachable' (port 7497 default) while a freshly-built service
+# from_env() connected fine (port 4002). Instead build a fresh service from the
+# current environment per request. Tests may still install an override.
+_ibkr_service_override: Optional[IBKRService] = None
 
 
 def get_service() -> BrokerConnectionService:
@@ -45,12 +57,22 @@ def set_service(service: BrokerConnectionService) -> None:
 
 
 def get_ibkr_service() -> IBKRService:
-    return _ibkr_service
+    """Return the IBKR service to use for this request.
+
+    - If a test override was installed via set_ibkr_service, use it.
+    - Otherwise build a fresh IBKRService(config=IBKRConfig.from_env()) so the
+      current environment (host/port/client_id/trading_env) is always honored
+      and no stale singleton leaks between requests/config changes.
+    """
+    if _ibkr_service_override is not None:
+        return _ibkr_service_override
+    return IBKRService(config=IBKRConfig.from_env())
 
 
-def set_ibkr_service(service: IBKRService) -> None:
-    global _ibkr_service
-    _ibkr_service = service
+def set_ibkr_service(service: Optional[IBKRService]) -> None:
+    """Install (or clear, with None) a test override IBKR service."""
+    global _ibkr_service_override
+    _ibkr_service_override = service
 
 
 def _user_id(authorization: Optional[str]) -> int:
@@ -94,7 +116,14 @@ def ibkr_status(
     authorization: Optional[str] = Header(default=None),
 ) -> BrokerStatus:
     _user_id(authorization)
-    return get_ibkr_service().status()
+    st = get_ibkr_service().status()
+    # Diagnostic: surface the effective connection target so a status mismatch
+    # between API and a direct service test is debuggable from the logs.
+    logger.info(
+        "ibkr status host=%s port=%s client_id=%s env=%s connected=%s",
+        st.host, st.port, st.client_id, st.trading_env, st.connected,
+    )
+    return st
 
 
 @router.post("/ibkr/order/preview", response_model=OrderPreview)

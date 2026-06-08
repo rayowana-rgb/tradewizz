@@ -80,9 +80,12 @@ class IBKRAdapter:
 
     def __init__(self, service=None):
         if service is None:
-            from .ibkr_service import IBKRService
+            # Build from the current environment per construction (no stale
+            # singleton). Defer to the router factory so a test override is
+            # honored and config always comes from IBKRConfig.from_env().
+            from .router import get_ibkr_service
 
-            service = IBKRService()
+            service = get_ibkr_service()
         self._service = service
 
     def status(self):

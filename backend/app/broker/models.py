@@ -26,6 +26,9 @@ class BrokerStatus(BaseModel):
     is_real: bool
     host: str
     port: int
+    # API client id used to connect (safe, non-secret) — aids diagnosing a
+    # status mismatch / 'clientId already in use'.
+    client_id: Optional[int] = None
     # Loud warning surfaced to clients when real trading is enabled.
     warning: Optional[str] = None
     message: str = ""

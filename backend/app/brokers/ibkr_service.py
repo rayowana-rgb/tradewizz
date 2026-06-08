@@ -105,6 +105,7 @@ class IBKRService:
             is_real=self._config.is_real,
             host=self._config.host,
             port=self._config.port,
+            client_id=self._config.client_id,
             warning=REAL_WARNING if self._config.is_real else None,
             message=("Connected to IB Gateway" if connected
                      else "IB Gateway not reachable"),

@@ -32,8 +32,8 @@ from app.brokers.ibkr_service import IBKRService
 def client():
     c = TestClient(main.app)
     yield c
-    # Reset the IBKR service to a default after each test.
-    brokers_router.set_ibkr_service(IBKRService())
+    # Clear any test override so the next test gets an env-fresh service.
+    brokers_router.set_ibkr_service(None)
 
 
 def _auth_header(c: TestClient) -> dict:
