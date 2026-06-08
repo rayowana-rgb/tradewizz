@@ -16,6 +16,8 @@ from __future__ import annotations
 import asyncio
 import itertools
 import logging
+import os
+import threading
 import time
 import traceback
 from typing import Dict, List, Optional
@@ -23,6 +25,30 @@ from typing import Dict, List, Optional
 from .ibkr_config import IBKRConfig
 
 logger = logging.getLogger("tradewizz.ibkr")
+
+# --------------------------------------------------------------------------- #
+# Process-wide IBKR gateway lock (the clientId-race fix).                      #
+#                                                                              #
+# IB Gateway/TWS allows only ONE live API connection per clientId. A single   #
+# API request opens several SEQUENTIAL ib_insync connections on the SAME       #
+# clientId (status=1; portfolio=account+positions=2; order=1), and a          #
+# disconnect does NOT instantly free the clientId at the gateway. With        #
+# concurrent requests (or rapid back-to-back connects) the next connect       #
+# arrives while the gateway still considers the clientId in use -> IB error   #
+# 326 'client id is already in use' -> surfaced as 'IB Gateway not reachable'. #
+# Using a brand-new clientId sidesteps the lingering one (why client_id 33    #
+# 'worked'). We instead SERIALIZE every connect->use->disconnect with one     #
+# process-wide lock so connects never overlap, and RETRY briefly on a         #
+# transient clientId-in-use while the previous socket finishes closing. This  #
+# is deterministic and keeps a single stable clientId.                        #
+# --------------------------------------------------------------------------- #
+_GATEWAY_LOCK = threading.RLock()
+
+# Retry tuning for a transient 'client id already in use' right after a prior
+# disconnect on the same clientId. Bounded so a genuinely-taken clientId still
+# fails fast with a clear error.
+_CLIENT_ID_RETRIES = 3
+_CLIENT_ID_BACKOFF = 0.4  # seconds between retries
 
 
 def _ensure_event_loop() -> asyncio.AbstractEventLoop:
@@ -157,12 +183,70 @@ def _classify_connect_error(exc: Exception) -> IBKRError:
 
 
 class IBKRClient:
-    """Talks to IB Gateway/TWS. Connects per-call; pre-flight avoids hangs."""
+    """Talks to IB Gateway/TWS. Connects per-call under a process-wide lock.
+
+    Every connect->use->disconnect runs while holding ``_GATEWAY_LOCK`` so two
+    requests never race the same clientId. No long-lived connection is held
+    between requests; we connect, do the work, and disconnect every call.
+    """
 
     def __init__(self, config: IBKRConfig):
         self._config = config
+        logger.info(
+            "IBKRClient created %s id=%s",
+            self._diag("client-init"), hex(id(self)),
+        )
+
+    # -- diagnostics -----------------------------------------------------
+
+    def _diag(self, source: str) -> str:
+        """One-line connection diagnostics (req 2): which path, target, ids."""
+        cfg = self._config
+        return (
+            f"source={source} host={cfg.host} port={cfg.port} "
+            f"client_id={cfg.client_id} env={cfg.trading_env_label} "
+            f"pid={os.getpid()} thread={threading.current_thread().name} "
+            f"client_obj=0x{id(self):x}"
+        )
 
     # -- connection ------------------------------------------------------
+
+    def _do_connect(self, ib, readonly: bool, source: str):
+        """ib_insync.connect with a bounded clientId-in-use retry, serialized
+        by the caller under _GATEWAY_LOCK."""
+        cfg = self._config
+        last: Optional[Exception] = None
+        for attempt in range(1, _CLIENT_ID_RETRIES + 1):
+            try:
+                logger.info(
+                    "ibkr connect attempt=%d/%d readonly=%s %s",
+                    attempt, _CLIENT_ID_RETRIES, readonly, self._diag(source),
+                )
+                ib.connect(
+                    cfg.host, cfg.port, clientId=cfg.client_id,
+                    timeout=cfg.connect_timeout, readonly=readonly,
+                )
+                logger.info("ibkr connect ok %s", self._diag(source))
+                return
+            except Exception as exc:  # noqa: BLE001
+                # ib_insync raises if the post-handshake sync times out even
+                # though the API socket is connected; the caller checks
+                # isConnected() and keeps it. Re-raise to let it decide.
+                if ib.isConnected():
+                    raise
+                last = exc
+                if _looks_client_id_in_use(exc) and \
+                        attempt < _CLIENT_ID_RETRIES:
+                    logger.warning(
+                        "ibkr clientId busy, retrying in %.2fs %s",
+                        _CLIENT_ID_BACKOFF, self._diag(source),
+                    )
+                    self._safe_disconnect(ib)
+                    time.sleep(_CLIENT_ID_BACKOFF)
+                    continue
+                raise
+        if last is not None:
+            raise last
 
     def _connect(self):
         """Connect for READ paths (account/positions).
@@ -178,21 +262,18 @@ class IBKRClient:
         with a bounded timeout. (A bare socket probe made IB Gateway log
         'client disconnected before version was sent'.)
         """
+        return self._connect_impl(readonly=True, source="read")
+
+    def _connect_impl(self, readonly: bool, source: str):
+        """Shared connect body for read/order paths. Caller already holds the
+        gateway lock (via account_summary/positions/place_order/etc.)."""
         try:
             IB = _import_ib_insync().IB
         except Exception as exc:  # noqa: BLE001
             raise IBKRError(f"ib_insync unavailable: {exc}") from exc
         ib = IB()
         try:
-            ib.connect(
-                self._config.host,
-                self._config.port,
-                clientId=self._config.client_id,
-                timeout=self._config.connect_timeout,
-                # Read paths never need order writes; readonly=True also makes
-                # ib_insync skip the open/completed-orders sync on connect.
-                readonly=True,
-            )
+            self._do_connect(ib, readonly=readonly, source=source)
         except Exception as exc:  # noqa: BLE001
             # ib_insync raises if the post-handshake sync (e.g. executions)
             # times out, even though the API socket is connected and account
@@ -200,7 +281,7 @@ class IBKRClient:
             if ib.isConnected():
                 logger.warning(
                     "IBKR connect sync incomplete (%s); socket is connected, "
-                    "continuing for account/positions.", exc,
+                    "continuing. %s", exc, self._diag(source),
                 )
                 return ib
             self._safe_disconnect(ib)
@@ -217,25 +298,9 @@ class IBKRClient:
         No raw-socket pre-flight here either: the bare-socket close before the
         API handshake is exactly what produced the 502 on the order path.
         """
-        try:
-            IB = _import_ib_insync().IB
-        except Exception as exc:  # noqa: BLE001
-            raise IBKRError(f"ib_insync unavailable: {exc}") from exc
-        ib = IB()
-        try:
-            ib.connect(
-                self._config.host,
-                self._config.port,
-                clientId=self._config.client_id,
-                timeout=self._config.connect_timeout,
-                readonly=not self._config.is_real,
-            )
-        except Exception as exc:  # noqa: BLE001
-            if ib.isConnected():
-                return ib
-            self._safe_disconnect(ib)
-            raise _classify_connect_error(exc) from exc
-        return ib
+        return self._connect_impl(
+            readonly=not self._config.is_real, source="order"
+        )
 
     def is_connected(self) -> bool:
         """True if the API socket connects (Read-Only mode counts as connected).
@@ -245,16 +310,17 @@ class IBKRClient:
         probe: ib_insync.connect (bounded timeout) is the single source of
         truth for reachability.
         """
-        try:
-            ib = self._connect()
-        except IBKRError:
-            return False
-        try:
-            return ib.isConnected()
-        except Exception:  # noqa: BLE001
-            return False
-        finally:
-            self._safe_disconnect(ib)
+        with _GATEWAY_LOCK:
+            try:
+                ib = self._connect()
+            except IBKRError:
+                return False
+            try:
+                return ib.isConnected()
+            except Exception:  # noqa: BLE001
+                return False
+            finally:
+                self._safe_disconnect(ib)
 
     @staticmethod
     def _safe_disconnect(ib) -> None:
@@ -275,6 +341,10 @@ class IBKRClient:
     # -- queries ---------------------------------------------------------
 
     def account_summary(self) -> dict:
+        with _GATEWAY_LOCK:
+            return self._account_summary_locked()
+
+    def _account_summary_locked(self) -> dict:
         ib = self._connect()
         try:
             acct = self._acc(ib)
@@ -293,6 +363,10 @@ class IBKRClient:
             self._safe_disconnect(ib)
 
     def positions(self) -> List[dict]:
+        with _GATEWAY_LOCK:
+            return self._positions_locked()
+
+    def _positions_locked(self) -> List[dict]:
         ib = self._connect()
         try:
             out = []
@@ -314,6 +388,10 @@ class IBKRClient:
         """Open orders. In Read-Only API mode order requests are blocked; we
         raise IBKRReadOnlyError so the service reports connected + empty + note
         rather than marking the whole broker disconnected."""
+        with _GATEWAY_LOCK:
+            return self._orders_locked()
+
+    def _orders_locked(self) -> List[dict]:
         ib = self._connect_for_orders()
         try:
             try:
@@ -352,6 +430,14 @@ class IBKRClient:
         MarketOrder = ib_insync.MarketOrder
         Stock = ib_insync.Stock
 
+        with _GATEWAY_LOCK:
+            return self._place_order_locked(
+                ib_insync, LimitOrder, MarketOrder, Stock,
+                spec, side, quantity, order_type, price,
+            )
+
+    def _place_order_locked(self, ib_insync, LimitOrder, MarketOrder, Stock,
+                            spec, side, quantity, order_type, price) -> dict:
         cfg = self._config
         # Full per-attempt context so any failure is fully diagnosable from the
         # logs (symbol/market/side/qty/type/price/clientId/host/port).
@@ -434,6 +520,10 @@ class IBKRClient:
             self._safe_disconnect(ib)
 
     def cancel_order(self, order_id: str) -> dict:
+        with _GATEWAY_LOCK:
+            return self._cancel_order_locked(order_id)
+
+    def _cancel_order_locked(self, order_id: str) -> dict:
         ib = self._connect_for_orders()
         try:
             for t in ib.openTrades():

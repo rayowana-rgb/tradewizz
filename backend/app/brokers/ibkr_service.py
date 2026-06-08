@@ -13,6 +13,7 @@ import hashlib
 import hmac
 import logging
 import os
+import threading
 import time
 from typing import Dict, Optional
 
@@ -86,6 +87,15 @@ class IBKRService:
         self._client = client or IBKRClient(self._config)
         self._clock = clock
         self._recent: Dict[str, float] = {}
+        # Diagnostics (req 2): prove every path uses the current config and see
+        # the service/client identity + process/thread that built it.
+        logger.info(
+            "IBKRService created host=%s port=%s client_id=%s env=%s "
+            "pid=%s thread=%s service_obj=0x%x client_obj=0x%x",
+            self._config.host, self._config.port, self._config.client_id,
+            self._config.trading_env_label, os.getpid(),
+            threading.current_thread().name, id(self), id(self._client),
+        )
 
     @property
     def config(self) -> IBKRConfig:
