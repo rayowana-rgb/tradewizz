@@ -15,6 +15,7 @@ import logging
 import os
 import threading
 import time
+import traceback
 from typing import Dict, Optional
 
 from ..broker.models import (
@@ -131,8 +132,20 @@ class IBKRService:
         # is derived from whether the fetch itself succeeds.
         try:
             d = self._client.account_summary()
-        except IBKRError as exc:
-            logger.warning("IBKR account_summary failed: %s", exc)
+        except Exception as exc:  # noqa: BLE001
+            # Catch ALL exceptions (not just IBKRError): a connect whose
+            # post-handshake sync was kept can still raise a raw ib_insync /
+            # asyncio error from accountSummary(). Any failure here means the
+            # account is not reachable IN THIS request. Log full diagnostics
+            # (req 2) incl. traceback so a status=true/portfolio=down mismatch
+            # is debuggable.
+            logger.warning(
+                "IBKR account_summary failed host=%s port=%s client_id=%s "
+                "service_obj=0x%x client_obj=0x%x exc_type=%s exc=%s\n%s",
+                self._config.host, self._config.port, self._config.client_id,
+                id(self), id(self._client), type(exc).__name__, exc,
+                traceback.format_exc(),
+            )
             return AccountSummary(
                 connected=False, trading_env=self._config.trading_env_label
             )
@@ -150,8 +163,14 @@ class IBKRService:
         # is_connected() pre-probe — see account() for the rationale).
         try:
             rows = self._client.positions()
-        except IBKRError as exc:
-            logger.warning("IBKR positions failed: %s", exc)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "IBKR positions failed host=%s port=%s client_id=%s "
+                "service_obj=0x%x client_obj=0x%x exc_type=%s exc=%s\n%s",
+                self._config.host, self._config.port, self._config.client_id,
+                id(self), id(self._client), type(exc).__name__, exc,
+                traceback.format_exc(),
+            )
             return PositionsResponse(connected=False, positions=[])
         out = []
         for r in rows:

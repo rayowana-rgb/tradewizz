@@ -212,8 +212,20 @@ class IBKRClient:
     # -- connection ------------------------------------------------------
 
     def _do_connect(self, ib, readonly: bool, source: str):
-        """ib_insync.connect with a bounded clientId-in-use retry, serialized
-        by the caller under _GATEWAY_LOCK."""
+        """ib_insync.connect with a bounded retry, serialized by the caller
+        under _GATEWAY_LOCK.
+
+        Why retry on ANY transient connect failure (not only 'client id in
+        use'): when /status and /portfolio are two SEPARATE HTTP requests on
+        the SAME clientId, /status connects+disconnects, then /portfolio's
+        account() connects again before IB Gateway has released the clientId.
+        IB may surface this lingering state as a plain connect TIMEOUT (not the
+        literal 'client id is already in use' string), which previously made
+        /status report connected=true while /portfolio reported 'IBKR is not
+        reachable'. Retrying the connect briefly lets the gateway free the
+        clientId, so status=true implies portfolio reachable in the same
+        moment. Bounded so a genuinely-down gateway still fails fast.
+        """
         cfg = self._config
         last: Optional[Exception] = None
         for attempt in range(1, _CLIENT_ID_RETRIES + 1):
@@ -235,11 +247,18 @@ class IBKRClient:
                 if ib.isConnected():
                     raise
                 last = exc
-                if _looks_client_id_in_use(exc) and \
-                        attempt < _CLIENT_ID_RETRIES:
+                # Retry a transient clientId-in-use OR a transient connect
+                # timeout/refusal (the lingering-clientId race between two
+                # separate requests surfaces either way).
+                transient = (
+                    _looks_client_id_in_use(exc) or _looks_timeout(exc)
+                )
+                if transient and attempt < _CLIENT_ID_RETRIES:
                     logger.warning(
-                        "ibkr clientId busy, retrying in %.2fs %s",
-                        _CLIENT_ID_BACKOFF, self._diag(source),
+                        "ibkr connect transient failure (%s: %s), retrying "
+                        "in %.2fs %s",
+                        type(exc).__name__, exc, _CLIENT_ID_BACKOFF,
+                        self._diag(source),
                     )
                     self._safe_disconnect(ib)
                     time.sleep(_CLIENT_ID_BACKOFF)

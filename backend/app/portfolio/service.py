@@ -12,6 +12,7 @@ import logging
 import queue
 import threading
 import time
+import traceback
 from typing import Callable, List, Optional
 
 from ..brokers.adapter import make_adapter
@@ -60,6 +61,23 @@ class PortfolioService:
         acct = None
         out_positions: list = []
 
+        # Full IBKR portfolio diagnostics (req 2): adapter type, host/port/
+        # client_id, service + client object ids, so a /status=true vs
+        # /portfolio=down mismatch is traceable to the exact instance/config.
+        svc = getattr(adapter, "_service", None)
+        cfg = getattr(svc, "config", None)
+        client = getattr(svc, "_client", None)
+        if is_ibkr:
+            logger.info(
+                "IBKR portfolio diagnostics: broker=%s adapter=%s host=%s "
+                "port=%s client_id=%s service_obj=%s client_obj=%s",
+                broker, type(adapter).__name__,
+                getattr(cfg, "host", None), getattr(cfg, "port", None),
+                getattr(cfg, "client_id", None),
+                hex(id(svc)) if svc is not None else None,
+                hex(id(client)) if client is not None else None,
+            )
+
         try:
             acct = adapter.account()
             if is_ibkr:
@@ -78,6 +96,12 @@ class PortfolioService:
                     message=f"{broker} is not reachable; its data is excluded.",
                 ))
         except Exception as exc:  # noqa: BLE001 - non-fatal per broker
+            if is_ibkr:
+                logger.warning(
+                    "IBKR portfolio diagnostics: account() raised "
+                    "exc_type=%s exc=%s\n%s",
+                    type(exc).__name__, exc, traceback.format_exc(),
+                )
             errors.append(BrokerError(broker=broker, message=str(exc)))
 
         try:
@@ -93,6 +117,12 @@ class PortfolioService:
                 out_positions = list(getattr(pos_resp, "positions", []) or [])
                 contributed = True
         except Exception as exc:  # noqa: BLE001 - non-fatal per broker
+            if is_ibkr:
+                logger.warning(
+                    "IBKR portfolio diagnostics: positions() raised "
+                    "exc_type=%s exc=%s\n%s",
+                    type(exc).__name__, exc, traceback.format_exc(),
+                )
             errors.append(BrokerError(broker=broker, message=str(exc)))
 
         return {
