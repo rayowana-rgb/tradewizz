@@ -376,3 +376,86 @@ def backtest(
             detail=f"signal_type must be one of {sorted(SIGNAL_TYPES)}",
         )
     return engine.backtest(symbol, market, signal_type, forward_days)
+
+
+# --------------------------------------------------------------------------- #
+# Cache diagnostics / control (trading-day-aware invalidation)                 #
+# --------------------------------------------------------------------------- #
+from .cache import all_caches  # noqa: E402
+from .market_session import (  # noqa: E402
+    get_market_session_state,
+    trading_date_str,
+)
+
+
+@app.get(f"{API_PREFIX}/debug/cache")
+def debug_cache() -> dict:
+    """Inspect every OHLCV cache entry: key, age, symbol, market, latest candle.
+
+    Read-only. Useful to confirm a stale entry was invalidated after market
+    close / on a new trading day.
+    """
+    entries: List[dict] = []
+    for cache in all_caches():
+        try:
+            entries.extend(cache.entries())
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("debug_cache: failed to read a cache: %s", exc)
+    entries.sort(key=lambda e: e.get("age_seconds", 0))
+    sessions = {
+        m.value: {
+            "session_state": get_market_session_state(m).value,
+            "trading_date": trading_date_str(m),
+        }
+        for m in Market
+    }
+    return {
+        "count": len(entries),
+        "entries": entries,
+        "markets": sessions,
+    }
+
+
+@app.post(f"{API_PREFIX}/debug/cache/clear")
+def debug_cache_clear(
+    mode: str = Query("all", description="all | symbol | market"),
+    symbol: Optional[str] = Query(None),
+    market: Optional[str] = Query(None),
+) -> dict:
+    """Clear OHLCV cache entries. Modes: all | symbol | market.
+
+    * all    -> remove every cached entry.
+    * symbol -> require ``symbol`` (e.g. BBCA or BBCA.JK).
+    * market -> require ``market`` (IDX | HKEX | KOSPI | KOSDAQ | US).
+    """
+    mode = (mode or "all").lower().strip()
+    if mode == "symbol" and not (symbol and symbol.strip()):
+        raise HTTPException(
+            status_code=400, detail="mode=symbol requires ?symbol="
+        )
+    if mode == "market" and not (market and market.strip()):
+        raise HTTPException(
+            status_code=400, detail="mode=market requires ?market="
+        )
+    if mode not in ("all", "symbol", "market"):
+        raise HTTPException(
+            status_code=400, detail="mode must be all | symbol | market"
+        )
+
+    removed = 0
+    for cache in all_caches():
+        try:
+            if mode == "all":
+                removed += cache.clear()
+            elif mode == "symbol":
+                removed += cache.clear(symbol=symbol)
+            else:
+                removed += cache.clear(market=market)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("debug_cache_clear: failed on a cache: %s", exc)
+    logger.info(
+        "cache cleared mode=%s symbol=%s market=%s removed=%d",
+        mode, symbol, market, removed,
+    )
+    return {"mode": mode, "symbol": symbol, "market": market,
+            "removed": removed}
