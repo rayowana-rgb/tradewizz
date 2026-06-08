@@ -26,9 +26,31 @@ from typing import Callable, Dict, List, Optional
 
 from ..models import Market, ScreenerMatch, ScreenerResult
 
+# Cache-only probe (no network fetch) reused from the screener cache: returns
+# the newest OHLCV "data freshness" timestamp for a market. Used to detect that
+# the underlying data refreshed after this overview was built, so a stale
+# overview is not served from the short in-memory cache.
+from ..screener_cache.service import (  # noqa: E402
+    LatestDataTimestamp,
+    latest_market_candle_ts,
+)
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _parse_iso(value: object) -> Optional[datetime]:
+    """Parse an ISO-8601 string to a tz-aware UTC datetime, or None."""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 @dataclass(frozen=True)
@@ -135,6 +157,9 @@ class MarketOverviewService:
         ttl_seconds: int = 300,  # 5 minutes
         clock: Callable[[], float] = time.time,
         foreign_flow: ForeignFlowProvider = _no_foreign_flow,
+        latest_data_timestamp: Optional[LatestDataTimestamp] = (
+            latest_market_candle_ts
+        ),
     ):
         # run_screen(market) -> full-universe ScreenerResult (real data, cached
         # via the screener-cache wiring in main.py).
@@ -142,8 +167,16 @@ class MarketOverviewService:
         self._ttl = ttl_seconds
         self._clock = clock
         self._foreign_flow = foreign_flow
+        # Cache-only probe: detects that the underlying OHLCV/analyze data
+        # refreshed AFTER a cached overview was built, so the short in-memory
+        # cache does not serve stale top-gainer/top-loser/breadth values while
+        # the screener (and /analyze) already show fresh data. Injectable for
+        # tests; defaults to the live cache-registry probe.
+        self._latest_data_timestamp = latest_data_timestamp
         self._lock = threading.Lock()
-        self._cache: Dict[Market, tuple[float, MarketOverview]] = {}
+        # built_at: when the overview was constructed (compared against the
+        # data-freshness probe to invalidate on a same-day refresh).
+        self._cache: Dict[Market, tuple[float, str, MarketOverview]] = {}
 
     # -- public ------------------------------------------------------------
 
@@ -151,13 +184,37 @@ class MarketOverviewService:
         with self._lock:
             entry = self._cache.get(market)
             if entry is not None:
-                fetched_at, overview = entry
-                if 0 <= (self._clock() - fetched_at) < self._ttl:
+                fetched_at, built_at, overview = entry
+                fresh_ttl = 0 <= (self._clock() - fetched_at) < self._ttl
+                if fresh_ttl and not self._data_is_newer(market, built_at):
                     return overview
         overview = self._build(market)
         with self._lock:
-            self._cache[market] = (self._clock(), overview)
+            self._cache[market] = (
+                self._clock(), overview.updated_at, overview
+            )
         return overview
+
+    def _data_is_newer(self, market: Market, built_at: str) -> bool:
+        """True when cached OHLCV data is newer than this overview's build time.
+
+        Lightweight, cache-only check (no network fetch): compares the newest
+        cached candle/refresh timestamp for the market against ``built_at``.
+        Returns False (keep cached overview) whenever the comparison cannot be
+        made -- no probe, nothing cached, or unparseable timestamps -- so
+        behavior is unchanged when validation is indeterminate.
+        """
+        if self._latest_data_timestamp is None:
+            return False
+        try:
+            latest = self._latest_data_timestamp(market.value)
+        except Exception:  # noqa: BLE001 - never let a probe break the overview
+            return False
+        built_dt = _parse_iso(built_at)
+        data_dt = _parse_iso(latest)
+        if built_dt is None or data_dt is None:
+            return False
+        return data_dt > built_dt
 
     # -- internals ---------------------------------------------------------
 

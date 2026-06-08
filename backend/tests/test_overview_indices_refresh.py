@@ -92,7 +92,11 @@ def test_overview_refreshes_after_ttl():
         return _screen_result(market, state["score"])
 
     clock = Clock()
-    svc = MarketOverviewService(run_screen, ttl_seconds=300, clock=clock)
+    # TTL-isolation test: disable the data-freshness probe so only the time
+    # TTL governs caching here (the probe is covered by dedicated tests).
+    svc = MarketOverviewService(
+        run_screen, ttl_seconds=300, clock=clock, latest_data_timestamp=None
+    )
 
     first = svc.get(Market.IDX)
     assert state["calls"] == 1

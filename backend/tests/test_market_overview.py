@@ -143,8 +143,11 @@ def test_cache_avoids_repeated_screens():
         return _universe(_SAMPLE)
 
     t = {"now": 1000.0}
+    # TTL-isolation test: disable the data-freshness probe so only the time
+    # TTL governs caching here (the probe is covered by dedicated tests).
     svc = MarketOverviewService(
-        counting, ttl_seconds=300, clock=lambda: t["now"]
+        counting, ttl_seconds=300, clock=lambda: t["now"],
+        latest_data_timestamp=None,
     )
     svc.get(Market.IDX)
     svc.get(Market.IDX)
