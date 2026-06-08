@@ -299,6 +299,16 @@ class ApiClient {
         return '\u20a9'; // won symbol
       case Market.idx:
         return 'Rp';
+      case Market.us:
+        return '\$';
+      case Market.japan:
+        return '\u00a5'; // yen
+      case Market.india:
+        return '\u20b9'; // rupee
+      case Market.vietnam:
+        return '\u20ab'; // dong
+      case Market.singapore:
+        return 'S\$';
     }
   }
 

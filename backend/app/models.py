@@ -19,6 +19,12 @@ class Market(str, Enum):
     HKEX = "HKEX"
     KOSPI = "KOSPI"
     KOSDAQ = "KOSDAQ"
+    # Global market expansion (Excel-backed universes).
+    US = "US"
+    JAPAN = "JAPAN"
+    INDIA = "INDIA"
+    VIETNAM = "VIETNAM"
+    SINGAPORE = "SINGAPORE"
 
 
 class ScreenerCategory(str, Enum):

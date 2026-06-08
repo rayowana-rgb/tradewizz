@@ -73,6 +73,27 @@ _SESSIONS = {
         pre_open=dtime(4, 0), open=dtime(9, 30),
         close=dtime(16, 0), post_close=dtime(20, 0),
     ),
+    # --- Global market expansion ---
+    "JAPAN": _Session(
+        tz="Asia/Tokyo",
+        pre_open=dtime(8, 45), open=dtime(9, 0),
+        close=dtime(15, 0), post_close=dtime(15, 30),
+    ),
+    "INDIA": _Session(
+        tz="Asia/Kolkata",
+        pre_open=dtime(9, 0), open=dtime(9, 15),
+        close=dtime(15, 30), post_close=dtime(16, 0),
+    ),
+    "VIETNAM": _Session(
+        tz="Asia/Ho_Chi_Minh",
+        pre_open=dtime(8, 45), open=dtime(9, 0),
+        close=dtime(15, 0), post_close=dtime(15, 15),
+    ),
+    "SINGAPORE": _Session(
+        tz="Asia/Singapore",
+        pre_open=dtime(8, 45), open=dtime(9, 0),
+        close=dtime(17, 0), post_close=dtime(17, 15),
+    ),
 }
 
 _DEFAULT = "IDX"
@@ -183,6 +204,11 @@ _SUFFIX_TO_MARKET = {
     ".HK": "HKEX",
     ".KS": "KOSPI",
     ".KQ": "KOSDAQ",
+    # --- Global market expansion (US is suffix-less -> default handling) ---
+    ".T": "JAPAN",
+    ".NS": "INDIA",
+    ".VN": "VIETNAM",
+    ".SI": "SINGAPORE",
 }
 
 

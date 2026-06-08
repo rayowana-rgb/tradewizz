@@ -54,13 +54,11 @@ def default_min_value_traded(market: Market) -> float:
 # Max concurrent per-symbol fetches during /screen (override via env).
 _SCREEN_WORKERS = int(os.environ.get("TRADEWIZ_SCREEN_WORKERS", "8"))
 
-# yfinance ticker suffix per market.
-MARKET_SUFFIX = {
-    Market.IDX: ".JK",
-    Market.HKEX: ".HK",
-    Market.KOSPI: ".KS",
-    Market.KOSDAQ: ".KQ",
-}
+# yfinance ticker suffix per market. Derived from the single source of truth
+# (market_config) so adding a market needs only one table edit. US -> "".
+from .market_config import MARKET_CONFIGS as _MARKET_CONFIGS  # noqa: E402
+
+MARKET_SUFFIX = {m: cfg.yahoo_suffix for m, cfg in _MARKET_CONFIGS.items()}
 
 
 # Yahoo expects a fixed zero-padded numeric code per market: HKEX uses 4 digits

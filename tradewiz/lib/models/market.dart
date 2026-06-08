@@ -35,6 +35,47 @@ enum Market {
     currency: 'KRW',
     yahooSuffix: '.KQ',
     tradableViaMoomoo: false,
+  ),
+  // --- Global market expansion (Excel-backed universes on the backend) ---
+  us(
+    code: 'US',
+    name: 'United States (NYSE/Nasdaq/AMEX)',
+    flag: '🇺🇸',
+    currency: 'USD',
+    yahooSuffix: '',
+    tradableViaMoomoo: false,
+  ),
+  japan(
+    code: 'JAPAN',
+    name: 'Japan Exchange Group (Tokyo)',
+    flag: '🇯🇵',
+    currency: 'JPY',
+    yahooSuffix: '.T',
+    tradableViaMoomoo: false,
+  ),
+  india(
+    code: 'INDIA',
+    name: 'National Stock Exchange of India',
+    flag: '🇮🇳',
+    currency: 'INR',
+    yahooSuffix: '.NS',
+    tradableViaMoomoo: false,
+  ),
+  vietnam(
+    code: 'VIETNAM',
+    name: 'Vietnam (HOSE/HNX/UPCOM)',
+    flag: '🇻🇳',
+    currency: 'VND',
+    yahooSuffix: '.VN',
+    tradableViaMoomoo: false,
+  ),
+  singapore(
+    code: 'SINGAPORE',
+    name: 'Singapore Exchange',
+    flag: '🇸🇬',
+    currency: 'SGD',
+    yahooSuffix: '.SI',
+    tradableViaMoomoo: false,
   );
 
   const Market({

@@ -43,14 +43,16 @@ logger = logging.getLogger("tradewiz.universe")
 
 _SYMBOL_COLS = ("symbol", "ticker", "code")
 _NAME_COLS = ("name", "company", "company_name")
+# Board-listing column (STK vs ETF) used for diagnostics counts. The prepared
+# global-market Excel exports carry "Papan Pencatatan" with values STK / ETF.
+_BOARD_COLS = ("papan pencatatan", "board", "type", "instrument_type")
 
 # yfinance-style suffix per market (also what raw Excel symbols carry).
-_MARKET_SUFFIX = {
-    Market.IDX: ".JK",
-    Market.HKEX: ".HK",
-    Market.KOSPI: ".KS",
-    Market.KOSDAQ: ".KQ",
-}
+# Derived from the single source of truth (market_config) so a new market needs
+# only one table edit. US has an empty suffix (bare symbols).
+from .market_config import MARKET_CONFIGS as _MARKET_CONFIGS
+
+_MARKET_SUFFIX = {m: cfg.yahoo_suffix for m, cfg in _MARKET_CONFIGS.items()}
 
 # HKEX ordinary-equity board code range (exclude warrants/CBBC/DR/etc.).
 _HKEX_EQUITY_MIN = 1
@@ -61,6 +63,7 @@ _HKEX_EQUITY_MAX = 9999
 class UniverseEntry:
     symbol: str
     name: str = ""
+    is_etf: bool = False
 
 
 def _default_universe_dir() -> Path:
@@ -71,9 +74,21 @@ def _default_universe_dir() -> Path:
 
 
 def _read_table(path: Path) -> pd.DataFrame:
+    """Read a universe file into a single DataFrame.
+
+    Excel files may carry MULTIPLE sheets (e.g. ALL_US / NASDAQ / NYSE / ETF).
+    All sheets are read and concatenated; duplicate symbols are deduped later
+    in ``_entries_from_df``. A combined "ALL_*" sheet (when present) is enough
+    on its own, but reading every sheet guarantees no symbol is missed even if
+    a file lacks an aggregate sheet.
+    """
     suffix = path.suffix.lower()
     if suffix in (".xlsx", ".xls"):
-        return pd.read_excel(path, dtype=str)
+        sheets = pd.read_excel(path, dtype=str, sheet_name=None)  # dict
+        frames = [df for df in sheets.values() if df is not None and not df.empty]
+        if not frames:
+            return pd.DataFrame()
+        return pd.concat(frames, ignore_index=True, sort=False)
     if suffix == ".csv":
         return pd.read_csv(path, dtype=str)
     raise ValueError(f"Unsupported universe file type: {path.name}")
@@ -99,6 +114,7 @@ def _strip_suffix(raw: str, market: Optional[Market]) -> str:
     sym = raw.strip().upper()
     if market is not None:
         suffix = _MARKET_SUFFIX.get(market)
+        # Guard: empty suffix (US) must never truncate the symbol.
         if suffix and sym.endswith(suffix):
             sym = sym[: -len(suffix)]
     return sym
@@ -124,6 +140,7 @@ def _entries_from_df(
     cols = [str(c) for c in df.columns]
     sym_col = _pick_col(cols, _SYMBOL_COLS)
     name_col = _pick_col(cols, _NAME_COLS)
+    board_col = _pick_col(cols, _BOARD_COLS)
 
     # Header-less single column (e.g. read with a generated header): treat the
     # only column as the symbol column.
@@ -171,7 +188,14 @@ def _entries_from_df(
             nv = row.get(name_col)
             if nv is not None and not (isinstance(nv, float) and pd.isna(nv)):
                 name = str(nv).strip()
-        entries.append(UniverseEntry(symbol=sym, name=name))
+
+        is_etf = False
+        if board_col is not None:
+            bv = row.get(board_col)
+            if bv is not None and not (isinstance(bv, float) and pd.isna(bv)):
+                is_etf = str(bv).strip().upper() == "ETF"
+
+        entries.append(UniverseEntry(symbol=sym, name=name, is_etf=is_etf))
     return entries
 
 
@@ -235,6 +259,24 @@ class UniverseRepository:
 
     def names(self, market: Market) -> Dict[str, str]:
         return {e.symbol: e.name for e in self.entries(market) if e.name}
+
+    def counts(self, market: Market) -> Dict[str, int]:
+        """Symbol / ETF / stock counts for a market (diagnostics)."""
+        entries = self.entries(market)
+        etf = sum(1 for e in entries if e.is_etf)
+        return {
+            "total": len(entries),
+            "etf": etf,
+            "stock": len(entries) - etf,
+        }
+
+    def resolve_path(self, market: Market) -> Optional[Path]:
+        """Public accessor for the resolved universe file path (validation)."""
+        return self._resolve_path(market)
+
+    @property
+    def directory(self) -> Path:
+        return self._dir
 
     def reload(self) -> None:
         self._cache.clear()

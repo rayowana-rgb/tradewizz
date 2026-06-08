@@ -59,6 +59,12 @@ _PRICES = {
     "^HSI": [19000.0, 19190.0],  # +190 / +1.0%
     "^KS11": [2600.0, 2626.0],   # +26 / +1.0%
     "^KQ11": [850.0, 858.5],     # +8.5 / +1.0%
+    # --- Global market expansion indices ---
+    "^GSPC": [5000.0, 5050.0],     # S&P 500
+    "^N225": [38000.0, 38380.0],   # Nikkei 225
+    "^NSEI": [22000.0, 22220.0],   # Nifty 50
+    "^VNINDEX": [1200.0, 1212.0],  # VN-Index
+    "^STI": [3300.0, 3333.0],      # Straits Times
 }
 
 
@@ -90,8 +96,11 @@ def test_service_returns_all_four_indices():
     svc = MarketIndicesService(fetcher=_fake_ok_fetch, now_provider=_closed_now)
     quotes = svc.get_indices()
     by_market = {q.market: q for q in quotes}
+    # Original four plus the global-expansion markets.
     assert set(by_market) == {
-        Market.IDX, Market.HKEX, Market.KOSPI, Market.KOSDAQ
+        Market.IDX, Market.HKEX, Market.KOSPI, Market.KOSDAQ,
+        Market.US, Market.JAPAN, Market.INDIA, Market.VIETNAM,
+        Market.SINGAPORE,
     }
     # IHSG / Hang Seng / KOSPI / KOSDAQ present with the right symbols.
     assert by_market[Market.IDX].symbol == "^JKSE"
@@ -99,6 +108,12 @@ def test_service_returns_all_four_indices():
     assert by_market[Market.HKEX].name == "Hang Seng"
     assert by_market[Market.KOSPI].name == "KOSPI Composite"
     assert by_market[Market.KOSDAQ].name == "KOSDAQ Composite"
+    # New markets resolve to their index symbols.
+    assert by_market[Market.US].symbol == "^GSPC"
+    assert by_market[Market.JAPAN].symbol == "^N225"
+    assert by_market[Market.INDIA].symbol == "^NSEI"
+    assert by_market[Market.VIETNAM].symbol == "^VNINDEX"
+    assert by_market[Market.SINGAPORE].symbol == "^STI"
 
 
 def test_service_computes_price_and_change():
@@ -207,15 +222,16 @@ def test_cache_avoids_repeated_fetches():
         clock=lambda: t["now"],
         now_provider=_closed_now,
     )
+    n_indices = len(_PRICES)  # one fetch per configured index
     svc.get_indices()
-    assert calls["n"] == 4  # one per index
+    assert calls["n"] == n_indices  # one per index
     # Within TTL: served from cache, no new fetches.
     svc.get_indices()
-    assert calls["n"] == 4
+    assert calls["n"] == n_indices
     # After TTL expiry: refetched.
     t["now"] = 1000.0 + 301
     svc.get_indices()
-    assert calls["n"] == 8
+    assert calls["n"] == n_indices * 2
 
 
 def test_open_status_when_market_in_session():
@@ -248,11 +264,12 @@ def test_api_returns_four_named_indices(client_with):
     r = client.get("/v1/market/indices")
     assert r.status_code == 200
     indices = r.json()["indices"]
-    assert len(indices) == 4
+    assert len(indices) == len(_PRICES)
     names = {i["name"] for i in indices}
-    assert names == {"IHSG", "Hang Seng", "KOSPI Composite", "KOSDAQ Composite"}
+    assert {"IHSG", "Hang Seng", "KOSPI Composite",
+            "KOSDAQ Composite"} <= names
     symbols = {i["symbol"] for i in indices}
-    assert symbols == {"^JKSE", "^HSI", "^KS11", "^KQ11"}
+    assert symbols == set(_PRICES)
     # Each entry carries the required shape.
     for i in indices:
         assert set(i) >= {
@@ -291,7 +308,7 @@ def test_api_ihsg_available_when_jkse_has_close_only(client_with):
 def test_api_failure_reports_unavailable_not_fake(client_with):
     client = client_with(_fake_fail_fetch)
     indices = client.get("/v1/market/indices").json()["indices"]
-    assert len(indices) == 4
+    assert len(indices) == len(_PRICES)
     for i in indices:
         assert i["available"] is False
         assert i["price"] is None

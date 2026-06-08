@@ -96,6 +96,12 @@ INDEX_SPECS: List[MarketIndexSpec] = [
     MarketIndexSpec(Market.HKEX, "^HSI", "Hang Seng", "HKD"),
     MarketIndexSpec(Market.KOSPI, "^KS11", "KOSPI Composite", "KRW"),
     MarketIndexSpec(Market.KOSDAQ, "^KQ11", "KOSDAQ Composite", "KRW"),
+    # --- Global market expansion ---
+    MarketIndexSpec(Market.US, "^GSPC", "S&P 500", "USD"),
+    MarketIndexSpec(Market.JAPAN, "^N225", "Nikkei 225", "JPY"),
+    MarketIndexSpec(Market.INDIA, "^NSEI", "Nifty 50", "INR"),
+    MarketIndexSpec(Market.VIETNAM, "^VNINDEX", "VN-Index", "VND"),
+    MarketIndexSpec(Market.SINGAPORE, "^STI", "Straits Times Index", "SGD"),
 ]
 
 INDEX_BY_MARKET: Dict[Market, MarketIndexSpec] = {

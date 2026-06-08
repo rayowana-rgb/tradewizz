@@ -58,6 +58,33 @@ app.add_middleware(
 # Real analysis engine (yfinance-backed, with mock fallback on failure).
 engine = AnalysisEngine()
 
+# --- Global market expansion: market config + universe startup validation ---
+from .market_config import MARKET_CONFIGS  # noqa: E402
+from .universe_validation import (  # noqa: E402
+    validate_universes,
+    report_to_dict,
+)
+
+# Cached validation report (computed at startup; re-exposed via an endpoint).
+_universe_validation_report = {}
+
+
+@app.on_event("startup")
+def _validate_universes_on_startup() -> None:
+    """Verify every required market's Excel universe + config at startup.
+
+    Logs a Market | Symbols | ETFs | Stocks table. Never raises (a bad/missing
+    file just yields an empty universe + a FAIL row), so it cannot crash the
+    API. IDX behavior is unchanged.
+    """
+    global _universe_validation_report
+    try:
+        report = validate_universes(engine._universe, log=True)
+        _universe_validation_report = report_to_dict(report)
+    except Exception as exc:  # noqa: BLE001 - validation must never crash boot
+        logger.warning("Universe validation step failed: %s", exc)
+        _universe_validation_report = {}
+
 # Manual broker (Moomoo) endpoints under /v1/broker. Paper by default; every
 # order requires explicit confirmation. Registered as a router so the existing
 # analyze/screen/backtest contracts are untouched.
@@ -206,6 +233,31 @@ def market_indices() -> dict:
     """
     quotes = market_indices_service.get_indices()
     return {"indices": [q.to_dict() for q in quotes]}
+
+
+@app.get(f"{API_PREFIX}/market/config")
+def market_config_table() -> dict:
+    """Per-market configuration (timezone/currency/yahoo_suffix/hours/name).
+
+    Static metadata for the Dashboard/Screener market selectors. Read-only.
+    """
+    return {
+        "markets": [cfg.to_dict() for cfg in MARKET_CONFIGS.values()],
+    }
+
+
+@app.get(f"{API_PREFIX}/market/universe/validate")
+def market_universe_validate() -> dict:
+    """Universe validation report (symbol/ETF/stock counts, duplicates, config).
+
+    Returns the report computed at startup; recomputes on demand if empty.
+    """
+    global _universe_validation_report
+    if not _universe_validation_report:
+        _universe_validation_report = report_to_dict(
+            validate_universes(engine._universe, log=False)
+        )
+    return {"validation": _universe_validation_report}
 
 
 @app.get(f"{API_PREFIX}/market/overview/{{market}}")
