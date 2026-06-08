@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../models/portfolio.dart';
+import '../models/simulation.dart';
 import '../repositories/stock_repository.dart';
 import '../services/api_client.dart';
 import '../services/auth_scope.dart';
@@ -8,12 +8,10 @@ import '../services/repository_scope.dart';
 import '../services/social_sign_in.dart';
 import '../theme.dart';
 import 'auth_pages.dart';
-import 'broker_connections_page.dart';
-import 'portfolio_page.dart';
 
-/// Account tab. Logged out -> Login / Register buttons. Logged in -> profile,
-/// Broker Connections, a Portfolio section (summary + entry into the full
-/// Portfolio page), and Logout.
+/// Account tab. Logged out -> Login / Register. Logged in -> profile + a
+/// SIMULATED paper-trading portfolio (cash, equity, buying power, P/L,
+/// holdings, trade history, reset). No broker connection is required or shown.
 class AccountPage extends StatefulWidget {
   const AccountPage({super.key, this.repository, this.socialSignIn});
 
@@ -28,9 +26,10 @@ class AccountPage extends StatefulWidget {
 }
 
 class _AccountPageState extends State<AccountPage> {
-  bool _loadingPortfolio = false;
-  bool _portfolioFailed = false;
-  UnifiedPortfolio? _portfolio;
+  bool _loading = false;
+  bool _failed = false;
+  SimPortfolio? _portfolio;
+  List<SimTrade> _trades = const [];
   String? _loadedForToken;
 
   StockRepository get _repo =>
@@ -41,52 +40,77 @@ class _AccountPageState extends State<AccountPage> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final token = _token;
-    // Load the portfolio summary once per signed-in session. Failure is
-    // non-fatal: the Account page stays usable either way.
-    if (token != null && token != _loadedForToken && !_loadingPortfolio) {
-      _loadPortfolio();
+    if (token != null && token != _loadedForToken && !_loading) {
+      _load();
     } else if (token == null) {
       _portfolio = null;
-      _portfolioFailed = false;
+      _trades = const [];
+      _failed = false;
       _loadedForToken = null;
     }
   }
 
-  Future<void> _loadPortfolio() async {
+  Future<void> _load() async {
     final token = _token;
     if (token == null) return;
     setState(() {
-      _loadingPortfolio = true;
-      _portfolioFailed = false;
+      _loading = true;
+      _failed = false;
       _loadedForToken = token;
     });
     try {
-      final p = await _repo.portfolio(token);
+      final p = await _repo.simPortfolio(token);
+      final t = await _repo.simTrades(token);
       if (!mounted) return;
-      setState(() => _portfolio = p);
+      setState(() {
+        _portfolio = p;
+        _trades = t;
+      });
     } on ApiException {
-      if (mounted) setState(() => _portfolioFailed = true);
+      if (mounted) setState(() => _failed = true);
     } catch (_) {
-      if (mounted) setState(() => _portfolioFailed = true);
+      if (mounted) setState(() => _failed = true);
     } finally {
-      if (mounted) setState(() => _loadingPortfolio = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
-  void _openPortfolio() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => Scaffold(
-          appBar: AppBar(title: const Text('Portfolio')),
-          body: SafeArea(child: PortfolioPage(repository: widget.repository)),
+  Future<void> _reset() async {
+    final token = _token;
+    if (token == null) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reset simulation portfolio?'),
+        content: const Text(
+          'This restores your simulated cash and clears all simulated '
+          'positions and trade history. No real broker order is affected.',
         ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Reset')),
+        ],
       ),
     );
+    if (ok != true) return;
+    setState(() => _loading = true);
+    try {
+      await _repo.simReset(token);
+      await _load();
+    } catch (_) {
+      if (mounted) setState(() => _failed = true);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final auth = AuthScope.of(context); // rebuilds on login/logout
+    final auth = AuthScope.of(context);
     final repo = _repo;
 
     if (!auth.isLoggedIn) {
@@ -96,163 +120,171 @@ class _AccountPageState extends State<AccountPage> {
       );
     }
     final user = auth.user!;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-      children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  CircleAvatar(
-                    radius: 26,
-                    backgroundColor: AppColors.seed.withValues(alpha: 0.12),
-                    child: const Icon(Icons.person, color: AppColors.seed),
+    final port = _portfolio;
+    final acct = port?.account;
+
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        children: [
+          // --- Profile ---------------------------------------------------
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(children: [
+                CircleAvatar(
+                  radius: 26,
+                  backgroundColor: AppColors.seed.withValues(alpha: 0.12),
+                  child: const Icon(Icons.person, color: AppColors.seed),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Signed in as',
+                          style:
+                              TextStyle(color: Colors.grey, fontSize: 12)),
+                      const SizedBox(height: 2),
+                      Text(
+                        user.email,
+                        key: const Key('account_email'),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 16),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Signed in as',
-                            style: TextStyle(color: Colors.grey, fontSize: 12)),
-                        const SizedBox(height: 2),
-                        Text(
-                          user.email,
-                          key: const Key('account_email'),
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w800, fontSize: 16),
-                        ),
-                      ],
-                    ),
-                  ),
-                ]),
-                const SizedBox(height: 16),
-                Row(children: [
-                  const Icon(Icons.account_balance, size: 18,
-                      color: AppColors.seed),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Connected brokers: ${user.connectedBrokers}',
-                    key: const Key('connected_brokers'),
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ]),
-              ],
+                ),
+              ]),
             ),
           ),
-        ),
-        const SizedBox(height: 16),
-        Card(
-          child: ListTile(
-            key: const Key('broker_connections_tile'),
-            leading: const Icon(Icons.account_balance_wallet_outlined,
-                color: AppColors.seed),
-            title: const Text('Broker Connections'),
-            subtitle: Text('${user.connectedBrokers} connected'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => BrokerConnectionsPage(repository: repo),
+          const SizedBox(height: 16),
+
+          // --- Simulation disclaimer ------------------------------------
+          _disclaimerBanner(port?.disclaimer),
+          const SizedBox(height: 16),
+
+          // --- Simulated portfolio summary ------------------------------
+          const Padding(
+            padding: EdgeInsets.only(left: 4, bottom: 8),
+            child: Text('Simulation Portfolio',
+                key: Key('account_portfolio_section'),
+                style:
+                    TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          ),
+          _SummaryCard(
+            loading: _loading,
+            failed: _failed,
+            account: acct,
+            onRetry: _load,
+          ),
+          const SizedBox(height: 16),
+
+          // --- Holdings --------------------------------------------------
+          const Padding(
+            padding: EdgeInsets.only(left: 4, bottom: 8),
+            child: Text('Holdings',
+                style:
+                    TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          ),
+          _HoldingsCard(positions: port?.positions ?? const []),
+          const SizedBox(height: 16),
+
+          // --- Trade history ---------------------------------------------
+          const Padding(
+            padding: EdgeInsets.only(left: 4, bottom: 8),
+            child: Text('Trade History',
+                style:
+                    TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          ),
+          _TradesCard(trades: _trades),
+          const SizedBox(height: 20),
+
+          // --- Reset -----------------------------------------------------
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              key: const Key('reset_simulation_button'),
+              icon: const Icon(Icons.restart_alt),
+              label: const Text('Reset Simulation Portfolio'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.seed,
+                padding: const EdgeInsets.symmetric(vertical: 14),
               ),
+              onPressed: _loading ? null : _reset,
             ),
           ),
-        ),
-        const SizedBox(height: 16),
-        // --- Portfolio section -------------------------------------------
-        const Padding(
-          padding: EdgeInsets.only(left: 4, bottom: 8),
-          child: Text('Portfolio',
-              key: Key('account_portfolio_section'),
-              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-        ),
-        _PortfolioCard(
-          loading: _loadingPortfolio,
-          failed: _portfolioFailed,
-          portfolio: _portfolio,
-          onOpen: _openPortfolio,
-          onRetry: _loadPortfolio,
-        ),
-        const SizedBox(height: 12),
-        Card(
-          child: Column(children: [
-            ListTile(
-              key: const Key('portfolio_positions_tile'),
-              leading: const Icon(Icons.list_alt_outlined,
-                  color: AppColors.seed),
-              title: const Text('Positions'),
-              subtitle: const Text('Holdings across your brokers'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: _openPortfolio,
+          const SizedBox(height: 12),
+
+          // --- Logout ----------------------------------------------------
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              key: const Key('logout_button'),
+              icon: const Icon(Icons.logout),
+              label: const Text('Log out'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.down,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              onPressed: () async {
+                final token = auth.token;
+                if (token != null) {
+                  try {
+                    await repo.logout(token);
+                  } catch (_) {}
+                }
+                await auth.clear();
+              },
             ),
-            const Divider(height: 1),
-            ListTile(
-              key: const Key('portfolio_performance_tile'),
-              leading: const Icon(Icons.insights_outlined,
-                  color: AppColors.seed),
-              title: const Text('Performance Analytics'),
-              subtitle: const Text('P/L, breakdowns and equity curve'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: _openPortfolio,
-            ),
-          ]),
-        ),
-        const SizedBox(height: 16),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            key: const Key('logout_button'),
-            icon: const Icon(Icons.logout),
-            label: const Text('Log out'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.down,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-            ),
-            onPressed: () async {
-              final token = auth.token;
-              if (token != null) {
-                // Best-effort server notify; clear locally regardless.
-                try {
-                  await repo.logout(token);
-                } catch (_) {}
-              }
-              await auth.clear();
-            },
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
+
+  Widget _disclaimerBanner(String? text) => Container(
+        key: const Key('account_sim_disclaimer'),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.orange.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.orange.withValues(alpha: 0.4)),
+        ),
+        child: Row(children: [
+          const Icon(Icons.science_outlined, color: Colors.orange, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text ??
+                  'This is a simulated portfolio. No real broker order is sent.',
+              style: const TextStyle(
+                  color: Colors.orange,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13),
+            ),
+          ),
+        ]),
+      );
 }
 
-/// Portfolio summary card shown inside the Account page. Shows total equity,
-/// cash and (when present) floating P/L, with an Open Portfolio button. If the
-/// summary fails to load it degrades to a friendly message but always keeps the
-/// Open Portfolio button available so the section stays usable.
-class _PortfolioCard extends StatelessWidget {
-  const _PortfolioCard({
+class _SummaryCard extends StatelessWidget {
+  const _SummaryCard({
     required this.loading,
     required this.failed,
-    required this.portfolio,
-    required this.onOpen,
+    required this.account,
     required this.onRetry,
   });
 
   final bool loading;
   final bool failed;
-  final UnifiedPortfolio? portfolio;
-  final VoidCallback onOpen;
+  final SimAccount? account;
   final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
-    final s = portfolio?.summary;
-    final hasData = s != null;
-    final pnlColor =
-        (s?.floatingPnl ?? 0) >= 0 ? AppColors.up : AppColors.down;
-
+    final a = account;
     Widget stat(String label, String value, {Color? color, Key? key}) =>
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -274,71 +306,165 @@ class _PortfolioCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(children: [
-              const Icon(Icons.pie_chart_outline, color: AppColors.seed),
-              const SizedBox(width: 10),
-              const Text('Portfolio Summary',
-                  style: TextStyle(fontWeight: FontWeight.w700)),
-              const Spacer(),
-              if (loading)
-                const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-            ]),
-            const SizedBox(height: 14),
-            if (hasData) ...[
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  stat('Total Equity', s.totalEquity.toStringAsFixed(2),
-                      key: const Key('account_total_equity')),
-                  stat('Cash', s.cash.toStringAsFixed(2),
-                      key: const Key('account_cash')),
-                  stat(
-                    'Floating P/L',
-                    '${s.floatingPnl >= 0 ? '+' : ''}'
-                        '${s.floatingPnl.toStringAsFixed(2)}',
-                    color: pnlColor,
-                    key: const Key('account_floating_pnl'),
-                  ),
-                ],
-              ),
-            ] else if (failed) ...[
+            if (loading && a == null)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 18),
+                child: Center(
+                    child: SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2))),
+              )
+            else if (a == null && failed)
               Row(children: [
-                const Icon(Icons.info_outline,
-                    size: 18, color: Colors.grey),
+                const Icon(Icons.info_outline, size: 18, color: Colors.grey),
                 const SizedBox(width: 8),
                 const Expanded(
                   child: Text(
-                    "Couldn't load your portfolio summary right now.",
+                    "Couldn't load your simulation portfolio right now.",
                     key: Key('account_portfolio_error'),
                     style: TextStyle(color: Colors.grey, fontSize: 13),
                   ),
                 ),
-                TextButton(
-                  onPressed: onRetry,
-                  child: const Text('Retry'),
-                ),
-              ]),
-            ] else if (!loading) ...[
-              const Text('Open your portfolio to see equity and positions.',
-                  style: TextStyle(color: Colors.grey, fontSize: 13)),
-            ],
-            const SizedBox(height: 14),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                key: const Key('open_portfolio_button'),
-                icon: const Icon(Icons.open_in_new, size: 18),
-                label: const Text('Open Portfolio'),
-                onPressed: onOpen,
+                TextButton(onPressed: onRetry, child: const Text('Retry')),
+              ])
+            else if (a != null) ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  stat('Simulated Cash', a.cash.toStringAsFixed(2),
+                      key: const Key('account_cash')),
+                  stat('Equity', a.equity.toStringAsFixed(2),
+                      key: const Key('account_total_equity')),
+                  stat('Buying Power', a.buyingPower.toStringAsFixed(2),
+                      key: const Key('account_buying_power')),
+                ],
               ),
-            ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  stat(
+                    'Unrealized P/L',
+                    '${a.unrealizedPnl >= 0 ? '+' : ''}'
+                        '${a.unrealizedPnl.toStringAsFixed(2)}',
+                    color: a.unrealizedPnl >= 0 ? AppColors.up : AppColors.down,
+                    key: const Key('account_unrealized_pnl'),
+                  ),
+                  stat(
+                    'Realized P/L',
+                    '${a.realizedPnl >= 0 ? '+' : ''}'
+                        '${a.realizedPnl.toStringAsFixed(2)}',
+                    color: a.realizedPnl >= 0 ? AppColors.up : AppColors.down,
+                    key: const Key('account_realized_pnl'),
+                  ),
+                  stat('Currency', a.currency),
+                ],
+              ),
+            ],
           ],
         ),
       ),
+    );
+  }
+}
+
+class _HoldingsCard extends StatelessWidget {
+  const _HoldingsCard({required this.positions});
+  final List<SimPosition> positions;
+
+  @override
+  Widget build(BuildContext context) {
+    if (positions.isEmpty) {
+      return const Card(
+        key: Key('account_holdings_empty'),
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Text('No simulated holdings yet. Buy a stock to get started.',
+              style: TextStyle(color: Colors.grey, fontSize: 13)),
+        ),
+      );
+    }
+    return Card(
+      key: const Key('account_holdings_card'),
+      child: Column(
+        children: [
+          for (var i = 0; i < positions.length; i++) ...[
+            if (i > 0) const Divider(height: 1),
+            _holdingTile(positions[i]),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _holdingTile(SimPosition p) {
+    final pnlColor = p.unrealizedPnl >= 0 ? AppColors.up : AppColors.down;
+    return ListTile(
+      title: Text('${p.symbol} · ${p.market.code}',
+          style: const TextStyle(fontWeight: FontWeight.w700)),
+      subtitle: Text(
+          '${p.quantity.toStringAsFixed(0)} @ ${p.averageCost.toStringAsFixed(2)} '
+          '· last ${p.lastPrice.toStringAsFixed(2)}'),
+      trailing: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(p.marketValue.toStringAsFixed(2),
+              style: const TextStyle(fontWeight: FontWeight.w700)),
+          Text(
+            '${p.unrealizedPnl >= 0 ? '+' : ''}'
+            '${p.unrealizedPnl.toStringAsFixed(2)}',
+            style: TextStyle(color: pnlColor, fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TradesCard extends StatelessWidget {
+  const _TradesCard({required this.trades});
+  final List<SimTrade> trades;
+
+  @override
+  Widget build(BuildContext context) {
+    if (trades.isEmpty) {
+      return const Card(
+        key: Key('account_trades_empty'),
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Text('No simulated trades yet.',
+              style: TextStyle(color: Colors.grey, fontSize: 13)),
+        ),
+      );
+    }
+    final shown = trades.take(20).toList();
+    return Card(
+      key: const Key('account_trades_card'),
+      child: Column(
+        children: [
+          for (var i = 0; i < shown.length; i++) ...[
+            if (i > 0) const Divider(height: 1),
+            _tradeTile(shown[i]),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _tradeTile(SimTrade t) {
+    final isBuy = t.side == 'BUY';
+    final color = isBuy ? AppColors.up : AppColors.down;
+    return ListTile(
+      dense: true,
+      leading: Icon(isBuy ? Icons.arrow_downward : Icons.arrow_upward,
+          color: color, size: 18),
+      title: Text('${t.side} ${t.quantity.toStringAsFixed(0)} ${t.symbol}',
+          style: const TextStyle(fontWeight: FontWeight.w700)),
+      subtitle: Text('${t.market.code} @ ${t.price.toStringAsFixed(2)}'),
+      trailing: Text(t.value.toStringAsFixed(2),
+          style: const TextStyle(fontWeight: FontWeight.w600)),
     );
   }
 }
@@ -369,12 +495,10 @@ class _LoggedOutViewState extends State<_LoggedOutView> {
     try {
       final idToken = await getIdToken();
       if (idToken == null) {
-        // User cancelled.
         if (mounted) setState(() => _busy = false);
         return;
       }
       final res = await exchange(idToken);
-      // Persist ONLY the TradeWizz session, never the provider token.
       await auth.setSession(res.accessToken, res.user);
     } catch (e) {
       if (mounted) {
@@ -387,7 +511,6 @@ class _LoggedOutViewState extends State<_LoggedOutView> {
 
   String _humanError(String provider, Object e) {
     final msg = e.toString();
-    // Surface the backend's clear messages (already user-facing).
     if (msg.contains('not configured')) return msg.replaceAll('Exception: ', '');
     if (msg.contains('already exists')) {
       return msg.replaceAll('Exception: ', '');
@@ -413,7 +536,7 @@ class _LoggedOutViewState extends State<_LoggedOutView> {
             ),
             const SizedBox(height: 4),
             const Text(
-              'Manage your profile and brokers.',
+              'Track your simulated portfolio across all markets.',
               style: TextStyle(color: Colors.grey),
             ),
             const SizedBox(height: 24),

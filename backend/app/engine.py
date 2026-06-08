@@ -790,6 +790,25 @@ class AnalysisEngine:
             logger.warning("analyze fell back to mock for %s: %s", ticker, exc)
             return mock_data.mock_analyze(symbol, market)
 
+    def latest_price(self, symbol: str, market: Market) -> Optional[float]:
+        """Latest close price for a symbol via the unified cached fetch path.
+
+        Read-only helper used by the simulated portfolio for mark-to-market and
+        market-order execution. Reuses the same fetcher/cache as analyze(); does
+        NOT touch scoring/indicators. Returns None if no real price is
+        available (caller decides how to handle).
+        """
+        ticker = yf_symbol(symbol, market)
+        try:
+            df = self._fetch(ticker, "1mo", "1d")
+            close = df["Close"].dropna()
+            if close.empty:
+                return None
+            return float(close.iloc[-1])
+        except Exception as exc:  # noqa: BLE001 - price is best-effort
+            logger.warning("latest_price failed for %s: %s", ticker, exc)
+            return None
+
     def predict_weekly(self, symbol: str, market: Market) -> WeeklyPrediction:
         ticker = yf_symbol(symbol, market)
         try:

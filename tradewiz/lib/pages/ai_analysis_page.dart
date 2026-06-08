@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import '../models/analysis_result.dart';
 import '../models/broker.dart';
 import '../models/market.dart';
+import '../models/simulation.dart';
 import '../models/watchlist_item.dart';
 import '../repositories/stock_repository.dart';
 import 'order_ticket_page.dart';
 import '../services/api_client.dart';
+import '../services/auth_scope.dart';
 import '../services/data_source.dart';
 import '../services/repository_scope.dart';
 import '../services/watchlist_scope.dart';
@@ -209,6 +211,11 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
           const SizedBox(height: 12),
           _SaveToWatchlistButton(result: _result!),
           const SizedBox(height: 12),
+          _PositionBadge(
+            symbol: _result!.symbol,
+            market: _market,
+            repository: _repo,
+          ),
           _BuySellButtons(
             symbol: _result!.symbol,
             // Use the user-selected market (single source of truth), not the
@@ -302,9 +309,9 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
 }
 
 /// Adds the analyzed symbol to the shared watchlist (reflects saved state).
-/// Buy / Sell buttons. Only shown for markets tradable via Moomoo (HKEX);
-/// for others, shows a clear 'not tradable' note. Opens the manual order
-/// ticket -> preview -> confirm flow (never auto-submits).
+/// Simulated Buy / Sell buttons. Shown for EVERY supported market (the order
+/// is a paper trade, no broker connection required). Opens the simulated order
+/// ticket -> preview -> confirm flow (never auto-submits, never a real order).
 class _BuySellButtons extends StatelessWidget {
   const _BuySellButtons({
     required this.symbol,
@@ -315,9 +322,6 @@ class _BuySellButtons extends StatelessWidget {
   final String symbol;
   final Market market;
   final StockRepository repository;
-
-  // Single source of truth on the Market enum (mirrors backend symbol_map).
-  bool get _tradable => market.tradableViaMoomoo;
 
   void _open(BuildContext context, OrderSide side) {
     Navigator.of(context).push(
@@ -334,23 +338,6 @@ class _BuySellButtons extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!_tradable) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(children: [
-            const Icon(Icons.block, size: 18, color: Colors.grey),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                '${market.code} is not tradable via Moomoo.',
-                style: const TextStyle(color: Colors.grey, fontSize: 13),
-              ),
-            ),
-          ]),
-        ),
-      );
-    }
     return Row(children: [
       Expanded(
         child: FilledButton.icon(
@@ -378,6 +365,93 @@ class _BuySellButtons extends StatelessWidget {
         ),
       ),
     ]);
+  }
+}
+
+/// Shows a small "you hold N shares" badge when the signed-in user owns this
+/// symbol in their SIMULATED portfolio. Silent (renders nothing) when logged
+/// out, not owned, or the lookup fails — never blocks the analysis view.
+class _PositionBadge extends StatefulWidget {
+  const _PositionBadge({
+    required this.symbol,
+    required this.market,
+    required this.repository,
+  });
+
+  final String symbol;
+  final Market market;
+  final StockRepository repository;
+
+  @override
+  State<_PositionBadge> createState() => _PositionBadgeState();
+}
+
+class _PositionBadgeState extends State<_PositionBadge> {
+  SimPosition? _position;
+  bool _loaded = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_loaded) {
+      _loaded = true;
+      _load();
+    }
+  }
+
+  Future<void> _load() async {
+    // Safe lookup: the badge is optional, so missing AuthScope (e.g. in some
+    // tests) simply means "not signed in" rather than an assertion failure.
+    final scope =
+        context.getInheritedWidgetOfExactType<AuthScope>()?.notifier;
+    final token = scope?.token;
+    if (token == null) return;
+    try {
+      final positions = await widget.repository.simPositions(token);
+      final match = positions.where((p) =>
+          p.symbol.toUpperCase() == widget.symbol.toUpperCase() &&
+          p.market == widget.market);
+      if (!mounted) return;
+      setState(() => _position = match.isEmpty ? null : match.first);
+    } catch (_) {
+      // Best-effort: a failed lookup just hides the badge.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = _position;
+    if (p == null) return const SizedBox.shrink();
+    final pnlColor = p.unrealizedPnl >= 0 ? AppColors.up : AppColors.down;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        key: const Key('position_held_badge'),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.seed.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(children: [
+          const Icon(Icons.account_balance_wallet_outlined,
+              size: 18, color: AppColors.seed),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Simulated holding: ${p.quantity.toStringAsFixed(0)} @ '
+              '${p.averageCost.toStringAsFixed(2)}',
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+            ),
+          ),
+          Text(
+            '${p.unrealizedPnl >= 0 ? '+' : ''}'
+            '${p.unrealizedPnl.toStringAsFixed(2)}',
+            style: TextStyle(
+                color: pnlColor, fontWeight: FontWeight.w700, fontSize: 13),
+          ),
+        ]),
+      ),
+    );
   }
 }
 

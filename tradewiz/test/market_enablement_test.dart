@@ -60,7 +60,8 @@ void main() {
     }
   });
 
-  testWidgets('HKEX analysis detail shows Buy / Sell', (tester) async {
+  testWidgets('HKEX analysis detail shows simulated Buy / Sell',
+      (tester) async {
     await _analyze(tester, Market.hkex);
     await tester.scrollUntilVisible(
       find.byKey(const Key('buy_button')),
@@ -71,31 +72,30 @@ void main() {
     expect(find.byKey(const Key('sell_button')), findsOneWidget);
   });
 
-  testWidgets('IDX analysis detail does NOT allow Moomoo Buy/Sell',
+  testWidgets('IDX analysis detail shows simulated Buy / Sell (no broker)',
       (tester) async {
     await _analyze(tester, Market.idx);
     await tester.scrollUntilVisible(
-      find.textContaining('not tradable via Moomoo'),
+      find.byKey(const Key('buy_button')),
       200,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.byKey(const Key('buy_button')), findsNothing);
-    expect(find.byKey(const Key('sell_button')), findsNothing);
-    expect(find.textContaining('IDX is not tradable via Moomoo'),
-        findsOneWidget);
+    // Simulated trading is offered for every market now.
+    expect(find.byKey(const Key('buy_button')), findsOneWidget);
+    expect(find.byKey(const Key('sell_button')), findsOneWidget);
+    expect(find.textContaining('not tradable via Moomoo'), findsNothing);
   });
 
-  testWidgets('KOSPI analysis detail does NOT allow Moomoo Buy/Sell',
+  testWidgets('KOSPI analysis detail shows simulated Buy / Sell (no broker)',
       (tester) async {
     await _analyze(tester, Market.kospi);
     await tester.scrollUntilVisible(
-      find.textContaining('not tradable via Moomoo'),
+      find.byKey(const Key('buy_button')),
       200,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.byKey(const Key('buy_button')), findsNothing);
-    expect(find.byKey(const Key('sell_button')), findsNothing);
-    expect(find.textContaining('KOSPI is not tradable via Moomoo'),
-        findsOneWidget);
+    expect(find.byKey(const Key('buy_button')), findsOneWidget);
+    expect(find.byKey(const Key('sell_button')), findsOneWidget);
+    expect(find.textContaining('not tradable via Moomoo'), findsNothing);
   });
 }

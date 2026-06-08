@@ -15,23 +15,18 @@ import 'package:tradewiz/services/api_client.dart';
 import 'package:tradewiz/services/auth_scope.dart';
 import 'package:tradewiz/services/auth_store.dart';
 
-/// Fake IBKR order backend. Records calls + bearer so tests can assert that
-/// preview does not place, that place carries the confirmation token, and that
-/// auth flows through. Order endpoints can be made to reject with a specific
-/// backend `detail` to verify the UI surfaces it verbatim.
-class _FakeIbkr {
-  _FakeIbkr({this.placeStatus = 200, this.placeDetail});
+/// Fake SIMULATION backend. Records calls + payloads so tests can assert that
+/// the ticket calls /v1/sim/order/* (never a broker endpoint), that preview
+/// does not place, and that every response is marked simulated.
+class _FakeSim {
+  _FakeSim({this.placeStatus = 200, this.placeDetail});
 
   final List<String> calls = [];
   final List<String?> bearers = [];
   final List<String?> previewMarkets = [];
   final List<String?> placeMarkets = [];
-  String? lastPlaceToken;
 
-  /// HTTP status to return from /place (e.g. 409 read-only, 400 funds).
   final int placeStatus;
-
-  /// `detail` to return from /place when [placeStatus] != 200.
   final String? placeDetail;
 
   http.Response handle(http.Request req) {
@@ -41,32 +36,29 @@ class _FakeIbkr {
         ? <String, dynamic>{}
         : jsonDecode(req.body) as Map<String, dynamic>;
 
-    if (req.url.path.endsWith('/brokers/ibkr/order/preview')) {
+    if (req.url.path.endsWith('/sim/order/preview')) {
       previewMarkets.add(body['market'] as String?);
+      final qty = (body['quantity'] as num?) ?? 0;
+      final price = (body['price'] as num?) ?? 100;
       return http.Response(
         jsonEncode({
           'symbol': body['symbol'],
           'market': body['market'],
-          'moomoo_code': 'SEHK:700',
           'side': body['side'],
-          'quantity': body['quantity'],
+          'quantity': qty,
           'order_type': body['order_type'],
-          'price': body['price'],
-          'estimated_value':
-              (body['quantity'] as num) * ((body['price'] as num?) ?? 0),
-          'currency': 'HKD',
-          'trading_env': 'PAPER',
-          'is_real': false,
-          'confirmation_token': 'TOKEN-123',
-          'expires_in_seconds': 120,
-          'warnings': <String>[],
+          'price': price,
+          'estimated_value': qty * price,
+          'currency': 'USD',
+          'cash_after': 1000000 - qty * price,
+          'simulated': true,
+          'warning': 'Simulation only. No real broker order will be sent.',
         }),
         200,
         headers: {'content-type': 'application/json'},
       );
     }
-    if (req.url.path.endsWith('/brokers/ibkr/order/place')) {
-      lastPlaceToken = body['confirmation_token'] as String?;
+    if (req.url.path.endsWith('/sim/order/place')) {
       placeMarkets.add(body['market'] as String?);
       if (placeStatus != 200) {
         return http.Response(
@@ -75,18 +67,22 @@ class _FakeIbkr {
           headers: {'content-type': 'application/json'},
         );
       }
+      final qty = (body['quantity'] as num?) ?? 0;
+      final price = (body['price'] as num?) ?? 100;
       return http.Response(
         jsonEncode({
-          'order_id': 'IBKR-1',
+          'order_id': 'SIM-ABC123',
           'symbol': body['symbol'],
           'market': body['market'],
           'side': body['side'],
-          'quantity': body['quantity'],
-          'order_type': body['order_type'],
-          'status': 'SUBMITTED',
-          'trading_env': 'PAPER',
-          'is_real': false,
-          'message': 'Order submitted.',
+          'quantity': qty,
+          'price': price,
+          'value': qty * price,
+          'status': 'FILLED_SIMULATED',
+          'realized_pnl': 0,
+          'cash_after': 1000000 - qty * price,
+          'simulated': true,
+          'message': 'Simulated order filled. No real broker order was sent.',
         }),
         200,
         headers: {'content-type': 'application/json'},
@@ -96,10 +92,10 @@ class _FakeIbkr {
   }
 }
 
-StockRepository _repo(_FakeIbkr broker) => StockRepository(
+StockRepository _repo(_FakeSim sim) => StockRepository(
       client: ApiClient(
         config: const AppConfig(baseUrl: 'https://test.tradewiz.app/v1'),
-        httpClient: MockClient((req) async => broker.handle(req)),
+        httpClient: MockClient((req) async => sim.handle(req)),
       ),
     );
 
@@ -122,129 +118,121 @@ Widget _wrap(Widget child) => AuthScope(
       child: MaterialApp(home: child),
     );
 
+/// Default order type is Market -> only quantity is needed to preview.
 Future<void> _fillAndPreview(WidgetTester tester) async {
   await tester.enterText(find.byKey(const Key('qty_field')), '100');
-  await tester.enterText(find.byKey(const Key('price_field')), '400');
-  await tester.tap(find.text('Preview order'));
+  await tester.tap(find.byKey(const Key('preview_order_button')));
   await tester.pumpAndSettle();
 }
 
 void main() {
-  testWidgets('Preview does NOT place an order (IBKR endpoint, authed)',
+  testWidgets('Order ticket shows the simulation warning banner up front',
       (tester) async {
-    final broker = _FakeIbkr();
+    final sim = _FakeSim();
     await tester.pumpWidget(_wrap(OrderTicketPage(
-      symbol: '0700',
-      market: Market.hkex,
+      symbol: 'AAPL',
+      market: Market.us,
       side: OrderSide.buy,
-      repository: _repo(broker),
+      repository: _repo(sim),
+    )));
+    expect(find.byKey(const Key('sim_warning_banner')), findsOneWidget);
+    expect(
+      find.text('Simulation mode only. This does not place a real trade.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('Preview calls /v1/sim/order/preview and does NOT place',
+      (tester) async {
+    final sim = _FakeSim();
+    await tester.pumpWidget(_wrap(OrderTicketPage(
+      symbol: 'AAPL',
+      market: Market.us,
+      side: OrderSide.buy,
+      repository: _repo(sim),
     )));
 
     await _fillAndPreview(tester);
 
-    expect(find.text('Order Preview'), findsOneWidget);
-    expect(broker.calls, ['POST /v1/brokers/ibkr/order/preview']);
-    expect(broker.calls.any((c) => c.contains('/place')), isFalse);
-    // Authenticated: bearer token sent on the order call.
-    expect(broker.bearers.first, 'Bearer JWT-TEST');
+    expect(find.text('Simulated Order Preview'), findsOneWidget);
+    expect(sim.calls, ['POST /v1/sim/order/preview']);
+    expect(sim.calls.any((c) => c.contains('broker')), isFalse);
+    expect(sim.calls.any((c) => c.contains('ibkr')), isFalse);
+    expect(sim.bearers.first, 'Bearer JWT-TEST');
   });
 
-  testWidgets('Confirm places the order WITH the confirmation token',
+  testWidgets('Confirm places a simulated order via /v1/sim/order/place',
       (tester) async {
-    final broker = _FakeIbkr();
+    final sim = _FakeSim();
     await tester.pumpWidget(_wrap(OrderTicketPage(
-      symbol: '0700',
-      market: Market.hkex,
+      symbol: 'AAPL',
+      market: Market.us,
       side: OrderSide.buy,
-      repository: _repo(broker),
+      repository: _repo(sim),
     )));
 
     await _fillAndPreview(tester);
     await tester.tap(find.byKey(const Key('confirm_place_button')));
     await tester.pumpAndSettle();
 
-    expect(find.text('Order SUBMITTED'), findsOneWidget);
-    expect(broker.calls, [
-      'POST /v1/brokers/ibkr/order/preview',
-      'POST /v1/brokers/ibkr/order/place',
+    expect(find.byKey(const Key('sim_result_title')), findsOneWidget);
+    expect(find.text('Simulated order filled'), findsOneWidget);
+    expect(
+      find.text('Simulated order filled. No real broker order was sent.'),
+      findsOneWidget,
+    );
+    expect(sim.calls, [
+      'POST /v1/sim/order/preview',
+      'POST /v1/sim/order/place',
     ]);
-    expect(broker.lastPlaceToken, 'TOKEN-123');
-    expect(broker.bearers.last, 'Bearer JWT-TEST');
+    // Only sim endpoints — never a broker/ibkr/moomoo endpoint.
+    for (final c in sim.calls) {
+      expect(c.contains('broker'), isFalse);
+      expect(c.contains('ibkr'), isFalse);
+      expect(c.contains('moomoo'), isFalse);
+    }
   });
 
-  testWidgets('HKEX order sends market=HKEX in preview AND place payloads',
-      (tester) async {
-    final broker = _FakeIbkr();
-    await tester.pumpWidget(_wrap(OrderTicketPage(
-      symbol: '03417',
-      market: Market.hkex,
-      side: OrderSide.buy,
-      repository: _repo(broker),
-    )));
-    await _fillAndPreview(tester);
-    await tester.tap(find.byKey(const Key('confirm_place_button')));
-    await tester.pumpAndSettle();
-
-    expect(broker.previewMarkets, ['HKEX']);
-    expect(broker.placeMarkets, ['HKEX']);
-    // The symbol is carried verbatim (no .JK ever appended client-side).
-    expect(broker.calls, [
-      'POST /v1/brokers/ibkr/order/preview',
-      'POST /v1/brokers/ibkr/order/place',
-    ]);
-  });
-
-  testWidgets('IDX order sends market=IDX in preview payload', (tester) async {
-    final broker = _FakeIbkr();
+  testWidgets('Works for a market with no broker (IDX) — simulated', (tester) async {
+    final sim = _FakeSim();
     await tester.pumpWidget(_wrap(OrderTicketPage(
       symbol: 'BBCA',
       market: Market.idx,
       side: OrderSide.buy,
-      repository: _repo(broker),
-    )));
-    await _fillAndPreview(tester);
-    expect(broker.previewMarkets, ['IDX']);
-  });
-
-  testWidgets('PAPER env chip is shown on the preview', (tester) async {
-    final broker = _FakeIbkr();
-    await tester.pumpWidget(_wrap(OrderTicketPage(
-      symbol: '0700',
-      market: Market.hkex,
-      side: OrderSide.buy,
-      repository: _repo(broker),
-    )));
-    await _fillAndPreview(tester);
-    expect(find.text('PAPER'), findsOneWidget);
-  });
-
-  testWidgets('Read-Only mode error is surfaced verbatim (not "Order failed")',
-      (tester) async {
-    const msg = 'IB Gateway is currently running in Read-Only API mode. '
-        'Disable Read-Only to place orders.';
-    final broker = _FakeIbkr(placeStatus: 409, placeDetail: msg);
-    await tester.pumpWidget(_wrap(OrderTicketPage(
-      symbol: '0700',
-      market: Market.hkex,
-      side: OrderSide.buy,
-      repository: _repo(broker),
+      repository: _repo(sim),
     )));
     await _fillAndPreview(tester);
     await tester.tap(find.byKey(const Key('confirm_place_button')));
     await tester.pumpAndSettle();
 
-    expect(find.text(msg), findsOneWidget);
-    expect(find.text('Order failed'), findsNothing);
+    expect(sim.previewMarkets, ['IDX']);
+    expect(sim.placeMarkets, ['IDX']);
+    expect(find.text('Simulated order filled'), findsOneWidget);
   });
 
-  testWidgets('Insufficient buying power error is surfaced', (tester) async {
-    const msg = 'Insufficient buying power to place this order.';
-    final broker = _FakeIbkr(placeStatus: 400, placeDetail: msg);
+  testWidgets('SIMULATED chip + warning are shown on the preview',
+      (tester) async {
+    final sim = _FakeSim();
     await tester.pumpWidget(_wrap(OrderTicketPage(
-      symbol: '0700',
-      market: Market.hkex,
+      symbol: 'AAPL',
+      market: Market.us,
       side: OrderSide.buy,
-      repository: _repo(broker),
+      repository: _repo(sim),
+    )));
+    await _fillAndPreview(tester);
+    expect(find.text('SIMULATED'), findsOneWidget);
+    expect(find.byKey(const Key('sim_preview_warning')), findsOneWidget);
+  });
+
+  testWidgets('Insufficient simulated cash error is surfaced verbatim',
+      (tester) async {
+    const msg = 'Insufficient simulated cash for this order.';
+    final sim = _FakeSim(placeStatus: 400, placeDetail: msg);
+    await tester.pumpWidget(_wrap(OrderTicketPage(
+      symbol: 'AAPL',
+      market: Market.us,
+      side: OrderSide.buy,
+      repository: _repo(sim),
     )));
     await _fillAndPreview(tester);
     await tester.tap(find.byKey(const Key('confirm_place_button')));

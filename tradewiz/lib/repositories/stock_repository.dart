@@ -6,6 +6,7 @@ import '../models/market_index.dart';
 import '../models/market_overview.dart';
 import '../models/portfolio.dart';
 import '../models/screener_result.dart';
+import '../models/simulation.dart';
 import '../models/user.dart';
 import '../services/api_client.dart';
 import '../services/data_source.dart';
@@ -154,6 +155,87 @@ class StockRepository {
       bearer: token,
     );
     return OrderResult.fromJson(j);
+  }
+
+  // --- Simulated paper-trading portfolio (/v1/sim/*) ------------------------
+  // Broker-free. Buy/Sell are simulated only; no real order is ever placed.
+
+  /// Simulated account snapshot. Backs `GET /v1/sim/account`.
+  Future<SimAccount> simAccount(String token) async {
+    final j = await _client.authGet('/sim/account', bearer: token);
+    return SimAccount.fromJson(j);
+  }
+
+  /// Simulated portfolio (account + positions). Backs `GET /v1/sim/portfolio`.
+  Future<SimPortfolio> simPortfolio(String token) async {
+    final j = await _client.authGet('/sim/portfolio', bearer: token);
+    return SimPortfolio.fromJson(j);
+  }
+
+  /// Simulated open positions. Backs `GET /v1/sim/positions`.
+  Future<List<SimPosition>> simPositions(String token) async {
+    final j = await _client.authGet('/sim/positions', bearer: token);
+    return (j['positions'] as List<dynamic>? ?? [])
+        .map((e) => SimPosition.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Simulated trade history. Backs `GET /v1/sim/trades`.
+  Future<List<SimTrade>> simTrades(String token) async {
+    final j = await _client.authGet('/sim/trades', bearer: token);
+    return (j['trades'] as List<dynamic>? ?? [])
+        .map((e) => SimTrade.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Preview a SIMULATED order (no broker). Backs `POST /v1/sim/order/preview`.
+  Future<SimOrderPreview> simPreviewOrder({
+    required String token,
+    required String symbol,
+    required Market market,
+    required OrderSide side,
+    required double quantity,
+    required OrderTypeKind orderType,
+    double? price,
+  }) async {
+    final body = <String, dynamic>{
+      'symbol': symbol,
+      'market': market.code,
+      'side': side.wire,
+      'quantity': quantity,
+      'order_type': orderType.wire,
+    };
+    if (price != null) body['price'] = price;
+    final j = await _client.authPost('/sim/order/preview', body, bearer: token);
+    return SimOrderPreview.fromJson(j);
+  }
+
+  /// Place a SIMULATED order (no broker). Backs `POST /v1/sim/order/place`.
+  Future<SimOrderResult> simPlaceOrder({
+    required String token,
+    required String symbol,
+    required Market market,
+    required OrderSide side,
+    required double quantity,
+    required OrderTypeKind orderType,
+    double? price,
+  }) async {
+    final body = <String, dynamic>{
+      'symbol': symbol,
+      'market': market.code,
+      'side': side.wire,
+      'quantity': quantity,
+      'order_type': orderType.wire,
+    };
+    if (price != null) body['price'] = price;
+    final j = await _client.authPost('/sim/order/place', body, bearer: token);
+    return SimOrderResult.fromJson(j);
+  }
+
+  /// Reset the simulated portfolio. Backs `POST /v1/sim/reset`.
+  Future<SimAccount> simReset(String token) async {
+    await _client.authPost('/sim/reset', const {}, bearer: token);
+    return simAccount(token);
   }
 
   // --- Auth -----------------------------------------------------------------

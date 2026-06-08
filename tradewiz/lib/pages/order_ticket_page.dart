@@ -4,15 +4,17 @@ import 'package:flutter/material.dart';
 
 import '../models/broker.dart';
 import '../models/market.dart';
+import '../models/simulation.dart';
 import '../repositories/stock_repository.dart';
 import '../services/api_client.dart';
 import '../services/auth_scope.dart';
 import '../theme.dart';
 
-/// Manual order ticket: quantity/type/price -> preview -> confirm -> place.
+/// Manual SIMULATED order ticket: quantity/type/price -> preview -> place.
 ///
-/// Safety: this NEVER auto-submits. The user must explicitly preview, then
-/// confirm, then place. Every place uses the server-issued confirmation token.
+/// Pure paper trading. This NEVER contacts a broker and NEVER places a real
+/// order. The user previews, then confirms a simulated fill. Every stage shows
+/// a clear "simulation only" banner.
 class OrderTicketPage extends StatefulWidget {
   const OrderTicketPage({
     super.key,
@@ -38,12 +40,12 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
   final _qtyController = TextEditingController();
   final _priceController = TextEditingController();
 
-  OrderTypeKind _orderType = OrderTypeKind.limit;
+  OrderTypeKind _orderType = OrderTypeKind.market;
   _Stage _stage = _Stage.form;
   bool _busy = false;
   String? _error;
-  OrderPreview? _preview;
-  OrderResult? _result;
+  SimOrderPreview? _preview;
+  SimOrderResult? _result;
 
   @override
   void dispose() {
@@ -57,7 +59,7 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
     FocusScope.of(context).unfocus();
     final token = AuthScope.read(context).token;
     if (token == null) {
-      setState(() => _error = 'Please sign in to place orders.');
+      setState(() => _error = 'Please sign in to use the simulation portfolio.');
       return;
     }
     setState(() {
@@ -68,15 +70,13 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
     final price = _orderType == OrderTypeKind.limit
         ? double.parse(_priceController.text.trim())
         : null;
-    // Log the request payload before submission (diagnostics).
     developer.log(
-      'IBKR preview -> symbol=${widget.symbol} market=${widget.market.code} '
-      'side=${widget.side.wire} qty=$qty type=${_orderType.wire} '
-      'price=$price',
-      name: 'tradewizz.order',
+      'SIM preview -> symbol=${widget.symbol} market=${widget.market.code} '
+      'side=${widget.side.wire} qty=$qty type=${_orderType.wire} price=$price',
+      name: 'tradewizz.sim_order',
     );
     try {
-      final pv = await widget.repository.previewOrder(
+      final pv = await widget.repository.simPreviewOrder(
         token: token,
         symbol: widget.symbol,
         market: widget.market,
@@ -104,30 +104,28 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
     if (pv == null) return;
     final token = AuthScope.read(context).token;
     if (token == null) {
-      setState(() => _error = 'Please sign in to place orders.');
+      setState(() => _error = 'Please sign in to use the simulation portfolio.');
       return;
     }
     setState(() {
       _busy = true;
       _error = null;
     });
-    // Log the request payload before submission (diagnostics).
     developer.log(
-      'IBKR place -> symbol=${widget.symbol} market=${widget.market.code} '
-      'side=${widget.side.wire} qty=${pv.quantity} type=${pv.orderType.wire} '
-      'price=${pv.price} token=${pv.confirmationToken.isNotEmpty}',
-      name: 'tradewizz.order',
+      'SIM place -> symbol=${widget.symbol} market=${widget.market.code} '
+      'side=${widget.side.wire} qty=${pv.quantity} type=${pv.orderType} '
+      'price=${pv.price}',
+      name: 'tradewizz.sim_order',
     );
     try {
-      final res = await widget.repository.placeOrder(
+      final res = await widget.repository.simPlaceOrder(
         token: token,
         symbol: widget.symbol,
         market: widget.market,
         side: widget.side,
         quantity: pv.quantity,
-        orderType: pv.orderType,
-        price: pv.price,
-        confirmationToken: pv.confirmationToken,
+        orderType: _orderType,
+        price: _orderType == OrderTypeKind.limit ? pv.price : null,
       );
       if (!mounted) return;
       setState(() {
@@ -158,6 +156,8 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
           children: [
+            _simulationBanner(),
+            const SizedBox(height: 12),
             if (_error != null) _errorCard(_error!),
             if (_stage == _Stage.form) _buildForm(sideColor),
             if (_stage == _Stage.preview) _buildPreview(sideColor),
@@ -167,6 +167,27 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
       ),
     );
   }
+
+  Widget _simulationBanner() => Container(
+        key: const Key('sim_warning_banner'),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.orange.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.orange.withValues(alpha: 0.4)),
+        ),
+        child: Row(children: const [
+          Icon(Icons.science_outlined, color: Colors.orange, size: 20),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Simulation mode only. This does not place a real trade.',
+              style: TextStyle(
+                  color: Colors.orange, fontWeight: FontWeight.w700, fontSize: 13),
+            ),
+          ),
+        ]),
+      );
 
   Widget _errorCard(String msg) => Card(
         color: AppColors.down.withValues(alpha: 0.06),
@@ -218,12 +239,12 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
                 ),
                 items: const [
                   DropdownMenuItem(
-                      value: OrderTypeKind.limit, child: Text('Limit')),
-                  DropdownMenuItem(
                       value: OrderTypeKind.market, child: Text('Market')),
+                  DropdownMenuItem(
+                      value: OrderTypeKind.limit, child: Text('Limit')),
                 ],
                 onChanged: (t) =>
-                    setState(() => _orderType = t ?? OrderTypeKind.limit),
+                    setState(() => _orderType = t ?? OrderTypeKind.market),
               ),
               if (_orderType == OrderTypeKind.limit) ...[
                 const SizedBox(height: 12),
@@ -247,6 +268,7 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
+                  key: const Key('preview_order_button'),
                   onPressed: _busy ? null : _doPreview,
                   style: FilledButton.styleFrom(
                     backgroundColor: sideColor,
@@ -259,7 +281,7 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
                           child: CircularProgressIndicator(
                               strokeWidth: 2, color: Colors.white),
                         )
-                      : const Text('Preview order'),
+                      : const Text('Preview simulated order'),
                 ),
               ),
             ],
@@ -288,37 +310,32 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(children: [
-                  const Text('Order Preview',
+                Row(children: const [
+                  Text('Simulated Order Preview',
                       style: TextStyle(
                           fontWeight: FontWeight.w800, fontSize: 17)),
-                  const Spacer(),
-                  _envChip(pv.tradingEnv, pv.isReal),
+                  Spacer(),
+                  _SimChip(),
                 ]),
                 const SizedBox(height: 12),
-                row('Symbol', '${pv.symbol} (${pv.moomooCode})'),
-                row('Side', pv.side.label),
+                row('Symbol', '${pv.symbol} · ${pv.market.code}'),
+                row('Side', pv.side),
                 row('Quantity', pv.quantity.toStringAsFixed(0)),
-                row('Type', pv.orderType.label),
-                if (pv.price != null) row('Price', pv.price!.toStringAsFixed(2)),
+                row('Type', pv.orderType),
+                row('Price', pv.price.toStringAsFixed(2)),
                 row('Est. value',
                     '${pv.currency} ${pv.estimatedValue.toStringAsFixed(2)}'),
-                if (pv.warnings.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  for (final w in pv.warnings)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Row(children: [
-                        const Icon(Icons.warning_amber_rounded,
-                            size: 16, color: Colors.orange),
-                        const SizedBox(width: 8),
-                        Expanded(
-                            child: Text(w,
-                                style: const TextStyle(
-                                    color: Colors.orange, fontSize: 12))),
-                      ]),
-                    ),
-                ],
+                row('Cash after', pv.cashAfter.toStringAsFixed(2)),
+                const SizedBox(height: 12),
+                Row(children: [
+                  const Icon(Icons.info_outline, size: 16, color: Colors.orange),
+                  const SizedBox(width: 8),
+                  Expanded(
+                      child: Text(pv.warning,
+                          key: const Key('sim_preview_warning'),
+                          style: const TextStyle(
+                              color: Colors.orange, fontSize: 12))),
+                ]),
               ],
             ),
           ),
@@ -327,7 +344,8 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
         Row(children: [
           Expanded(
             child: OutlinedButton(
-              onPressed: _busy ? null : () => setState(() => _stage = _Stage.form),
+              onPressed:
+                  _busy ? null : () => setState(() => _stage = _Stage.form),
               child: const Text('Back'),
             ),
           ),
@@ -347,7 +365,7 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white),
                     )
-                  : Text('Confirm & ${pv.side.label}'),
+                  : Text('Confirm (simulated ${pv.side})'),
             ),
           ),
         ]),
@@ -357,25 +375,30 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
 
   Widget _buildResult() {
     final r = _result!;
-    final ok = r.status.toUpperCase() != 'REJECTED';
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(children: [
-          Icon(ok ? Icons.check_circle : Icons.cancel,
-              size: 48, color: ok ? AppColors.up : AppColors.down),
+          const Icon(Icons.check_circle, size: 48, color: AppColors.up),
           const SizedBox(height: 12),
-          Text(
-            ok ? 'Order ${r.status}' : 'Order rejected',
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+          const Text(
+            'Simulated order filled',
+            key: Key('sim_result_title'),
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
           ),
           const SizedBox(height: 6),
-          Text('${r.side.label} ${r.quantity.toStringAsFixed(0)} ${r.symbol}'),
+          Text('${r.side} ${r.quantity.toStringAsFixed(0)} ${r.symbol} '
+              '@ ${r.price.toStringAsFixed(2)}'),
           const SizedBox(height: 4),
           Text('Order ID: ${r.orderId}',
               style: const TextStyle(color: Colors.grey, fontSize: 12)),
           const SizedBox(height: 6),
-          _envChip(r.tradingEnv, r.isReal),
+          const _SimChip(),
+          const SizedBox(height: 8),
+          Text(r.message,
+              key: const Key('sim_result_message'),
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.orange, fontSize: 12)),
           const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
@@ -388,19 +411,23 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
       ),
     );
   }
+}
 
-  Widget _envChip(String env, bool isReal) {
-    final color = isReal ? AppColors.down : AppColors.up;
+class _SimChip extends StatelessWidget {
+  const _SimChip();
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
+        color: Colors.orange.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Text(
-        isReal ? 'REAL' : 'PAPER',
+      child: const Text(
+        'SIMULATED',
         style: TextStyle(
-            color: color, fontWeight: FontWeight.w800, fontSize: 12),
+            color: Colors.orange, fontWeight: FontWeight.w800, fontSize: 12),
       ),
     );
   }

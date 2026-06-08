@@ -105,26 +105,38 @@ StockRepository _authRepo() {
   );
 }
 
-/// Like _authRepo but also serves a minimal unified portfolio so the Account
-/// page's Portfolio summary card can populate.
+/// Like _authRepo but also serves a minimal SIMULATED portfolio + trades so the
+/// Account page's simulation portfolio UI can populate.
 StockRepository _authRepoWithPortfolio() {
   final fake = MockClient((req) async {
     final path = req.url.path;
-    if (path.endsWith('/portfolio')) {
+    if (path.endsWith('/sim/portfolio')) {
       return http.Response(
         jsonEncode({
-          'summary': {
-            'total_equity': 150000.0,
-            'cash': 100000.0,
-            'buying_power': 200000.0,
-            'market_value': 41260.0,
-            'floating_pnl': 3260.0,
+          'account': {
+            'cash': 150000.0,
+            'equity': 150000.0,
+            'buying_power': 150000.0,
+            'market_value': 0.0,
+            'unrealized_pnl': 0.0,
             'realized_pnl': 0.0,
+            'currency': 'USD',
+            'simulated': true,
+            'disclaimer':
+                'This is a simulated portfolio. No real broker order is sent.',
           },
           'positions': <Map<String, dynamic>>[],
-          'brokers': ['MOOMOO'],
-          'errors': <Map<String, dynamic>>[],
+          'simulated': true,
+          'disclaimer':
+              'This is a simulated portfolio. No real broker order is sent.',
         }),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    }
+    if (path.endsWith('/sim/trades')) {
+      return http.Response(
+        jsonEncode({'trades': <Map<String, dynamic>>[], 'simulated': true}),
         200,
         headers: {'content-type': 'application/json'},
       );
@@ -356,20 +368,26 @@ void main() {
     expect(find.byKey(const Key('continue_apple_button')), findsNothing);
   });
 
-  testWidgets('Account page: logged in shows email, brokers, logout',
+  testWidgets('Account page: logged in shows email, disclaimer, logout',
       (tester) async {
     final auth = AuthStore();
     await auth.setSession('TOKEN', const UserProfile(
       id: 1, email: 'a@b.com', createdAt: '', updatedAt: '',
       connectedBrokers: 2));
-    final repo = _authRepo();
-    await tester.pumpWidget(_wrap(const AccountPage(), auth, repo));
+    final repo = _authRepoWithPortfolio();
+    await tester.pumpWidget(_wrap(
+        AccountPage(repository: repo), auth, repo));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('account_email')), findsOneWidget);
     expect(find.text('a@b.com'), findsOneWidget);
-    expect(find.text('Connected brokers: 2'), findsOneWidget);
-    // Logout sits below the new Portfolio section; scroll it into view.
+    // Simulation disclaimer is always shown for a signed-in user.
+    expect(find.byKey(const Key('account_sim_disclaimer')), findsOneWidget);
+    expect(
+      find.textContaining('simulated portfolio'),
+      findsWidgets,
+    );
+    // Logout sits at the bottom; scroll it into view.
     await tester.scrollUntilVisible(
       find.byKey(const Key('logout_button')),
       300,
@@ -378,7 +396,7 @@ void main() {
     expect(find.byKey(const Key('logout_button')), findsOneWidget);
   });
 
-  testWidgets('Account page shows the Portfolio section when logged in',
+  testWidgets('Account page shows the simulated portfolio when logged in',
       (tester) async {
     final auth = AuthStore();
     await auth.setSession('TOKEN', const UserProfile(
@@ -388,20 +406,29 @@ void main() {
         AccountPage(repository: repo), auth, repo));
     await tester.pumpAndSettle();
 
-    // Section header + summary card + Open Portfolio button.
+    // Section header + summary card.
     expect(find.byKey(const Key('account_portfolio_section')), findsOneWidget);
     expect(find.byKey(const Key('account_portfolio_card')), findsOneWidget);
-    expect(find.byKey(const Key('open_portfolio_button')), findsOneWidget);
-    // Summary populated from the fake backend.
-    expect(find.byKey(const Key('account_total_equity')), findsOneWidget);
-    expect(find.text('150000.00'), findsOneWidget);
+    // Simulated cash / equity / buying power / P/L populated.
     expect(find.byKey(const Key('account_cash')), findsOneWidget);
-    // Performance + Positions entries.
-    expect(find.byKey(const Key('portfolio_positions_tile')), findsOneWidget);
-    expect(find.byKey(const Key('portfolio_performance_tile')), findsOneWidget);
+    expect(find.byKey(const Key('account_total_equity')), findsOneWidget);
+    expect(find.byKey(const Key('account_buying_power')), findsOneWidget);
+    expect(find.byKey(const Key('account_unrealized_pnl')), findsOneWidget);
+    expect(find.byKey(const Key('account_realized_pnl')), findsOneWidget);
+    expect(find.text('150000.00'), findsWidgets);
+    // Reset button is present.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('reset_simulation_button')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.byKey(const Key('reset_simulation_button')), findsOneWidget);
+    // No broker connection UI.
+    expect(find.textContaining('Connected brokers'), findsNothing);
+    expect(find.textContaining('Broker Connections'), findsNothing);
   });
 
-  testWidgets('Account page hides Portfolio section when logged out',
+  testWidgets('Account page hides simulation section when logged out',
       (tester) async {
     final auth = AuthStore();
     final repo = _authRepoWithPortfolio();
@@ -409,10 +436,10 @@ void main() {
         AccountPage(repository: repo), auth, repo));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('account_portfolio_section')), findsNothing);
-    expect(find.byKey(const Key('open_portfolio_button')), findsNothing);
+    expect(find.byKey(const Key('reset_simulation_button')), findsNothing);
   });
 
-  testWidgets('Tapping Open Portfolio opens the Portfolio page',
+  testWidgets('Reset simulation button is shown and confirmable',
       (tester) async {
     final auth = AuthStore();
     await auth.setSession('TOKEN', const UserProfile(
@@ -422,35 +449,38 @@ void main() {
         AccountPage(repository: repo), auth, repo));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('open_portfolio_button')));
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('reset_simulation_button')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.byKey(const Key('reset_simulation_button')));
     await tester.pumpAndSettle();
-
-    // The pushed Portfolio page shows its sub-tabs.
-    expect(find.text('Summary'), findsOneWidget);
-    expect(find.text('Positions'), findsOneWidget);
-    expect(find.text('Orders'), findsOneWidget);
-    expect(find.text('Performance'), findsOneWidget);
+    // A confirmation dialog appears (no destructive action without confirm).
+    expect(find.text('Reset simulation portfolio?'), findsOneWidget);
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
   });
 
-  testWidgets('Account page stays usable when portfolio fails to load',
+  testWidgets('Account page stays usable when simulation fails to load',
       (tester) async {
     final auth = AuthStore();
     await auth.setSession('TOKEN', const UserProfile(
       id: 1, email: 'a@b.com', createdAt: '', updatedAt: ''));
-    final repo = _authRepo(); // 404s /portfolio
+    final repo = _authRepo(); // 404s /sim/portfolio
     await tester.pumpWidget(_wrap(
         AccountPage(repository: repo), auth, repo));
     await tester.pumpAndSettle();
 
-    // Friendly error but the Open Portfolio button + logout remain.
+    // Friendly error but the reset + logout controls remain usable.
     expect(find.byKey(const Key('account_portfolio_error')), findsOneWidget);
-    expect(find.byKey(const Key('open_portfolio_button')), findsOneWidget);
     await tester.scrollUntilVisible(
       find.byKey(const Key('logout_button')),
       300,
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.byKey(const Key('logout_button')), findsOneWidget);
+    expect(find.byKey(const Key('reset_simulation_button')), findsOneWidget);
   });
 
   testWidgets('Logout flow clears the session', (tester) async {

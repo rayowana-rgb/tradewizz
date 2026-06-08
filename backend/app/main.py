@@ -115,6 +115,22 @@ from .portfolio.router import router as portfolio_router  # noqa: E402
 
 app.include_router(portfolio_router)
 
+# Simulated paper-trading portfolio under /v1/sim. Broker-free: buy/sell are
+# simulated against the existing fetch engine's latest price (price lookup
+# only); NO broker connection, NO IBKR/Moomoo call. Every response is marked
+# simulated=true with a clear disclaimer.
+from .simulation.router import router as sim_router  # noqa: E402
+from .simulation.router import set_service as _set_sim_service  # noqa: E402
+from .simulation.service import SimulationService  # noqa: E402
+
+app.include_router(sim_router)
+_set_sim_service(
+    SimulationService(
+        price_provider=lambda symbol, market: engine.latest_price(symbol, market),
+        universe=engine._universe,
+    )
+)
+
 # Market-close screener cache. Heavy screening runs once per market/category
 # after market close; the saved snapshot is reused until the next close. This
 # is a thin cache around the existing engine.screen() (scoring/indicators/
