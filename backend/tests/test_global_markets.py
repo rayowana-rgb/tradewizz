@@ -242,7 +242,9 @@ def test_analyze_uses_unified_fetch_with_suffix(
     seen = {}
 
     def fetch(ticker, period, interval):
-        seen["ticker"] = ticker
+        # Ignore the benchmark index fetch (relative-strength/regime context).
+        if not ticker.startswith("^"):
+            seen["ticker"] = ticker
         return _mkdf(100.0)
 
     engine = AnalysisEngine(fetcher=fetch)

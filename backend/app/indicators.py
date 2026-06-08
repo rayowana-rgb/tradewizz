@@ -74,6 +74,11 @@ def volume_ratio(volume: pd.Series, window: int = 20) -> pd.Series:
     return volume / avg.replace(0.0, np.nan)
 
 
+def roc(close: pd.Series, period: int = 12) -> pd.Series:
+    """Rate of Change (%) over `period` bars: (close/close[-period] - 1)*100."""
+    return (close / close.shift(period) - 1.0) * 100.0
+
+
 def obv(close: pd.Series, volume: pd.Series) -> pd.Series:
     """On-Balance Volume: cumulative volume signed by daily price direction."""
     direction = np.sign(close.diff().fillna(0.0))
@@ -196,12 +201,29 @@ def compute_all(df: pd.DataFrame) -> dict:
     volume = df["Volume"]
     macd_df = macd(close)
 
+    def roll_mean_series(series: pd.Series, w: int):
+        s = series.rolling(window=w, min_periods=w).mean()
+        return last(s)
+
     rsi_s = rsi(close)
     ema20_s = ema(close, 20)
     ema50_s = ema(close, 50)
+    ema200_s = ema(close, 200)
     sma200_s = sma(close, 200)
     vr_s = volume_ratio(volume)
     atr_s = atr(df)
+
+    # Phase-1 institutional scoring inputs (additive keys only).
+    roc_s = roc(close, 12)                       # 12-bar momentum %
+    high_52w_s = close.rolling(window=252, min_periods=20).max()
+    avg_value_traded = roll_mean_series(close * volume, 20)  # 20d turnover
+    vol_mean_5 = roll_mean_series(volume, 5)
+    vol_mean_20_avt = roll_mean_series(volume, 20)
+    vol_ratio_5_20 = (
+        vol_mean_5 / vol_mean_20_avt
+        if (vol_mean_5 is not None and vol_mean_20_avt not in (None, 0))
+        else None
+    )
 
     # Phase 1 additions (new keys only; existing keys unchanged).
     sma20_s = sma(close, 20)
@@ -267,7 +289,12 @@ def compute_all(df: pd.DataFrame) -> dict:
         "rsi_prev": prev(rsi_s),
         "ema20": last(ema20_s),
         "ema50": last(ema50_s),
+        "ema200": last(ema200_s),
         "sma200": last(sma200_s),
+        "roc": last(roc_s),
+        "high_52w": last(high_52w_s),
+        "avg_value_traded": avg_value_traded,
+        "vol_ratio_5_20": vol_ratio_5_20,
         "macd": last(macd_df["macd"]),
         "macd_signal": last(macd_df["signal"]),
         "macd_hist": last(macd_df["hist"]),

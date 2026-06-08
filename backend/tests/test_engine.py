@@ -26,11 +26,24 @@ def make_ohlcv(close, volume=None, n=None):
 
 
 def uptrend(n=300, start=100.0, step=1.0):
-    return make_ohlcv(start + np.arange(n) * step, n=n)
+    """A realistic healthy uptrend: drift + mild noise + rising volume.
+
+    The institutional multi-factor score rewards confluence (trend + momentum
+    in a non-overbought RSI band + participation), so a believable uptrend
+    (not a perfectly straight overbought ramp) is used to exercise the BUY
+    path. Deterministic via a fixed seed.
+    """
+    rng = np.random.default_rng(7)
+    close = start + np.arange(n) * step + rng.normal(0.0, step * 1.5, n)
+    vol = np.linspace(1000.0, 3000.0, n) * rng.uniform(0.85, 1.3, n)
+    return make_ohlcv(close, volume=vol, n=n)
 
 
 def downtrend(n=300, start=400.0, step=1.0):
-    return make_ohlcv(start - np.arange(n) * step, n=n)
+    rng = np.random.default_rng(13)
+    close = start - np.arange(n) * step + rng.normal(0.0, step * 1.5, n)
+    vol = np.linspace(3000.0, 1000.0, n) * rng.uniform(0.85, 1.3, n)
+    return make_ohlcv(close, volume=vol, n=n)
 
 
 # ---- symbol mapping ----------------------------------------------------------

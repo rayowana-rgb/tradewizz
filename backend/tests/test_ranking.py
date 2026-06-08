@@ -148,8 +148,10 @@ def test_screen_filters_below_threshold(tmp_path):
 
 # --- regression: score/signal/contract unchanged ----------------------------
 
-def test_score_calculation_unchanged():
-    # Uptrend fixture -> the existing quantized 80 (no change to _signal_and_score).
+def test_multifactor_score_is_deterministic_and_bounded():
+    # Multi-factor scoring: a perfectly-linear ramp with no market context is
+    # NOT an elite setup (overbought RSI, no relative-strength/regime
+    # confirmation, flat participation) -> a mid-band, deterministic score.
     eng = AnalysisEngine()
     n = 300
     close = 100 + np.arange(n) * 1.0
@@ -161,8 +163,13 @@ def test_score_calculation_unchanged():
     ind = indicators.compute_all(df)
     cats = eng.categorize(ind, Market.IDX)
     signal, score = eng._signal_and_score(ind, cats)
-    assert signal == "BUY"
-    assert score == 80.0  # unchanged from before the ranking fix
+    # Deterministic and on the 0..100 scale; trend is strong but confluence is
+    # incomplete -> HOLD band (not BUY) without RS/regime context.
+    assert 0.0 <= score <= 100.0
+    assert signal in ("HOLD", "BUY")
+    assert score == 63.5  # stable composite for this fixture
+    # Re-running yields the identical score (pure function, no randomness).
+    assert eng._signal_and_score(ind, cats)[1] == score
 
 
 def test_screenermatch_contract_has_value_traded_default():

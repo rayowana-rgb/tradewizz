@@ -38,7 +38,11 @@ class DayFetcher:
         self.close = 100.0
 
     def __call__(self, ticker, period, interval):
-        self.calls += 1
+        # Count only stock fetches; the benchmark index (^...) fetched for
+        # relative-strength/regime context is cached per-market and irrelevant
+        # to the stock-refresh assertions here.
+        if not ticker.startswith("^"):
+            self.calls += 1
         return make_df(self.day, self.close)
 
 

@@ -17,7 +17,8 @@ from typing import Callable, List, Optional
 import pandas as pd
 
 from . import backtest as backtest_mod
-from . import indicators, mock_data
+from . import indicators, mock_data, scoring
+from .scoring import MarketContext
 from .ml import ProfitModel
 from .cache import make_cached_fetcher
 from .universe import UniverseRepository
@@ -53,6 +54,13 @@ def default_min_value_traded(market: Market) -> float:
 
 # Max concurrent per-symbol fetches during /screen (override via env).
 _SCREEN_WORKERS = int(os.environ.get("TRADEWIZ_SCREEN_WORKERS", "8"))
+
+# Phase 3: blend the optional RandomForest win-probability into the headline
+# score (final = 0.7*technical + 0.3*100*win_prob). OFF by default because a
+# thin per-symbol classifier is noisy; the deterministic multi-factor technical
+# score is the headline and `profit_probability` is still reported separately.
+# Enable with TRADEWIZ_ML_BLEND=1 once a robust cross-sectional model exists.
+_ML_BLEND = os.environ.get("TRADEWIZ_ML_BLEND", "0") not in ("0", "", "false", "False")
 
 # yfinance ticker suffix per market. Derived from the single source of truth
 # (market_config) so adding a market needs only one table edit. US -> "".
@@ -303,6 +311,73 @@ class AnalysisEngine:
         self._universe = universe or UniverseRepository()
         self._profit_model = profit_model if profit_model is not None \
             else ProfitModel()
+        # Lazy per-market index context (regime + 3m index return) cache. Keyed
+        # by market; refreshed when the cached index fetch returns new data.
+        self._index_ctx_cache: dict = {}
+
+    # -- market context (relative strength + regime) ----------------------
+
+    @staticmethod
+    def _period_return(close: pd.Series, lookback: int) -> Optional[float]:
+        """Fractional return over the last `lookback` bars (e.g. ~63 = 3m)."""
+        c = close.dropna()
+        if len(c) <= lookback:
+            return None
+        past = float(c.iloc[-1 - lookback])
+        latest = float(c.iloc[-1])
+        if past == 0:
+            return None
+        return latest / past - 1.0
+
+    def _index_context(self, market: Market) -> tuple:
+        """(index_return_3m, regime) for `market`, cached. Best-effort.
+
+        Fetches the market's benchmark index OHLCV via the same cached fetcher,
+        derives the 3-month index return and the EMA50/EMA200 regime. Any
+        failure (no index symbol, fetch error, short history) yields
+        ``(None, None)`` so relative-strength / regime fall back to neutral.
+        """
+        if market in self._index_ctx_cache:
+            return self._index_ctx_cache[market]
+        result = (None, None)
+        try:
+            from .market.service import INDEX_BY_MARKET
+
+            spec = INDEX_BY_MARKET.get(market)
+            if spec is not None:
+                idf = self._fetch(spec.symbol, "1y", "1d")
+                if idf is not None and not idf.empty and "Close" in idf:
+                    iclose = idf["Close"].dropna()
+                    idx_ret_3m = self._period_return(iclose, 63)
+                    ema50 = indicators.ema(iclose, 50)
+                    ema200 = indicators.ema(iclose, 200)
+                    regime = None
+                    e50 = ema50.dropna()
+                    e200 = ema200.dropna()
+                    if not e50.empty and not e200.empty:
+                        regime = (
+                            "bull" if float(e50.iloc[-1]) >= float(e200.iloc[-1])
+                            else "bear"
+                        )
+                    result = (idx_ret_3m, regime)
+        except Exception as exc:  # noqa: BLE001 - context is best-effort
+            logger.debug("index context unavailable for %s: %s", market, exc)
+        self._index_ctx_cache[market] = result
+        return result
+
+    def _market_context(
+        self, df: pd.DataFrame, market: Market
+    ) -> MarketContext:
+        """Build the scoring MarketContext for a single stock."""
+        idx_ret_3m, regime = self._index_context(market)
+        rs_value = None
+        try:
+            stock_ret_3m = self._period_return(df["Close"], 63)
+            if stock_ret_3m is not None and idx_ret_3m is not None:
+                rs_value = stock_ret_3m - idx_ret_3m
+        except Exception:  # noqa: BLE001 - RS is best-effort
+            rs_value = None
+        return MarketContext(rs_value=rs_value, regime=regime)
 
     # -- categories --------------------------------------------------------
 
@@ -497,40 +572,32 @@ class AnalysisEngine:
             return 5000.0  # KRW
         return 300.0  # IDX / default
 
-    def _signal_and_score(self, ind: dict, cats: List[ScreenerCategory]):
-        """Derive a BUY/HOLD/SELL signal and a 0..100 conviction score."""
-        score = 50.0
-        rsi = ind.get("rsi")
-        close = ind.get("close")
-        ema20 = ind.get("ema20")
-        ema50 = ind.get("ema50")
-        sma200 = ind.get("sma200")
-        macd_hist = ind.get("macd_hist")
+    def _signal_and_score(
+        self,
+        ind: dict,
+        cats: List[ScreenerCategory],
+        ctx: Optional[MarketContext] = None,
+        market: Optional[Market] = None,
+        win_probability: Optional[float] = None,
+    ):
+        """Institutional-grade multi-factor score + BUY/HOLD/SELL signal.
 
-        if ema20 is not None and ema50 is not None:
-            score += 12 if ema20 > ema50 else -12
-        if close is not None and sma200 is not None:
-            score += 10 if close > sma200 else -10
-        if macd_hist is not None:
-            score += 8 if macd_hist > 0 else -8
-        if rsi is not None:
-            if rsi < 30:
-                score += 6  # oversold bounce potential
-            elif rsi > 70:
-                score -= 6  # overbought
-        if ScreenerCategory.bullish in cats:
-            score += 6
-        if ScreenerCategory.bearish in cats:
-            score -= 6
+        Delegates to :mod:`app.scoring`:
+          * weighted 7-factor composite (trend/momentum/volume/relative
+            strength/volatility/market regime/liquidity);
+          * hard quality penalties (gap / pump-dump / untrended spike / extreme
+            ATR / sub-$1-equivalent);
+          * Phase-4 calibration curve (reserves 90+ for genuine confluence);
+          * optional ML blend ``0.7*technical + 0.3*(100*win_prob)``.
 
-        score = max(0.0, min(100.0, score))
-        if score >= 66:
-            signal = "BUY"
-        elif score >= 40:
-            signal = "HOLD"
-        else:
-            signal = "SELL"
-        return signal, round(score, 1)
+        ``ctx`` (relative strength + regime) and ``win_probability`` are
+        optional; without them the relevant factors fall back to neutral so the
+        score is always well-defined. Applied identically to every market.
+        """
+        technical = scoring.technical_score(ind, ctx, market)
+        final = scoring.blend_with_ml(technical, win_probability)
+        signal = scoring.signal_for_score(final)
+        return signal, round(final, 1)
 
     def _highlights(
         self,
@@ -672,7 +739,21 @@ class AnalysisEngine:
             if ind.get("close") is None:
                 raise ValueError("insufficient data")
             cats = self.categorize(ind, market)
-            signal, score = self._signal_and_score(ind, cats)
+            # Real RandomForest profit probability; placeholder if untrainable.
+            ml_prob = self._profit_model.probability(
+                df, market.value, symbol.upper()
+            )
+            ctx = self._market_context(df, market)
+            # Blend ML only when explicitly enabled AND the probability is
+            # non-degenerate (a thin per-symbol RandomForest that returns
+            # exactly 0.0/1.0 is over-confident on too little data). Otherwise
+            # the deterministic multi-factor technical score is the headline.
+            blend_prob = None
+            if _ML_BLEND and ml_prob is not None and 0.0 < ml_prob < 1.0:
+                blend_prob = ml_prob
+            signal, score = self._signal_and_score(
+                ind, cats, ctx=ctx, market=market, win_probability=blend_prob
+            )
             tags = ", ".join(c.value for c in cats) or "none"
             ts_pct, ts_price = self._trailing_stop(ind, cats)
             # Last completed bar's date (for the CLOSED "Last Market Close").
@@ -681,10 +762,9 @@ class AnalysisEngine:
                 last_date = df.index[-1].to_pydatetime()
             except Exception:  # noqa: BLE001 - date is best-effort
                 last_date = None
-            # Real RandomForest profit probability; placeholder if untrainable.
-            profit_prob = self._profit_model.probability(
-                df, market.value, symbol.upper()
-            )
+            # profit_probability field: real ML when available, else a
+            # score-derived placeholder (unchanged contract).
+            profit_prob = ml_prob
             if profit_prob is None:
                 profit_prob = self._profit_probability_placeholder(score)
             return AnalysisResult(
@@ -862,7 +942,10 @@ class AnalysisEngine:
             if ind.get("close") is None:
                 raise ValueError("insufficient data")
             cats = self.categorize(ind, market)
-            signal, score = self._signal_and_score(ind, cats)
+            ctx = self._market_context(df, market)
+            signal, score = self._signal_and_score(
+                ind, cats, ctx=ctx, market=market
+            )
             change_pct = _daily_change_pct(df)
             return ScreenerMatch(
                 symbol=sym.upper(),

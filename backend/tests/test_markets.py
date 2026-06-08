@@ -121,11 +121,16 @@ def _ohlcv(n=300):
 
 
 def _fetch_capture():
-    """A fetcher that records the ticker it was asked for and returns data."""
+    """A fetcher that records the ticker it was asked for and returns data.
+
+    Index symbols (``^...``, fetched for relative-strength/regime context) are
+    ignored so the captured ticker is the stock the test asked to analyze.
+    """
     seen = {}
 
     def fetch(ticker, period, interval):
-        seen["ticker"] = ticker
+        if not ticker.startswith("^"):
+            seen["ticker"] = ticker
         return _ohlcv()
 
     return fetch, seen
