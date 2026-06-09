@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../models/broker.dart';
 import '../models/simulation.dart';
+import '../models/subscription.dart';
 import '../repositories/stock_repository.dart';
 import '../services/api_client.dart';
 import '../services/auth_scope.dart';
+import '../services/entitlements_scope.dart';
 import '../services/repository_scope.dart';
 import '../services/social_sign_in.dart';
 import '../theme.dart';
@@ -36,6 +38,7 @@ class _AccountPageState extends State<AccountPage> {
   SimPortfolio? _portfolio;
   List<SimTrade> _trades = const [];
   String? _loadedForToken;
+  bool _joiningWaitlist = false;
 
   StockRepository get _repo =>
       widget.repository ?? RepositoryScope.of(context);
@@ -142,6 +145,44 @@ class _AccountPageState extends State<AccountPage> {
     }
   }
 
+  /// Join the early-access waiting list for [tier]. No payment is taken; we
+  /// only record the intent (demand analytics) and confirm to the user.
+  Future<void> _joinWaitlist(Tier tier) async {
+    final token = _token;
+    if (token == null) return;
+    setState(() => _joiningWaitlist = true);
+    try {
+      await _repo.joinWaitlist(token, tier);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          key: const Key('waitlist_dialog'),
+          title: Text('TradeWizz ${tier.label} is in preview'),
+          content: Text(
+            'TradeWizz ${tier.label} is currently in preview.\n\n'
+            'You have been added to the early-access waiting list.',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Got it'),
+            ),
+          ],
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Could not join the waiting list. Try again.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _joiningWaitlist = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = AuthScope.of(context);
@@ -197,21 +238,14 @@ class _AccountPageState extends State<AccountPage> {
           ),
           const SizedBox(height: 16),
 
-          // --- Plan / upgrade entry -------------------------------------
-          Card(
-            key: const Key('account_plan_card'),
-            child: ListTile(
-              leading: const Icon(Icons.workspace_premium,
-                  color: AppColors.seed),
-              title: const Text('Plans & Upgrade'),
-              subtitle: const Text(
-                  'Unlock the AI Radar, Daily Picks, Multibagger & '
-                  'Portfolio Health.'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => UpgradePage(repository: widget.repository),
-                ),
+          // --- Early Access Program -------------------------------------
+          _EarlyAccessCard(
+            busy: _joiningWaitlist,
+            onJoinPro: () => _joinWaitlist(Tier.pro),
+            onJoinElite: () => _joinWaitlist(Tier.elite),
+            onOpenPlans: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => UpgradePage(repository: widget.repository),
               ),
             ),
           ),
@@ -753,6 +787,97 @@ class _LoggedOutViewState extends State<_LoggedOutView> {
                 style: const TextStyle(color: Colors.red, fontSize: 13),
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Early Access Program card (PRO/ELITE Preview pivot).
+///
+/// Shows the user's current status ("Preview User") and lets them join the
+/// PRO / ELITE early-access waiting list. No prices, no payment — joining only
+/// records demand. A link to the full Plans page is also offered.
+class _EarlyAccessCard extends StatelessWidget {
+  const _EarlyAccessCard({
+    required this.busy,
+    required this.onJoinPro,
+    required this.onJoinElite,
+    required this.onOpenPlans,
+  });
+
+  final bool busy;
+  final VoidCallback onJoinPro;
+  final VoidCallback onJoinElite;
+  final VoidCallback onOpenPlans;
+
+  @override
+  Widget build(BuildContext context) {
+    final ent = EntitlementsScope.entitlements(context);
+    final status = ent.preview && ent.tier == Tier.free
+        ? 'Preview User'
+        : ent.tier.label;
+    return Card(
+      key: const Key('account_early_access_card'),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Icon(Icons.science_outlined, color: AppColors.seed),
+              const SizedBox(width: 8),
+              const Text('Early Access Program',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+              const Spacer(),
+              const TierChip(),
+            ]),
+            const SizedBox(height: 10),
+            Row(children: [
+              const Text('Current Status:',
+                  style: TextStyle(color: Colors.grey, fontSize: 13)),
+              const SizedBox(width: 6),
+              Text(status,
+                  key: const Key('early_access_status'),
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+            ]),
+            const SizedBox(height: 4),
+            const Text(
+              'All PRO & ELITE features are open during preview. Join a '
+              'waiting list to get early-access news. No payment is taken.',
+              style: TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            Row(children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  key: const Key('join_pro_waitlist'),
+                  icon: const Icon(Icons.notifications_active_outlined,
+                      size: 18),
+                  onPressed: busy ? null : onJoinPro,
+                  label: const Text('Join PRO Waiting List'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  key: const Key('join_elite_waitlist'),
+                  icon: const Icon(Icons.workspace_premium, size: 18),
+                  onPressed: busy ? null : onJoinElite,
+                  label: const Text('Join ELITE Waiting List'),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                key: const Key('open_plans_link'),
+                onPressed: onOpenPlans,
+                child: const Text('See all preview features'),
+              ),
+            ),
           ],
         ),
       ),

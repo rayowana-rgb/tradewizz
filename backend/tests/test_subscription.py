@@ -26,8 +26,14 @@ from app.subscription.service import (
 from app.subscription.store import SqliteSubscriptionStore
 
 
-def _svc():
-    return SubscriptionService(store=SqliteSubscriptionStore(":memory:"))
+def _svc(preview_mode: bool = False):
+    # Default to enforcement-armed (preview_mode=False) so these tests verify
+    # the dormant paywall infrastructure still works when re-armed. A separate
+    # block below verifies that preview_mode=True disables all enforcement.
+    return SubscriptionService(
+        store=SqliteSubscriptionStore(":memory:"),
+        preview_mode=preview_mode,
+    )
 
 
 def test_free_limits():
@@ -133,6 +139,7 @@ def test_auto_expire_downgrades_to_free():
     svc = SubscriptionService(
         store=SqliteSubscriptionStore(":memory:"),
         clock=lambda: past,
+        preview_mode=False,
     )
     svc.upgrade(11, "pro")  # expires 30 days after 2000-01-01
     # Advance the clock far past expiry.
@@ -159,3 +166,83 @@ def test_feature_matrix_shape():
     for f in fm["features"]:
         assert "key" in f and "min_tier" in f and "label" in f
         assert set(f["tiers"]) == {FREE, PRO, ELITE}
+
+
+# --- PRO/ELITE Preview pivot: enforcement is dormant, demand is measured ----
+
+
+def _preview_svc():
+    return _svc(preview_mode=True)
+
+
+def test_preview_mode_disables_feature_gating():
+    svc = _preview_svc()
+    assert svc.preview_mode is True
+    # A brand-new FREE user can open every premium feature: no 402.
+    svc.require_feature(1, FEATURE_OPPORTUNITY_RADAR)
+    svc.require_feature(1, FEATURE_PORTFOLIO_HEALTH)
+    svc.require_feature(1, FEATURE_MULTIBAGGER)
+
+
+def test_preview_mode_removes_screener_cap():
+    svc = _preview_svc()
+    # FREE would normally clamp to 20; preview returns the requested limit.
+    assert svc.cap_screener_limit(1, 200) == 200
+
+
+def test_preview_mode_removes_daily_analysis_limit():
+    svc = _preview_svc()
+    # Far beyond the old FREE cap of 5/day; never raises.
+    for _ in range(50):
+        svc.check_and_count_analysis(1)
+    # Usage is still recorded so we keep measuring demand.
+    assert svc.usage_summary(1)[METRIC_ANALYSIS] == 50
+
+
+def test_preview_entitlements_unlock_all_features():
+    svc = _preview_svc()
+    ent = svc.entitlements(1)
+    assert ent.preview is True
+    # FREE tier on record, but the app receives the full ELITE feature set.
+    assert ent.tier == FREE
+    assert FEATURE_OPPORTUNITY_RADAR in ent.features
+    assert FEATURE_PORTFOLIO_HEALTH in ent.features
+    assert FEATURE_MULTIBAGGER in ent.features
+    assert ent.usage.analysis_limit == UNLIMITED
+    # The premium features are flagged for PRO/ELITE PREVIEW badging.
+    assert FEATURE_OPPORTUNITY_RADAR in ent.preview_features
+    assert FREE not in ent.preview_features  # FREE features are never badged
+
+
+def test_plans_reports_preview_flag():
+    assert _preview_svc().plans()["preview"] is True
+    assert _svc(preview_mode=False).plans()["preview"] is False
+
+
+def test_join_waitlist_records_event_no_payment():
+    svc = _preview_svc()
+    res = svc.join_waitlist(1, "pro")
+    assert res["status"] == "waitlisted"
+    assert res["tier"] == PRO
+    assert res["preview"] is True
+    assert "waiting list" in res["message"].lower()
+    # The join is recorded for demand analytics; tier is unchanged (no upgrade).
+    assert svc.get_subscription(1).tier == FREE
+    assert svc.usage_summary(1)["waitlist_joined"] == 1
+
+
+def test_preview_event_demand_breakdown():
+    svc = _preview_svc()
+    svc.record_preview_event(1, "radar_opened", meta="US")
+    svc.record_preview_event(2, "radar_opened", meta="US")
+    svc.record_preview_event(1, "radar_opened", meta="IDX")
+    svc.record_preview_event(1, "multibagger_opened", meta="IDX")
+    rows = svc.demand_breakdown("radar_opened")
+    # (radar_opened, US) seen by 2 users, 2 total; (radar_opened, IDX) by 1.
+    us = next(r for r in rows if r["meta"] == "US")
+    assert us["total"] == 2 and us["users"] == 2
+    # Scoping to one metric excludes multibagger_opened.
+    assert all(r["metric"] == "radar_opened" for r in rows)
+    # Unscoped breakdown includes every event.
+    metrics = {r["metric"] for r in svc.demand_breakdown()}
+    assert {"radar_opened", "multibagger_opened"} <= metrics

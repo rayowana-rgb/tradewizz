@@ -21,7 +21,12 @@ from ..subscription.entitlements import (
     FEATURE_POSITION_QUALITY,
 )
 from ..subscription.router import get_service as get_sub_service
-from ..subscription.service import METRIC_PORTFOLIO, SubscriptionError
+from ..subscription.service import (
+    EVENT_PORTFOLIO_HEALTH_OPENED,
+    EVENT_PORTFOLIO_QUALITY_OPENED,
+    METRIC_PORTFOLIO,
+    SubscriptionError,
+)
 from .models import PortfolioHealth, PositionQualityResponse
 from .service import PortfolioHealthService
 
@@ -65,17 +70,33 @@ def _require(uid: int, feature: str) -> None:
 def portfolio_health(
     authorization: Optional[str] = Header(default=None),
 ) -> PortfolioHealth:
+    """Portfolio Health (PRO PREVIEW — open to all during the preview phase)."""
     uid = _user_id(authorization)
     _require(uid, FEATURE_PORTFOLIO_HEALTH)
-    get_sub_service().record_usage(uid, METRIC_PORTFOLIO, meta="health")
-    return get_service().health(uid)
+    sub = get_sub_service()
+    sub.record_usage(uid, METRIC_PORTFOLIO, meta="health")
+    result = get_service().health(uid)
+    # portfolio_health_opened: user_id, portfolio_score.
+    sub.record_preview_event(
+        uid,
+        EVENT_PORTFOLIO_HEALTH_OPENED,
+        meta=f"score={result.health_score:.0f}",
+    )
+    return result
 
 
 @router.get("/quality", response_model=PositionQualityResponse)
 def position_quality(
+    symbol: Optional[str] = None,
     authorization: Optional[str] = Header(default=None),
 ) -> PositionQualityResponse:
+    """Position Quality (ELITE PREVIEW — open to all during preview)."""
     uid = _user_id(authorization)
     _require(uid, FEATURE_POSITION_QUALITY)
-    get_sub_service().record_usage(uid, METRIC_PORTFOLIO, meta="quality")
+    sub = get_sub_service()
+    sub.record_usage(uid, METRIC_PORTFOLIO, meta="quality")
+    # portfolio_quality_opened: user_id, symbol.
+    sub.record_preview_event(
+        uid, EVENT_PORTFOLIO_QUALITY_OPENED, meta=symbol or "all"
+    )
     return get_service().position_quality(uid)

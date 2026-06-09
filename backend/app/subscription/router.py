@@ -13,11 +13,16 @@ from fastapi import APIRouter, Header, HTTPException
 
 from ..auth.router import get_service as get_auth_service
 from ..auth.service import AuthError
+from typing import Optional as _Optional
+
 from .models import (
     EntitlementResponse,
     PlanComparison,
+    PreviewEventRequest,
     UpgradeRequest,
     UserSubscription,
+    WaitlistRequest,
+    WaitlistResponse,
 )
 from .service import SubscriptionError, SubscriptionService
 
@@ -89,3 +94,43 @@ def usage(
     """Lifetime usage analytics for the current user (monetization signals)."""
     uid = _user_id(authorization)
     return {"user_id": uid, "totals": get_service().usage_summary(uid)}
+
+
+@router.post("/waitlist", response_model=WaitlistResponse)
+def join_waitlist(
+    req: WaitlistRequest,
+    authorization: Optional[str] = Header(default=None),
+) -> WaitlistResponse:
+    """Join the early-access waiting list for a preview tier.
+
+    No payment, no Stripe, no app-store billing. We only record the intent so
+    we can measure demand during the preview phase.
+    """
+    uid = _user_id(authorization)
+    return WaitlistResponse(**get_service().join_waitlist(uid, req.tier))
+
+
+@router.post("/event")
+def record_preview_event(
+    req: PreviewEventRequest,
+    authorization: Optional[str] = Header(default=None),
+) -> dict:
+    """Record a client-reported preview-feature usage event (demand only)."""
+    uid = _user_id(authorization)
+    get_service().record_preview_event(uid, req.event, meta=req.meta)
+    return {"user_id": uid, "event": req.event, "recorded": True}
+
+
+@router.get("/demand")
+def demand(
+    metric: _Optional[str] = None,
+    authorization: Optional[str] = Header(default=None),
+) -> dict:
+    """Cross-user feature-demand analytics for the preview phase.
+
+    Returns per (event, meta) totals + unique-user counts so we can see which
+    preview features are opened most before deciding the final paywall.
+    """
+    # Requires a valid token (any authenticated user); this is internal signal.
+    _user_id(authorization)
+    return {"breakdown": get_service().demand_breakdown(metric)}

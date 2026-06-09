@@ -166,8 +166,6 @@ class _DashboardPageState extends State<DashboardPage> {
             market: market,
           ),
           const SizedBox(height: 24),
-          const _SectionTitle('Radar & Portfolio'),
-          const SizedBox(height: 8),
           PremiumDashboardSection(repository: widget.repository),
           const SizedBox(height: 24),
           const _SectionTitle('Top Movers'),

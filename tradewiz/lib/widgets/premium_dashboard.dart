@@ -41,7 +41,7 @@ class _PremiumDashboardSectionState extends State<PremiumDashboardSection> {
     return notifier?.token;
   }
 
-  Tier get _tier => EntitlementsScope.entitlements(context).tier;
+  Entitlements get _ent => EntitlementsScope.entitlements(context);
 
   @override
   void didChangeDependencies() {
@@ -54,10 +54,13 @@ class _PremiumDashboardSectionState extends State<PremiumDashboardSection> {
 
   Future<void> _load() async {
     final token = _token;
-    if (token == null) return; // logged out -> blurred previews only
-    final tier = _tier;
-    // PRO+ : opportunities + daily.
-    if (tier.atLeast(Tier.pro)) {
+    if (token == null) return; // logged out -> placeholder previews only
+    final ent = _ent;
+    // Preview pivot: when preview is on, every feature is open to everyone, so
+    // we load all cards. (When preview is off, fall back to tier gating.)
+    final canPro = ent.preview || ent.tier.atLeast(Tier.pro);
+    final canElite = ent.preview || ent.tier.atLeast(Tier.elite);
+    if (canPro) {
       _safe(() async {
         final o = await _repo.radarOpportunities(token);
         if (mounted) setState(() => _opps = o);
@@ -67,8 +70,7 @@ class _PremiumDashboardSectionState extends State<PremiumDashboardSection> {
         if (mounted) setState(() => _daily = d);
       });
     }
-    // ELITE : multibagger + portfolio health.
-    if (tier.atLeast(Tier.elite)) {
+    if (canElite) {
       _safe(() async {
         final m = await _repo.radarMultibagger(token);
         if (mounted) setState(() => _multibagger = m);
@@ -94,9 +96,17 @@ class _PremiumDashboardSectionState extends State<PremiumDashboardSection> {
       key: const Key('premium_dashboard_section'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        const Padding(
+          padding: EdgeInsets.only(left: 2, bottom: 8),
+          child: Text('TradeWizz PRO Preview',
+              key: Key('pro_preview_header'),
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+        ),
         _card(
           key: 'dash_card_opportunities',
-          title: 'Top Opportunities',
+          title: 'Opportunity Radar',
+          description:
+              'Find the strongest opportunities across global markets.',
           requiredTier: Tier.pro,
           feature: Features.opportunityRadar,
           child: _OpportunitiesCardBody(opps: _opps),
@@ -105,25 +115,29 @@ class _PremiumDashboardSectionState extends State<PremiumDashboardSection> {
         _card(
           key: 'dash_card_daily',
           title: 'Daily Picks',
+          description: "Today's highest conviction ideas.",
           requiredTier: Tier.pro,
           feature: Features.dailyPicks,
           child: _DailyCardBody(daily: _daily),
         ),
         const SizedBox(height: 12),
         _card(
-          key: 'dash_card_multibagger',
-          title: 'Multibagger Candidates',
-          requiredTier: Tier.elite,
-          feature: Features.multibagger,
-          child: _MultibaggerCardBody(result: _multibagger),
-        ),
-        const SizedBox(height: 12),
-        _card(
           key: 'dash_card_health',
           title: 'Portfolio Health',
+          description:
+              'Analyze diversification, concentration and risk.',
           requiredTier: Tier.elite,
           feature: Features.portfolioHealth,
           child: _HealthCardBody(health: _health),
+        ),
+        const SizedBox(height: 12),
+        _card(
+          key: 'dash_card_multibagger',
+          title: 'Multibagger Finder',
+          description: 'Discover potential future market leaders.',
+          requiredTier: Tier.elite,
+          feature: Features.multibagger,
+          child: _MultibaggerCardBody(result: _multibagger),
         ),
       ],
     );
@@ -132,10 +146,19 @@ class _PremiumDashboardSectionState extends State<PremiumDashboardSection> {
   Widget _card({
     required String key,
     required String title,
+    required String description,
     required Tier requiredTier,
     required String feature,
     required Widget child,
   }) {
+    final ent = _ent;
+    // Badge text comes from the entitlements (PRO/ELITE PREVIEW) in preview
+    // mode; otherwise fall back to the required-tier label.
+    final badge = ent.preview
+        ? ent.previewBadgeFor(feature)
+        : '${requiredTier.label.toUpperCase()} PREVIEW';
+    final isElite = requiredTier == Tier.elite;
+    final color = isElite ? Colors.amber.shade800 : AppColors.seed;
     return Card(
       key: Key(key),
       child: Padding(
@@ -144,17 +167,18 @@ class _PremiumDashboardSectionState extends State<PremiumDashboardSection> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
-              Text(title,
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w800, fontSize: 15)),
-              const Spacer(),
-              if (requiredTier == Tier.elite)
-                _tierPill('ELITE', Colors.amber.shade800)
-              else
-                _tierPill('PRO', AppColors.seed),
+              Expanded(
+                child: Text(title,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800, fontSize: 15)),
+              ),
+              if (badge.isNotEmpty) _tierPill(badge, color),
             ]),
+            const SizedBox(height: 2),
+            Text(description,
+                style: const TextStyle(color: Colors.grey, fontSize: 12)),
             const SizedBox(height: 10),
-            // The body is given a fixed height so the blur overlay has bounds.
+            // Fixed height keeps the preview/overlay bounds stable.
             SizedBox(
               height: 132,
               child: LockedFeature(

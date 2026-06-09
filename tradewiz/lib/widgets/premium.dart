@@ -7,9 +7,14 @@ import '../pages/upgrade_page.dart';
 import '../services/entitlements_scope.dart';
 import '../theme.dart';
 
-/// Wraps premium content. When the user lacks [requiredTier], the [child] is
-/// blurred and a centered "Upgrade to X" overlay is shown; otherwise the child
-/// renders normally.
+/// Wraps premium content.
+///
+/// PREVIEW MODE (PRO/ELITE Preview pivot): the [child] renders fully and stays
+/// interactive; a small "PRO PREVIEW" / "ELITE PREVIEW" badge is overlaid so
+/// the user knows it's an early-access feature. No blur, no hard paywall.
+///
+/// When preview mode is OFF (the dormant paywall is re-armed) and the user
+/// lacks [requiredTier], the child is blurred behind an Upgrade overlay.
 class LockedFeature extends StatelessWidget {
   const LockedFeature({
     super.key,
@@ -26,8 +31,25 @@ class LockedFeature extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final unlocked =
-        EntitlementsScope.entitlements(context).tier.atLeast(requiredTier);
+    final ent = EntitlementsScope.entitlements(context);
+
+    // Preview pivot: everything is openable; just badge preview features.
+    if (ent.preview) {
+      final badge = ent.previewBadgeFor(feature);
+      if (badge.isEmpty) return child;
+      return Stack(
+        children: [
+          child,
+          Positioned(
+            top: 0,
+            right: 0,
+            child: PreviewBadge(label: badge),
+          ),
+        ],
+      );
+    }
+
+    final unlocked = ent.tier.atLeast(requiredTier);
     if (unlocked) return child;
 
     return Stack(
@@ -97,23 +119,56 @@ class UpgradeBadge extends StatelessWidget {
   }
 }
 
-/// A small chip showing the current tier (e.g. in the Account header).
+/// A small "PRO PREVIEW" / "ELITE PREVIEW" pill overlaid on preview features.
+class PreviewBadge extends StatelessWidget {
+  const PreviewBadge({super.key, required this.label});
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final elite = label.startsWith('ELITE');
+    final color = elite ? Colors.amber.shade800 : AppColors.seed;
+    return Container(
+      key: Key('preview_badge_${elite ? 'ELITE' : 'PRO'}'),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: const BorderRadius.only(
+          topRight: Radius.circular(10),
+          bottomLeft: Radius.circular(10),
+        ),
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.science_outlined, size: 12, color: color),
+        const SizedBox(width: 4),
+        Text(label,
+            style: TextStyle(
+                color: color, fontWeight: FontWeight.w800, fontSize: 10)),
+      ]),
+    );
+  }
+}
+
+/// A small chip showing the current tier (e.g. in the Account header). During
+/// the preview phase a FREE user is labelled "Preview".
 class TierChip extends StatelessWidget {
   const TierChip({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final tier = EntitlementsScope.entitlements(context).tier;
+    final ent = EntitlementsScope.entitlements(context);
+    final tier = ent.tier;
     final color = tier == Tier.elite
         ? Colors.amber.shade800
         : tier == Tier.pro
             ? AppColors.seed
             : Colors.grey;
+    final label = (ent.preview && tier == Tier.free) ? 'Preview' : tier.label;
     return Chip(
       key: const Key('tier_chip'),
       visualDensity: VisualDensity.compact,
       avatar: Icon(Icons.workspace_premium, size: 16, color: color),
-      label: Text(tier.label,
+      label: Text(label,
           style: TextStyle(color: color, fontWeight: FontWeight.w700)),
     );
   }

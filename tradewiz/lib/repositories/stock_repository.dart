@@ -263,6 +263,33 @@ class StockRepository {
     return entitlements(token);
   }
 
+  /// Join the early-access waiting list for a preview tier. No payment is
+  /// taken (no Stripe, no app-store billing) — this only records demand.
+  Future<Map<String, dynamic>> joinWaitlist(String token, Tier tier) async {
+    return _client.authPost(
+      '/subscription/waitlist',
+      {'tier': tier.code},
+      bearer: token,
+    );
+  }
+
+  /// Record a preview-feature usage event for demand analytics (no enforcement).
+  Future<void> recordPreviewEvent(
+    String token,
+    String event, {
+    String meta = '',
+  }) async {
+    try {
+      await _client.authPost(
+        '/subscription/event',
+        {'event': event, 'meta': meta},
+        bearer: token,
+      );
+    } catch (_) {
+      // Analytics are best-effort; never block the UI on a tracking failure.
+    }
+  }
+
   // --- AI Opportunity Radar (Pro) ------------------------------------------
 
   Future<OpportunitiesResult> radarOpportunities(String token) async {

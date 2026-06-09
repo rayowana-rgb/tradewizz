@@ -8,6 +8,7 @@ events (Phase 9). Billing is a placeholder — `upgrade()` simply sets the tier
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -40,6 +41,29 @@ METRIC_RADAR_VIEW = "radar_view"
 METRIC_WATCHLIST = "watchlist_usage"
 METRIC_PORTFOLIO = "portfolio_usage"
 
+# --- Preview-feature analytics events (PRO/ELITE Preview pivot) -------------
+# During the preview phase nothing is enforced; we ONLY measure demand. These
+# are the exact event names requested by product, recorded verbatim.
+EVENT_RADAR_OPENED = "radar_opened"
+EVENT_DAILY_PICKS_OPENED = "daily_picks_opened"
+EVENT_PORTFOLIO_HEALTH_OPENED = "portfolio_health_opened"
+EVENT_PORTFOLIO_QUALITY_OPENED = "portfolio_quality_opened"
+EVENT_MULTIBAGGER_OPENED = "multibagger_opened"
+EVENT_AI_PORTFOLIO_MANAGER_OPENED = "ai_portfolio_manager_opened"
+EVENT_WAITLIST_JOINED = "waitlist_joined"
+
+
+def _preview_mode_default() -> bool:
+    """Preview mode is ON by default (PRO/ELITE Preview pivot).
+
+    Set TRADEWIZZ_PREVIEW_MODE=0/false to re-arm hard enforcement (the paywall
+    infrastructure is kept fully intact, just dormant).
+    """
+    raw = os.environ.get("TRADEWIZZ_PREVIEW_MODE")
+    if raw is None:
+        return True
+    return raw.strip().lower() not in ("0", "false", "no", "off")
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
@@ -64,9 +88,19 @@ class SubscriptionService:
         self,
         store: Optional[SubscriptionStore] = None,
         clock=_now,
+        preview_mode: Optional[bool] = None,
     ):
         self._store = store or SqliteSubscriptionStore()
         self._clock = clock
+        # Preview phase: features are open to everyone, limits are not enforced,
+        # and we only collect demand analytics. The paywall infra stays intact.
+        self._preview_mode = (
+            _preview_mode_default() if preview_mode is None else preview_mode
+        )
+
+    @property
+    def preview_mode(self) -> bool:
+        return self._preview_mode
 
     # -- subscription state ---------------------------------------------
     def _ensure(self, user_id: int) -> SubscriptionRow:
@@ -163,7 +197,13 @@ class SubscriptionService:
         return tier_includes(self.current_tier(user_id), feature)
 
     def require_feature(self, user_id: int, feature: str) -> None:
-        """Raise 402 (Payment Required) if the user can't access ``feature``."""
+        """Raise 402 (Payment Required) if the user can't access ``feature``.
+
+        PREVIEW MODE: never raises — every user may open every feature. The
+        paywall remains dormant (re-armed by TRADEWIZZ_PREVIEW_MODE=0).
+        """
+        if self._preview_mode:
+            return
         tier = self.current_tier(user_id)
         if not tier_includes(tier, feature):
             from .entitlements import min_tier_for
@@ -179,7 +219,12 @@ class SubscriptionService:
             )
 
     def cap_screener_limit(self, user_id: int, requested: int) -> int:
-        """Clamp a requested screener limit to the tier's max (FREE = 20)."""
+        """Clamp a requested screener limit to the tier's max (FREE = 20).
+
+        PREVIEW MODE: no cap — the requested limit is returned unchanged.
+        """
+        if self._preview_mode:
+            return requested
         cap = limits_for(self.current_tier(user_id)).screener_max_results
         if cap == UNLIMITED:
             return requested
@@ -194,14 +239,44 @@ class SubscriptionService:
     ) -> None:
         self._store.record_event(user_id, metric, count=count, meta=meta)
 
+    def record_preview_event(
+        self, user_id: int, event: str, meta: str = "", count: int = 1
+    ) -> None:
+        """Record a preview-feature usage event (demand analytics only).
+
+        ``meta`` carries the requested per-event fields (e.g. market, symbol,
+        portfolio_score) as a short string so we can break demand down later.
+        """
+        self._store.record_event(user_id, event, count=count, meta=meta)
+
+    def join_waitlist(self, user_id: int, tier: str) -> dict:
+        """Record an early-access waiting-list join (no payment, ever)."""
+        target = normalize_tier(tier)
+        self._store.record_event(
+            user_id, EVENT_WAITLIST_JOINED, count=1, meta=target
+        )
+        return {
+            "user_id": user_id,
+            "tier": target,
+            "status": "waitlisted",
+            "preview": True,
+            "message": (
+                "TradeWizz "
+                f"{target} is currently in preview. You have been added to "
+                "the early-access waiting list."
+            ),
+        }
+
     def check_and_count_analysis(self, user_id: int) -> int:
         """Enforce the daily-analysis limit, then record one use.
 
         Returns the new count. Raises 402 when a FREE user is over the cap.
+        PREVIEW MODE: the limit is NOT enforced; the use is still recorded so
+        we keep measuring demand.
         """
         limit = limits_for(self.current_tier(user_id)).analysis_per_day
         used = self._store.usage_today(user_id, METRIC_ANALYSIS)
-        if limit != UNLIMITED and used >= limit:
+        if not self._preview_mode and limit != UNLIMITED and used >= limit:
             raise SubscriptionError(
                 f"Daily analysis limit reached ({limit}/day on your plan). "
                 "Upgrade to Pro for unlimited analysis.",
@@ -217,6 +292,10 @@ class SubscriptionService:
     def usage_summary(self, user_id: int) -> dict:
         return self._store.usage_summary(user_id)
 
+    def demand_breakdown(self, metric: Optional[str] = None) -> list:
+        """Cross-user feature-demand analytics for the preview phase."""
+        return self._store.event_breakdown(metric)
+
     # -- response builders ----------------------------------------------
     def entitlements(self, user_id: int) -> EntitlementResponse:
         row = self._ensure(user_id)
@@ -228,23 +307,49 @@ class SubscriptionService:
             if analysis_limit == UNLIMITED
             else max(0, analysis_limit - analysis_used)
         )
+        # In preview mode every feature is unlocked, so the app receives the
+        # full feature list (everyone is effectively "all features"), but we
+        # also tell it which ones to badge as PRO/ELITE PREVIEW.
+        if self._preview_mode:
+            effective_features = list(TIERS[ELITE].features)
+            preview_features = [
+                f for f in TIERS[ELITE].features
+                if f not in TIERS[FREE].features
+            ]
+            unlimited_limits = TierLimitsModel(
+                watchlist_max=UNLIMITED,
+                analysis_per_day=UNLIMITED,
+                screener_max_results=UNLIMITED,
+            )
+        else:
+            effective_features = list(tier.features)
+            preview_features = []
+            unlimited_limits = TierLimitsModel(
+                watchlist_max=tier.limits.watchlist_max,
+                analysis_per_day=tier.limits.analysis_per_day,
+                screener_max_results=tier.limits.screener_max_results,
+            )
         return EntitlementResponse(
             user_id=user_id,
             tier=row.tier,
             active=row.active,
             expires_at=row.expires_at,
-            limits=TierLimitsModel(
-                watchlist_max=tier.limits.watchlist_max,
-                analysis_per_day=tier.limits.analysis_per_day,
-                screener_max_results=tier.limits.screener_max_results,
-            ),
-            features=list(tier.features),
+            limits=unlimited_limits,
+            features=effective_features,
             usage=UsageToday(
                 analysis_count=analysis_used,
-                analysis_limit=analysis_limit,
-                analysis_remaining=remaining,
+                analysis_limit=(
+                    UNLIMITED if self._preview_mode else analysis_limit
+                ),
+                analysis_remaining=(
+                    UNLIMITED if self._preview_mode else remaining
+                ),
             ),
+            preview=self._preview_mode,
+            preview_features=preview_features,
         )
 
     def plans(self) -> dict:
-        return feature_matrix()
+        matrix = feature_matrix()
+        matrix["preview"] = self._preview_mode
+        return matrix

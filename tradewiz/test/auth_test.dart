@@ -454,6 +454,8 @@ void main() {
       300,
       scrollable: find.byType(Scrollable).first,
     );
+    await tester.ensureVisible(find.byKey(const Key('reset_simulation_button')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('reset_simulation_button')));
     await tester.pumpAndSettle();
     // A confirmation dialog appears (no destructive action without confirm).
@@ -496,6 +498,8 @@ void main() {
       300,
       scrollable: find.byType(Scrollable).first,
     );
+    await tester.ensureVisible(find.byKey(const Key('logout_button')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('logout_button')));
     await tester.pumpAndSettle();
 

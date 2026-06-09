@@ -43,6 +43,12 @@ class EntitlementResponse(BaseModel):
     limits: TierLimitsModel
     features: List[str]
     usage: UsageToday
+    # PRO/ELITE Preview pivot: when true, all features are open to everyone and
+    # nothing is enforced — the app shows PREVIEW badges + a waiting list.
+    preview: bool = True
+    # Features the app should surface as "PRO PREVIEW" / "ELITE PREVIEW" while
+    # still letting the user open them.
+    preview_features: List[str] = []
 
 
 class UpgradeRequest(BaseModel):
@@ -52,6 +58,28 @@ class UpgradeRequest(BaseModel):
     receipt: Optional[str] = None
 
 
+class WaitlistRequest(BaseModel):
+    """Join the early-access waiting list for a preview tier (no payment)."""
+
+    tier: str = "PRO"
+
+
+class WaitlistResponse(BaseModel):
+    user_id: int
+    tier: str
+    status: str = "waitlisted"
+    preview: bool = True
+    message: str = ""
+
+
+class PreviewEventRequest(BaseModel):
+    """Client-reported preview-feature usage event (demand analytics only)."""
+
+    event: str
+    meta: str = ""
+
+
 class PlanComparison(BaseModel):
     tiers: List[Dict]
     features: List[Dict]
+    preview: bool = True

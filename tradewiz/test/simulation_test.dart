@@ -129,7 +129,12 @@ void main() {
     await tester.pumpWidget(_wrap(AccountPage(repository: repo), repo));
     await tester.pumpAndSettle();
 
-    // Holdings card with the AAPL position.
+    // Holdings card with the AAPL position (scroll it into the lazy list).
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('account_holdings_card')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.byKey(const Key('account_holdings_card')), findsOneWidget);
     expect(find.text('AAPL · US'), findsWidgets);
     // Trade history card with the BUY trade.
@@ -162,6 +167,11 @@ void main() {
     await tester.pumpWidget(_wrap(AccountPage(repository: repo), repo));
     await tester.pumpAndSettle();
 
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('holding_tile_AAPL_US')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.tap(find.byKey(const Key('holding_tile_AAPL_US')));
     await tester.pumpAndSettle();
 
@@ -176,8 +186,11 @@ void main() {
     await tester.pumpWidget(_wrap(AccountPage(repository: repo), repo));
     await tester.pumpAndSettle();
 
-    await tester.ensureVisible(find.byKey(const Key('holding_buy_AAPL_US')));
-    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('holding_buy_AAPL_US')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.tap(find.byKey(const Key('holding_buy_AAPL_US')));
     await tester.pumpAndSettle();
 
@@ -195,8 +208,11 @@ void main() {
     await tester.pumpWidget(_wrap(AccountPage(repository: repo), repo));
     await tester.pumpAndSettle();
 
-    await tester.ensureVisible(find.byKey(const Key('holding_sell_AAPL_US')));
-    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('holding_sell_AAPL_US')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     await tester.tap(find.byKey(const Key('holding_sell_AAPL_US')));
     await tester.pumpAndSettle();
 

@@ -7,12 +7,13 @@ import '../services/entitlements_scope.dart';
 import '../services/repository_scope.dart';
 import '../theme.dart';
 
-/// Phase 7 — the premium / upgrade screen.
+/// Phase 7 — the premium / early-access screen.
 ///
-/// Shows the current plan, a FREE/PRO/ELITE comparison table, and Upgrade
-/// buttons. Pure research/AI/simulation product: there is NO broker or
-/// real-money feature here. Billing is a placeholder (the backend activates the
-/// tier without taking payment).
+/// PRO/ELITE Preview pivot: TradeWizz is in preview, so this screen shows NO
+/// prices and NO purchase flow. Instead of "Upgrade", users "Join Waiting
+/// List" for early access; we only record the intent. Pure research/AI/
+/// simulation product: there is NO broker or real-money feature here, and no
+/// Stripe / app-store billing.
 class UpgradePage extends StatefulWidget {
   const UpgradePage({super.key, this.repository, this.highlightFeature});
 
@@ -59,28 +60,40 @@ class _UpgradePageState extends State<UpgradePage> {
     }
   }
 
-  Future<void> _upgrade(Tier tier) async {
+  /// Join the early-access waiting list for [tier]. No payment is taken.
+  Future<void> _joinWaitlist(Tier tier) async {
     final token = _token;
     if (token == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please sign in to upgrade.')),
+        const SnackBar(content: Text('Please sign in to join the waiting list.')),
       );
       return;
     }
-    final entitlements = EntitlementsScope.maybeOf(context);
     setState(() => _upgrading = true);
     try {
-      await _repo.upgrade(token, tier);
-      await entitlements?.refresh(token);
+      await _repo.joinWaitlist(token, tier);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('You are now on ${tier.label}.')),
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          key: const Key('waitlist_dialog'),
+          title: Text('TradeWizz ${tier.label} is in preview'),
+          content: Text(
+            'TradeWizz ${tier.label} is currently in preview.\n\n'
+            'You have been added to the early-access waiting list.',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Got it'),
+            ),
+          ],
+        ),
       );
-      Navigator.of(context).maybePop();
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Upgrade failed. Try again.')),
+          const SnackBar(content: Text('Could not join the waiting list. Try again.')),
         );
       }
     } finally {
@@ -105,21 +118,24 @@ class _UpgradePageState extends State<UpgradePage> {
                     padding: const EdgeInsets.all(16),
                     children: [
                       _CurrentPlanCard(tier: current),
+                      const SizedBox(height: 12),
+                      const _PreviewBanner(),
                       const SizedBox(height: 16),
                       for (final pt in _plans!.tiers)
                         _PlanCard(
                           plan: pt,
                           current: current,
                           busy: _upgrading,
-                          onUpgrade: () => _upgrade(pt.tier),
+                          onJoin: () => _joinWaitlist(pt.tier),
                         ),
                       const SizedBox(height: 16),
                       _ComparisonTable(features: _plans!.features),
                       const SizedBox(height: 24),
                       const Text(
                         'TradeWizz is a research, AI-analysis and simulation '
-                        'platform. No broker connection or real-money trading '
-                        'is involved in any plan.',
+                        'platform. It is currently in preview: all features are '
+                        'open and there is no payment. No broker connection or '
+                        'real-money trading is involved in any plan.',
                         key: Key('upgrade_disclaimer'),
                         style: TextStyle(color: Colors.grey, fontSize: 12),
                       ),
@@ -151,26 +167,50 @@ class _CurrentPlanCard extends StatelessWidget {
   }
 }
 
+class _PreviewBanner extends StatelessWidget {
+  const _PreviewBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      key: const Key('preview_banner'),
+      color: AppColors.seed.withValues(alpha: 0.06),
+      child: const Padding(
+        padding: EdgeInsets.all(14),
+        child: Row(children: [
+          Icon(Icons.science_outlined, color: AppColors.seed),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'TradeWizz PRO & ELITE are in preview. Every feature is open to '
+              'you right now — join the waiting list to get early access news.',
+              style: TextStyle(fontSize: 13),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
 class _PlanCard extends StatelessWidget {
   const _PlanCard({
     required this.plan,
     required this.current,
     required this.busy,
-    required this.onUpgrade,
+    required this.onJoin,
   });
 
   final PlanTier plan;
   final Tier current;
   final bool busy;
-  final VoidCallback onUpgrade;
+  final VoidCallback onJoin;
 
   @override
   Widget build(BuildContext context) {
-    final isCurrent = plan.tier == current;
-    final isDowngrade = plan.tier.rank < current.rank;
-    final price = plan.priceUsdMonth == 0
-        ? 'Free'
-        : '\$${plan.priceUsdMonth.toStringAsFixed(2)}/mo';
+    // Preview pivot: no prices anywhere. FREE shows an info chip; PRO/ELITE
+    // show a "Join Waiting List" CTA. No purchase, ever.
+    final isFree = plan.tier == Tier.free;
     return Card(
       key: Key('plan_card_${plan.tier.code}'),
       child: Padding(
@@ -184,9 +224,20 @@ class _PlanCard extends StatelessWidget {
                     style: const TextStyle(
                         fontWeight: FontWeight.w800, fontSize: 18)),
                 const Spacer(),
-                Text(price,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 16)),
+                if (!isFree)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppColors.seed.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text('${plan.tier.label.toUpperCase()} PREVIEW',
+                        style: const TextStyle(
+                            color: AppColors.seed,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 11)),
+                  ),
               ],
             ),
             const SizedBox(height: 4),
@@ -195,19 +246,19 @@ class _PlanCard extends StatelessWidget {
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
-              child: isCurrent
+              child: isFree
                   ? OutlinedButton(
-                      key: Key('plan_current_${plan.tier.code}'),
+                      key: const Key('plan_current_FREE'),
                       onPressed: null,
-                      child: const Text('Current plan'),
+                      child: const Text('Included for everyone'),
                     )
-                  : isDowngrade
-                      ? const SizedBox.shrink()
-                      : FilledButton(
-                          key: Key('upgrade_button_${plan.tier.code}'),
-                          onPressed: busy ? null : onUpgrade,
-                          child: Text('Upgrade to ${plan.tier.label}'),
-                        ),
+                  : FilledButton.icon(
+                      key: Key('waitlist_button_${plan.tier.code}'),
+                      icon: const Icon(Icons.notifications_active_outlined,
+                          size: 18),
+                      onPressed: busy ? null : onJoin,
+                      label: const Text('Join Waiting List'),
+                    ),
             ),
           ],
         ),

@@ -93,6 +93,8 @@ class Entitlements {
     required this.features,
     required this.usage,
     this.expiresAt,
+    this.preview = true,
+    this.previewFeatures = const {},
   });
 
   final Tier tier;
@@ -102,23 +104,59 @@ class Entitlements {
   final UsageToday usage;
   final String? expiresAt;
 
+  /// PRO/ELITE Preview pivot: when true, every feature is open to everyone and
+  /// nothing is enforced. The UI shows PREVIEW badges + a waiting list.
+  final bool preview;
+
+  /// Features the app should badge as PRO/ELITE PREVIEW (still openable).
+  final Set<String> previewFeatures;
+
   bool has(String feature) => features.contains(feature);
 
-  /// FREE defaults so the UI can render before the network resolves.
+  /// Whether the user can OPEN [feature] right now (always true in preview).
+  bool canOpen(String feature) => preview || features.contains(feature);
+
+  /// 'PRO PREVIEW' / 'ELITE PREVIEW' for a preview feature, else ''.
+  String previewBadgeFor(String feature) {
+    if (!preview || !previewFeatures.contains(feature)) return '';
+    return _eliteFeatures.contains(feature) ? 'ELITE PREVIEW' : 'PRO PREVIEW';
+  }
+
+  static const Set<String> _eliteFeatures = {
+    Features.multibagger,
+    Features.portfolioHealth,
+    Features.riskAnalysis,
+    Features.concentration,
+    Features.exitWarnings,
+    Features.positionQuality,
+    Features.eliteOpportunities,
+  };
+
+  /// FREE defaults so the UI can render before the network resolves. During
+  /// the preview phase we default to preview=true (everything openable).
   static const Entitlements free = Entitlements(
     tier: Tier.free,
     active: true,
     limits: TierLimits(
-      watchlistMax: 20,
-      analysisPerDay: 5,
-      screenerMaxResults: 20,
+      watchlistMax: unlimited,
+      analysisPerDay: unlimited,
+      screenerMaxResults: unlimited,
     ),
     features: {Features.globalMarkets},
     usage: UsageToday(
       analysisCount: 0,
-      analysisLimit: 5,
-      analysisRemaining: 5,
+      analysisLimit: unlimited,
+      analysisRemaining: unlimited,
     ),
+    preview: true,
+    previewFeatures: {
+      Features.opportunityRadar,
+      Features.dailyPicks,
+      Features.multibagger,
+      Features.portfolioHealth,
+      Features.positionQuality,
+      Features.eliteOpportunities,
+    },
   );
 
   factory Entitlements.fromJson(Map<String, dynamic> j) => Entitlements(
@@ -132,6 +170,10 @@ class Entitlements {
         usage:
             UsageToday.fromJson((j['usage'] ?? const {}) as Map<String, dynamic>),
         expiresAt: j['expires_at'] as String?,
+        preview: (j['preview'] ?? true) as bool,
+        previewFeatures: ((j['preview_features'] ?? const []) as List)
+            .map((e) => e.toString())
+            .toSet(),
       );
 }
 

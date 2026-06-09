@@ -22,7 +22,13 @@ from ..subscription.entitlements import (
     FEATURE_OPPORTUNITY_RADAR,
 )
 from ..subscription.router import get_service as get_sub_service
-from ..subscription.service import METRIC_RADAR_VIEW, SubscriptionError
+from ..subscription.service import (
+    EVENT_DAILY_PICKS_OPENED,
+    EVENT_MULTIBAGGER_OPENED,
+    EVENT_RADAR_OPENED,
+    METRIC_RADAR_VIEW,
+    SubscriptionError,
+)
 from .models import (
     DailyPicksResponse,
     MultibaggerResponse,
@@ -68,11 +74,16 @@ def _require(uid: int, feature: str) -> None:
 
 @router.get("/opportunities", response_model=OpportunitiesResponse)
 def opportunities(
+    market: Optional[str] = None,
     authorization: Optional[str] = Header(default=None),
 ) -> OpportunitiesResponse:
+    """Opportunity Radar (PRO PREVIEW — open to all during the preview phase)."""
     uid = _user_id(authorization)
     _require(uid, FEATURE_OPPORTUNITY_RADAR)
-    get_sub_service().record_usage(uid, METRIC_RADAR_VIEW, meta="opportunities")
+    sub = get_sub_service()
+    sub.record_usage(uid, METRIC_RADAR_VIEW, meta="opportunities")
+    # radar_opened: user_id, market, timestamp (timestamp recorded by store).
+    sub.record_preview_event(uid, EVENT_RADAR_OPENED, meta=market or "global")
     return get_service().opportunities()
 
 
@@ -80,17 +91,28 @@ def opportunities(
 def daily(
     authorization: Optional[str] = Header(default=None),
 ) -> DailyPicksResponse:
+    """Daily Picks (PRO PREVIEW — open to all during the preview phase)."""
     uid = _user_id(authorization)
     _require(uid, FEATURE_DAILY_PICKS)
-    get_sub_service().record_usage(uid, METRIC_RADAR_VIEW, meta="daily")
+    sub = get_sub_service()
+    sub.record_usage(uid, METRIC_RADAR_VIEW, meta="daily")
+    # daily_picks_opened: user_id, timestamp.
+    sub.record_preview_event(uid, EVENT_DAILY_PICKS_OPENED)
     return get_service().daily()
 
 
 @router.get("/multibagger", response_model=MultibaggerResponse)
 def multibagger(
+    market: Optional[str] = None,
     authorization: Optional[str] = Header(default=None),
 ) -> MultibaggerResponse:
+    """Multibagger Finder (ELITE PREVIEW — open to all during preview)."""
     uid = _user_id(authorization)
     _require(uid, FEATURE_MULTIBAGGER)
-    get_sub_service().record_usage(uid, METRIC_RADAR_VIEW, meta="multibagger")
+    sub = get_sub_service()
+    sub.record_usage(uid, METRIC_RADAR_VIEW, meta="multibagger")
+    # multibagger_opened: user_id, market.
+    sub.record_preview_event(
+        uid, EVENT_MULTIBAGGER_OPENED, meta=market or "all"
+    )
     return get_service().multibagger()

@@ -62,6 +62,7 @@ class SubscriptionStore(Protocol):
     ) -> None: ...
     def usage_today(self, user_id: int, metric: str) -> int: ...
     def usage_summary(self, user_id: int) -> Dict[str, int]: ...
+    def event_breakdown(self, metric: Optional[str] = None) -> List[dict]: ...
 
 
 class SqliteSubscriptionStore:
@@ -211,3 +212,32 @@ class SqliteSubscriptionStore:
                 (user_id,),
             ).fetchall()
         return {r["metric"]: int(r["total"]) for r in rows}
+
+    def event_breakdown(self, metric: Optional[str] = None) -> List[dict]:
+        """Cross-user demand analytics: per (metric, meta) totals + unique users.
+
+        This is what the preview phase measures — which features are opened
+        most, broken down by their meta field (market / symbol / etc.). Pass a
+        ``metric`` to scope to one event, or None for all.
+        """
+        sql = (
+            "SELECT metric, meta, SUM(count) AS total, "
+            "COUNT(DISTINCT user_id) AS users "
+            "FROM usage_events "
+        )
+        params: tuple = ()
+        if metric:
+            sql += "WHERE metric = ? "
+            params = (metric,)
+        sql += "GROUP BY metric, meta ORDER BY total DESC"
+        with self._lock:
+            rows = self._conn().execute(sql, params).fetchall()
+        return [
+            {
+                "metric": r["metric"],
+                "meta": r["meta"],
+                "total": int(r["total"]),
+                "users": int(r["users"]),
+            }
+            for r in rows
+        ]
