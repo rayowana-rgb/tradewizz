@@ -22,12 +22,21 @@ class OrderTicketPage extends StatefulWidget {
     required this.market,
     required this.side,
     required this.repository,
+    this.initialQuantity,
+    this.maxQuantity,
   });
 
   final String symbol;
   final Market market;
   final OrderSide side;
   final StockRepository repository;
+
+  /// Optional quantity to prefill the ticket with (e.g. selling a full holding).
+  final double? initialQuantity;
+
+  /// Optional upper bound on quantity (e.g. you cannot sell more than you hold
+  /// in the simulation). When set, the quantity field is validated against it.
+  final double? maxQuantity;
 
   @override
   State<OrderTicketPage> createState() => _OrderTicketPageState();
@@ -46,6 +55,15 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
   String? _error;
   SimOrderPreview? _preview;
   SimOrderResult? _result;
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.initialQuantity ?? widget.maxQuantity;
+    if (initial != null && initial > 0) {
+      _qtyController.text = initial.toStringAsFixed(0);
+    }
+  }
 
   @override
   void dispose() {
@@ -220,13 +238,21 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
                 key: const Key('qty_field'),
                 controller: _qtyController,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Quantity',
-                  border: OutlineInputBorder(),
+                  helperText: widget.maxQuantity != null
+                      ? 'You hold ${widget.maxQuantity!.toStringAsFixed(0)} '
+                          '(simulated)'
+                      : null,
+                  border: const OutlineInputBorder(),
                 ),
                 validator: (v) {
                   final q = double.tryParse(v?.trim() ?? '');
                   if (q == null || q <= 0) return 'Enter a positive quantity';
+                  final max = widget.maxQuantity;
+                  if (max != null && q > max) {
+                    return 'You only hold ${max.toStringAsFixed(0)} (simulated)';
+                  }
                   return null;
                 },
               ),

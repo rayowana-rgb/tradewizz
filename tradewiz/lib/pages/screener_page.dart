@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 
+import '../models/broker.dart';
 import '../models/market.dart';
 import '../models/screener_category.dart';
 import '../models/screener_result.dart';
 import '../repositories/stock_repository.dart';
 import '../services/api_client.dart';
 import '../services/data_source.dart';
+import '../services/repository_scope.dart';
 import '../theme.dart';
 import '../widgets/category_badge.dart';
 import '../widgets/connection_pill.dart';
 import 'ai_analysis_page.dart';
+import 'order_ticket_page.dart';
 
 /// Screener page: runs `/screen/{market}` and lists tagged matches with
 /// market + category filters. iOS-first UX (pull-to-refresh, clean cards).
@@ -147,6 +150,64 @@ class _ScreenerPageState extends State<ScreenerPage> {
     );
   }
 
+  /// Open the shared simulated order ticket for a screener match. Reuses the
+  /// exact same OrderTicketPage as Analysis/Watchlist/Account — simulation only.
+  void _openTicket(ScreenerMatch match, OrderSide side) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => OrderTicketPage(
+          symbol: match.symbol,
+          market: _market,
+          side: side,
+          repository: widget.repository ?? RepositoryScope.of(context),
+        ),
+      ),
+    );
+  }
+
+  /// Swipe-left action sheet: Buy / Sell. Never deletes the row.
+  Future<void> _showBuySellMenu(ScreenerMatch match) async {
+    final choice = await showModalBottomSheet<OrderSide>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              key: const Key('screener_action_menu'),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text('${match.symbol} · ${_market.code}',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w800, fontSize: 16)),
+            ),
+            ListTile(
+              key: const Key('screener_action_buy'),
+              leading: const Icon(Icons.add_circle_outline,
+                  color: AppColors.up),
+              title: const Text('Buy (simulated)'),
+              onTap: () => Navigator.of(ctx).pop(OrderSide.buy),
+            ),
+            ListTile(
+              key: const Key('screener_action_sell'),
+              leading: const Icon(Icons.remove_circle_outline,
+                  color: AppColors.down),
+              title: const Text('Sell (simulated)'),
+              onTap: () => Navigator.of(ctx).pop(OrderSide.sell),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 4, 16, 12),
+              child: Text(
+                'Simulation mode only. No real broker order will be sent.',
+                style: TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choice != null && mounted) _openTicket(match, choice);
+  }
+
   // Server already filters; keep a defensive local pass for fallback data.
   List<ScreenerMatch> get _filtered {
     final matches = _result?.matches ?? [];
@@ -225,9 +286,39 @@ class _ScreenerPageState extends State<ScreenerPage> {
         separatorBuilder: (_, index) => const SizedBox(height: 12),
         itemBuilder: (_, i) {
           if (i < matches.length) {
-            return _MatchCard(
-              match: matches[i],
-              onTap: () => _openAnalysis(matches[i]),
+            final match = matches[i];
+            return Dismissible(
+              key: Key('screener_row_${match.symbol}_${_market.code}'),
+              direction: DismissDirection.endToStart,
+              // Swipe-left reveals a Buy/Sell menu; it never deletes the row.
+              confirmDismiss: (_) async {
+                await _showBuySellMenu(match);
+                return false;
+              },
+              background: Container(
+                alignment: Alignment.centerRight,
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                decoration: BoxDecoration(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .primary
+                      .withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.swap_horiz, size: 20),
+                    SizedBox(width: 6),
+                    Text('Buy / Sell',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                  ],
+                ),
+              ),
+              child: _MatchCard(
+                match: match,
+                onTap: () => _openAnalysis(match),
+              ),
             );
           }
           return _ScreenerFooter(

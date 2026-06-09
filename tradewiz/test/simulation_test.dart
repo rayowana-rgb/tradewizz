@@ -6,8 +6,11 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'package:tradewiz/config/app_config.dart';
+import 'package:tradewiz/models/broker.dart';
 import 'package:tradewiz/models/user.dart';
 import 'package:tradewiz/pages/account_page.dart';
+import 'package:tradewiz/pages/ai_analysis_page.dart';
+import 'package:tradewiz/pages/order_ticket_page.dart';
 import 'package:tradewiz/repositories/stock_repository.dart';
 import 'package:tradewiz/services/api_client.dart';
 import 'package:tradewiz/services/auth_scope.dart';
@@ -151,5 +154,63 @@ void main() {
     expect(find.textContaining('Broker'), findsNothing);
     expect(find.textContaining('IBKR'), findsNothing);
     expect(find.textContaining('Moomoo'), findsNothing);
+  });
+
+  testWidgets('Tapping a holding opens the analysis detail page',
+      (tester) async {
+    final repo = _simRepo();
+    await tester.pumpWidget(_wrap(AccountPage(repository: repo), repo));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('holding_tile_AAPL_US')));
+    await tester.pumpAndSettle();
+
+    // The shared analysis detail page is pushed for AAPL / US.
+    expect(find.byType(AnalysisDetailPage), findsOneWidget);
+    expect(find.text('AAPL · US'), findsWidgets);
+  });
+
+  testWidgets('Holding Buy opens the simulated order ticket (BUY)',
+      (tester) async {
+    final repo = _simRepo();
+    await tester.pumpWidget(_wrap(AccountPage(repository: repo), repo));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('holding_buy_AAPL_US')));
+    await tester.pumpAndSettle();
+
+    final ticket =
+        tester.widget<OrderTicketPage>(find.byType(OrderTicketPage));
+    expect(ticket.symbol, 'AAPL');
+    expect(ticket.side, OrderSide.buy);
+    expect(ticket.maxQuantity, isNull); // buy is not capped
+    expect(find.byKey(const Key('sim_warning_banner')), findsOneWidget);
+  });
+
+  testWidgets('Holding Sell opens the order ticket prefilled + capped (SELL)',
+      (tester) async {
+    final repo = _simRepo();
+    await tester.pumpWidget(_wrap(AccountPage(repository: repo), repo));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('holding_sell_AAPL_US')));
+    await tester.pumpAndSettle();
+
+    final ticket =
+        tester.widget<OrderTicketPage>(find.byType(OrderTicketPage));
+    expect(ticket.symbol, 'AAPL');
+    expect(ticket.side, OrderSide.sell);
+    // Sell prefills + caps at the held quantity (10).
+    expect(ticket.initialQuantity, 10.0);
+    expect(ticket.maxQuantity, 10.0);
+    expect(find.byKey(const Key('sim_warning_banner')), findsOneWidget);
+    // Quantity field is prefilled with the full holding.
+    final qty = tester.widget<TextField>(
+      find.descendant(
+        of: find.byKey(const Key('qty_field')),
+        matching: find.byType(TextField),
+      ),
+    );
+    expect(qty.controller!.text, '10');
   });
 }

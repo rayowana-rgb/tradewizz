@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/broker.dart';
 import '../models/simulation.dart';
 import '../repositories/stock_repository.dart';
 import '../services/api_client.dart';
@@ -7,7 +8,9 @@ import '../services/auth_scope.dart';
 import '../services/repository_scope.dart';
 import '../services/social_sign_in.dart';
 import '../theme.dart';
+import 'ai_analysis_page.dart';
 import 'auth_pages.dart';
+import 'order_ticket_page.dart';
 
 /// Account tab. Logged out -> Login / Register. Logged in -> profile + a
 /// SIMULATED paper-trading portfolio (cash, equity, buying power, P/L,
@@ -73,6 +76,35 @@ class _AccountPageState extends State<AccountPage> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  /// Open the shared analysis/detail page for a held symbol. Buy/Sell from
+  /// there are simulated (the same OrderTicketPage used everywhere).
+  Future<void> _openDetail(SimPosition p) async {
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => AnalysisDetailPage(
+        symbol: p.symbol,
+        market: p.market,
+        repository: widget.repository,
+      ),
+    ));
+    if (mounted) await _load();
+  }
+
+  /// Open the simulated order ticket prefilled for this holding. SELL prefills
+  /// and caps the quantity at the currently-held amount.
+  Future<void> _openTicket(SimPosition p, OrderSide side) async {
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => OrderTicketPage(
+        symbol: p.symbol,
+        market: p.market,
+        side: side,
+        repository: _repo,
+        initialQuantity: side == OrderSide.sell ? p.quantity : null,
+        maxQuantity: side == OrderSide.sell ? p.quantity : null,
+      ),
+    ));
+    if (mounted) await _load();
   }
 
   Future<void> _reset() async {
@@ -188,7 +220,12 @@ class _AccountPageState extends State<AccountPage> {
                 style:
                     TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
           ),
-          _HoldingsCard(positions: port?.positions ?? const []),
+          _HoldingsCard(
+            positions: port?.positions ?? const [],
+            onOpen: _openDetail,
+            onBuy: (p) => _openTicket(p, OrderSide.buy),
+            onSell: (p) => _openTicket(p, OrderSide.sell),
+          ),
           const SizedBox(height: 16),
 
           // --- Trade history ---------------------------------------------
@@ -370,8 +407,16 @@ class _SummaryCard extends StatelessWidget {
 }
 
 class _HoldingsCard extends StatelessWidget {
-  const _HoldingsCard({required this.positions});
+  const _HoldingsCard({
+    required this.positions,
+    required this.onOpen,
+    required this.onBuy,
+    required this.onSell,
+  });
   final List<SimPosition> positions;
+  final ValueChanged<SimPosition> onOpen;
+  final ValueChanged<SimPosition> onBuy;
+  final ValueChanged<SimPosition> onSell;
 
   @override
   Widget build(BuildContext context) {
@@ -400,25 +445,55 @@ class _HoldingsCard extends StatelessWidget {
 
   Widget _holdingTile(SimPosition p) {
     final pnlColor = p.unrealizedPnl >= 0 ? AppColors.up : AppColors.down;
-    return ListTile(
-      title: Text('${p.symbol} · ${p.market.code}',
-          style: const TextStyle(fontWeight: FontWeight.w700)),
-      subtitle: Text(
-          '${p.quantity.toStringAsFixed(0)} @ ${p.averageCost.toStringAsFixed(2)} '
-          '· last ${p.lastPrice.toStringAsFixed(2)}'),
-      trailing: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(p.marketValue.toStringAsFixed(2),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ListTile(
+          key: Key('holding_tile_${p.symbol}_${p.market.code}'),
+          onTap: () => onOpen(p),
+          title: Text('${p.symbol} · ${p.market.code}',
               style: const TextStyle(fontWeight: FontWeight.w700)),
-          Text(
-            '${p.unrealizedPnl >= 0 ? '+' : ''}'
-            '${p.unrealizedPnl.toStringAsFixed(2)}',
-            style: TextStyle(color: pnlColor, fontSize: 12),
+          subtitle: Text(
+              '${p.quantity.toStringAsFixed(0)} @ '
+              '${p.averageCost.toStringAsFixed(2)} '
+              '· last ${p.lastPrice.toStringAsFixed(2)}'),
+          trailing: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(p.marketValue.toStringAsFixed(2),
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+              Text(
+                '${p.unrealizedPnl >= 0 ? '+' : ''}'
+                '${p.unrealizedPnl.toStringAsFixed(2)}',
+                style: TextStyle(color: pnlColor, fontSize: 12),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+          child: Row(children: [
+            Expanded(
+              child: OutlinedButton(
+                key: Key('holding_buy_${p.symbol}_${p.market.code}'),
+                onPressed: () => onBuy(p),
+                child: const Text('Buy'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton(
+                key: Key('holding_sell_${p.symbol}_${p.market.code}'),
+                onPressed: () => onSell(p),
+                style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.down),
+                child: const Text('Sell'),
+              ),
+            ),
+          ]),
+        ),
+      ],
     );
   }
 }

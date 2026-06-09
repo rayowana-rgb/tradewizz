@@ -6,7 +6,9 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'package:tradewiz/config/app_config.dart';
+import 'package:tradewiz/models/broker.dart';
 import 'package:tradewiz/models/market.dart';
+import 'package:tradewiz/pages/order_ticket_page.dart';
 import 'package:tradewiz/pages/screener_page.dart';
 import 'package:tradewiz/repositories/stock_repository.dart';
 import 'package:tradewiz/services/api_client.dart';
@@ -270,5 +272,65 @@ void main() {
     // Offline/mock repo response has no cache fields -> banner hidden.
     await _loadScreener(tester);
     expect(find.byKey(const Key('screener_cache_label')), findsNothing);
+  });
+
+  testWidgets('Swipe-left on a row reveals the Buy/Sell menu (no delete)',
+      (tester) async {
+    await _loadScreener(tester);
+
+    final before = tester.widgetList(find.byType(CategoryBadge)).length;
+    await tester.drag(find.text('IDX01'), const Offset(-400, 0));
+    await tester.pumpAndSettle();
+
+    // Action menu appears with both Buy and Sell + the simulation disclaimer.
+    expect(find.byKey(const Key('screener_action_menu')), findsOneWidget);
+    expect(find.byKey(const Key('screener_action_buy')), findsOneWidget);
+    expect(find.byKey(const Key('screener_action_sell')), findsOneWidget);
+    expect(
+      find.text('Simulation mode only. No real broker order will be sent.'),
+      findsOneWidget,
+    );
+
+    // Dismiss the sheet; the row was NOT deleted.
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+    final after = tester.widgetList(find.byType(CategoryBadge)).length;
+    expect(after, before);
+    expect(find.text('IDX01'), findsOneWidget);
+  });
+
+  testWidgets('Swipe-left Buy opens the simulated order ticket (BUY)',
+      (tester) async {
+    await _loadScreener(tester);
+    await tester.drag(find.text('IDX01'), const Offset(-400, 0));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('screener_action_buy')));
+    await tester.pumpAndSettle();
+
+    final ticket =
+        tester.widget<OrderTicketPage>(find.byType(OrderTicketPage));
+    expect(ticket.symbol, 'IDX01');
+    expect(ticket.market, Market.idx);
+    expect(ticket.side, OrderSide.buy);
+    // Simulation banner is shown.
+    expect(find.byKey(const Key('sim_warning_banner')), findsOneWidget);
+  });
+
+  testWidgets('Swipe-left Sell opens the simulated order ticket (SELL)',
+      (tester) async {
+    await _loadScreener(tester);
+    await tester.drag(find.text('IDX01'), const Offset(-400, 0));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('screener_action_sell')));
+    await tester.pumpAndSettle();
+
+    final ticket =
+        tester.widget<OrderTicketPage>(find.byType(OrderTicketPage));
+    expect(ticket.symbol, 'IDX01');
+    expect(ticket.market, Market.idx);
+    expect(ticket.side, OrderSide.sell);
+    expect(find.byKey(const Key('sim_warning_banner')), findsOneWidget);
   });
 }
