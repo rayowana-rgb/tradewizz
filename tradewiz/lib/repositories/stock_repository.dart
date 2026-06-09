@@ -25,6 +25,53 @@ class StockRepository {
 
   final ApiClient _client;
 
+  // ---------------------------------------------------------------------------
+  // Raw-JSON passthroughs used by the client-side cache layer (lib/cache).
+  //
+  // These return the unparsed response map so the cache can persist a plain
+  // JSON-encodable payload (Hive-friendly) and re-parse it with the model's
+  // fromJson on read. They are additive and do not change the typed methods
+  // above — the live data path / API formats are untouched.
+  // ---------------------------------------------------------------------------
+
+  Future<Map<String, dynamic>> rawMarketIndices() =>
+      _client.authGet('/market/indices');
+
+  Future<Map<String, dynamic>> rawMorningBrief(String token, Market market) =>
+      _client.authGet('/morning-brief/${market.code}', bearer: token);
+
+  Future<Map<String, dynamic>> rawGlobalRotation(String token) =>
+      _client.authGet('/rotation/global', bearer: token);
+
+  Future<Map<String, dynamic>> rawRadarOpportunities(String token) =>
+      _client.authGet('/radar/opportunities', bearer: token);
+
+  Future<Map<String, dynamic>> rawRadarDaily(String token) =>
+      _client.authGet('/radar/daily', bearer: token);
+
+  Future<Map<String, dynamic>> rawRadarMultibagger(String token) =>
+      _client.authGet('/radar/multibagger', bearer: token);
+
+  Future<Map<String, dynamic>> rawPortfolioHealth(String token) =>
+      _client.authGet('/portfolio/health', bearer: token);
+
+  Future<Map<String, dynamic>> rawNotifications(String token) =>
+      _client.authGet('/notifications', bearer: token);
+
+  Future<Map<String, dynamic>> rawAutoWatchlistSuggestions(
+    String token, {
+    List<String> existing = const [],
+  }) {
+    var path = '/auto-watchlist/suggestions';
+    if (existing.isNotEmpty) {
+      final qs = existing
+          .map((e) => 'existing=${Uri.encodeQueryComponent(e)}')
+          .join('&');
+      path = '$path?$qs';
+    }
+    return _client.authGet(path, bearer: token);
+  }
+
   /// Full analysis for a single symbol. Backs `/analyze/{symbol}`.
   Future<Sourced<AnalysisResult>> analyze(String symbol, Market market) async {
     final res = await _client.analyze(symbol, market);

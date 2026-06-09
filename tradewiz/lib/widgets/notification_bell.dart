@@ -1,8 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../cache/cache_entry.dart';
+import '../cache/cache_keys.dart';
+import '../cache/cache_service.dart';
+import '../cache/cached_repository.dart';
+import '../models/phase2.dart';
 import '../pages/notifications_page.dart';
 import '../repositories/stock_repository.dart';
-import '../services/api_client.dart';
 import '../services/auth_scope.dart';
 import '../services/repository_scope.dart';
 
@@ -18,8 +24,9 @@ class NotificationBell extends StatefulWidget {
 }
 
 class _NotificationBellState extends State<NotificationBell> {
-  StockRepository get _repo =>
-      widget.repository ?? RepositoryScope.of(context);
+  CachedRepository get _cached => widget.repository != null
+      ? CachedRepository(widget.repository!, cache: CacheService.inMemory())
+      : RepositoryScope.cachedOf(context);
 
   String? get _token {
     final notifier =
@@ -29,29 +36,46 @@ class _NotificationBellState extends State<NotificationBell> {
 
   int _unread = 0;
   bool _loaded = false;
+  StreamSubscription<Cached<NotificationList>>? _sub;
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (!_loaded) {
       _loaded = true;
+      // Phase H: show the cached badge count instantly, then SWR-refresh.
+      final cachedNow = _cached.peek<NotificationList>(
+        CacheKeys.notifications,
+        (raw) => NotificationList.fromJson(
+            (raw as Map).cast<String, dynamic>()),
+      );
+      if (cachedNow != null) _unread = cachedNow.value.unreadCount;
       _refresh();
     }
   }
 
   Future<void> _refresh() async {
     final token = _token;
+    _sub?.cancel();
     if (token == null) {
       if (mounted) setState(() => _unread = 0);
       return;
     }
-    try {
-      final n = await _repo.notifications(token);
-      if (!mounted) return;
-      setState(() => _unread = n.unreadCount);
-    } on ApiException {
-      // best-effort; leave the prior count.
-    }
+    _sub = _cached.notificationsSwr(token).listen(
+      (c) {
+        if (!mounted) return;
+        setState(() => _unread = c.value.unreadCount);
+      },
+      onError: (Object _) {
+        // best-effort; leave the prior (cached) count on screen.
+      },
+    );
   }
 
   Future<void> _open() async {

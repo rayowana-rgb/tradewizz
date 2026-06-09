@@ -1,11 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../cache/cache_entry.dart';
+import '../cache/cache_service.dart';
+import '../cache/cached_repository.dart';
 import '../models/phase3.dart';
 import '../repositories/stock_repository.dart';
 import '../services/api_client.dart';
 import '../services/auth_scope.dart';
 import '../services/repository_scope.dart';
 import '../theme.dart';
+import 'cache_status_line.dart';
 
 Color recColor(String rec) => {
       'OVERWEIGHT': AppColors.up,
@@ -25,8 +31,9 @@ class GlobalRotationCard extends StatefulWidget {
 }
 
 class _GlobalRotationCardState extends State<GlobalRotationCard> {
-  StockRepository get _repo =>
-      widget.repository ?? RepositoryScope.of(context);
+  CachedRepository get _cached => widget.repository != null
+      ? CachedRepository(widget.repository!, cache: CacheService.inMemory())
+      : RepositoryScope.cachedOf(context);
 
   String? get _token {
     final notifier =
@@ -37,6 +44,16 @@ class _GlobalRotationCardState extends State<GlobalRotationCard> {
   bool _loading = true;
   bool _error = false;
   GlobalRotation? _data;
+  DateTime? _lastUpdated;
+  bool _isCached = false;
+  bool _offline = false;
+  StreamSubscription<Cached<GlobalRotation>>? _sub;
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
 
   @override
   void didChangeDependencies() {
@@ -46,6 +63,7 @@ class _GlobalRotationCardState extends State<GlobalRotationCard> {
 
   Future<void> _load() async {
     final token = _token;
+    _sub?.cancel();
     if (token == null) {
       setState(() {
         _loading = false;
@@ -54,21 +72,28 @@ class _GlobalRotationCardState extends State<GlobalRotationCard> {
       return;
     }
     setState(() => _loading = true);
-    try {
-      final r = await _repo.globalRotation(token);
-      if (!mounted) return;
-      setState(() {
-        _data = r;
-        _loading = false;
-        _error = false;
-      });
-    } on ApiException {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = true;
-      });
-    }
+    // SWR: cache renders instantly; refresh runs in the background. If the
+    // backend is unavailable, the cached rotation stays on screen.
+    _sub = _cached.globalRotationSwr(token).listen(
+      (c) {
+        if (!mounted) return;
+        setState(() {
+          _data = c.value;
+          _isCached = c.isCached;
+          _offline = c.offline;
+          _lastUpdated = c.lastUpdated;
+          _loading = false;
+          _error = false;
+        });
+      },
+      onError: (Object e) {
+        if (!mounted) return;
+        setState(() {
+          _loading = false;
+          if (_data == null) _error = true;
+        });
+      },
+    );
   }
 
   void _openDetail() {
@@ -108,6 +133,15 @@ class _GlobalRotationCardState extends State<GlobalRotationCard> {
             child: _buildBody(),
           ),
         ),
+        if (_data != null && _lastUpdated != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 4),
+            child: CacheStatusLine(
+              lastUpdated: _lastUpdated!,
+              isCached: _isCached,
+              offline: _offline,
+            ),
+          ),
       ],
     );
   }

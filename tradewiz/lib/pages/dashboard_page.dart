@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
 
+import '../cache/cache_service.dart';
+import '../cache/cached_repository.dart';
 import '../models/market.dart';
 import '../models/market_index.dart';
 import '../models/market_overview.dart';
 import '../models/screener_result.dart';
 import '../repositories/stock_repository.dart';
 import '../services/api_client.dart';
+import '../services/auth_scope.dart';
 import '../services/data_source.dart';
 import '../services/repository_scope.dart';
 import '../theme.dart';
 import '../widgets/auto_watchlist.dart';
+import '../widgets/cache_status_line.dart';
 import '../widgets/connection_pill.dart';
 import '../widgets/global_rotation.dart';
 import '../widgets/morning_brief.dart';
@@ -28,19 +32,38 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   StockRepository? _repo;
+  CachedRepository? _cached;
   bool _loading = false;
   DataSource? _source;
   List<ScreenerMatch> _movers = const [];
   MarketIndex? _index;
   bool _indexUnavailable = false;
+  bool _indexOffline = false;
+  DateTime? _indexUpdated;
   MarketOverview? _overview;
   bool _overviewUnavailable = false;
+  bool _preloaded = false;
+
+  String? get _token =>
+      context.getInheritedWidgetOfExactType<AuthScope>()?.notifier?.token;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _repo ??= widget.repository ?? RepositoryScope.of(context);
+    _cached ??= widget.repository != null
+        ? CachedRepository(widget.repository!, cache: CacheService.inMemory())
+        : RepositoryScope.cachedOf(context);
     _load();
+    // Phase K: warm Morning Brief + Rotation + Indices in parallel on first
+    // open so the next launch is near-instant.
+    if (!_preloaded) {
+      _preloaded = true;
+      final token = _token;
+      if (token != null) {
+        _cached!.preloadDashboard(token, widget.market);
+      }
+    }
   }
 
   @override
@@ -78,21 +101,26 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Future<void> _loadIndex() async {
     try {
-      final indices = await _repo!.marketIndices();
+      // Phase D: indices are SWR-cached (1-min TTL). On network failure the
+      // cached list is kept; an empty refresh never overwrites good values.
+      final cached = await _cached!.indices();
       if (!mounted) return;
-      final match = indices.where((i) => i.market == widget.market.code);
+      final match =
+          cached.value.where((i) => i.market == widget.market.code);
       final idx = match.isNotEmpty ? match.first : null;
       setState(() {
         _index = idx;
-        // Unavailable when the backend reported no data for this index.
         _indexUnavailable = idx == null || !idx.hasData;
+        _indexOffline = cached.offline;
+        _indexUpdated = cached.lastUpdated;
       });
     } on ApiException {
-      // Never fall back to fake index values: show the warning instead.
+      // No network AND no cache: never fabricate values; show the warning.
       if (!mounted) return;
       setState(() {
         _index = null;
         _indexUnavailable = true;
+        _indexOffline = false;
       });
     }
   }
@@ -131,6 +159,10 @@ class _DashboardPageState extends State<DashboardPage> {
             ],
           ),
           const SizedBox(height: 8),
+          // Phase J: offline banner when we're showing cached index data
+          // because the backend was unreachable.
+          if (_indexOffline && _indexUpdated != null)
+            OfflineBanner(lastUpdated: _indexUpdated!),
           ConnectionBanner(
             source: _source,
             onRetry: _load,
@@ -154,6 +186,8 @@ class _DashboardPageState extends State<DashboardPage> {
                   index: _index,
                   unavailable: _indexUnavailable,
                   loading: _loading && _index == null && !_indexUnavailable,
+                  lastUpdated: _indexUpdated,
+                  offline: _indexOffline,
                 ),
               ),
               const SizedBox(width: 12),
@@ -557,11 +591,15 @@ class _IndexCard extends StatelessWidget {
     required this.index,
     required this.unavailable,
     required this.loading,
+    this.lastUpdated,
+    this.offline = false,
   });
 
   final MarketIndex? index;
   final bool unavailable;
   final bool loading;
+  final DateTime? lastUpdated;
+  final bool offline;
 
   String _fmtPrice(double v) {
     // Group thousands; 2 decimals.
@@ -673,6 +711,14 @@ class _IndexCard extends StatelessWidget {
                 'Updated $updated',
                 key: const Key('dashboard_index_updated'),
                 style: const TextStyle(color: Colors.grey, fontSize: 10),
+              ),
+            ],
+            if (offline && lastUpdated != null) ...[
+              const SizedBox(height: 6),
+              CacheStatusLine(
+                lastUpdated: lastUpdated!,
+                isCached: true,
+                offline: true,
               ),
             ],
           ],

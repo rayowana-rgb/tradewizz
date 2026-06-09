@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'package:tradewiz/cache/cache_service.dart';
+import 'package:tradewiz/cache/cached_repository.dart';
 import 'package:tradewiz/config/app_config.dart';
 import 'package:tradewiz/repositories/stock_repository.dart';
 import 'package:tradewiz/services/api_client.dart';
@@ -18,8 +20,12 @@ Widget wrapApp(
   bool seed = false,
   StockRepository? repository,
 }) {
+  final repo = repository ?? offlineRepository();
+  // Give every test its own isolated in-memory cache so SWR state from one
+  // test never leaks into the next (the production cache is a shared singleton).
   return RepositoryScope(
-    repository: repository ?? offlineRepository(),
+    repository: repo,
+    cached: CachedRepository(repo, cache: CacheService.inMemory()),
     child: WatchlistScope(
       store: store ?? WatchlistStore(seed: seed),
       child: MaterialApp(home: Scaffold(body: child)),

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'cache/cache_service.dart';
+import 'cache/cached_repository.dart';
 import 'models/market.dart';
 import 'pages/account_page.dart';
 import 'pages/ai_analysis_page.dart';
@@ -17,7 +19,11 @@ import 'theme.dart';
 import 'widgets/market_selector.dart';
 import 'widgets/notification_bell.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Open the local cache (Hive). Falls back to in-memory if it can't open, so
+  // the app always boots.
+  await CacheService.init();
   runApp(const TradeWizApp());
 }
 
@@ -61,6 +67,9 @@ class _TradeWizAppState extends State<TradeWizApp> {
   Widget build(BuildContext context) {
     return RepositoryScope(
       repository: _repository,
+      // Use the shared, persistent (Hive-backed) cache in production so SWR
+      // state survives navigation and relaunches.
+      cached: CachedRepository(_repository, cache: CacheService.instance),
       child: AuthScope(
         store: _auth,
         child: EntitlementsScope(

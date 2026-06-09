@@ -1,12 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../cache/cache_entry.dart';
+import '../cache/cache_service.dart';
+import '../cache/cached_repository.dart';
 import '../models/market.dart';
 import '../models/phase2.dart';
 import '../repositories/stock_repository.dart';
-import '../services/api_client.dart';
 import '../services/auth_scope.dart';
 import '../services/repository_scope.dart';
 import '../theme.dart';
+import 'cache_status_line.dart';
 
 /// The "AI Morning Brief" dashboard section — a rule-based, once-per-session
 /// market summary (top opportunity, top multibagger, strongest sector, market
@@ -26,8 +31,9 @@ class AiMorningBriefSection extends StatefulWidget {
 }
 
 class _AiMorningBriefSectionState extends State<AiMorningBriefSection> {
-  StockRepository get _repo =>
-      widget.repository ?? RepositoryScope.of(context);
+  CachedRepository get _cached => widget.repository != null
+      ? CachedRepository(widget.repository!, cache: CacheService.inMemory())
+      : RepositoryScope.cachedOf(context);
 
   String? get _token {
     final notifier =
@@ -39,6 +45,16 @@ class _AiMorningBriefSectionState extends State<AiMorningBriefSection> {
   bool _unavailable = false;
   MorningBrief? _brief;
   Market? _loadedFor;
+  DateTime? _lastUpdated;
+  bool _isCached = false;
+  bool _offline = false;
+  StreamSubscription<Cached<MorningBrief>>? _sub;
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
 
   @override
   void didChangeDependencies() {
@@ -60,6 +76,7 @@ class _AiMorningBriefSectionState extends State<AiMorningBriefSection> {
 
   Future<void> _load() async {
     final token = _token;
+    _sub?.cancel();
     if (token == null) {
       setState(() {
         _brief = null;
@@ -68,22 +85,28 @@ class _AiMorningBriefSectionState extends State<AiMorningBriefSection> {
       return;
     }
     setState(() => _loading = true);
-    try {
-      final b = await _repo.morningBrief(token, widget.market);
-      if (!mounted) return;
-      setState(() {
-        _brief = b;
-        _unavailable = false;
-        _loading = false;
-      });
-    } on ApiException {
-      if (!mounted) return;
-      setState(() {
-        _brief = null;
-        _unavailable = true;
-        _loading = false;
-      });
-    }
+    // SWR: render cache immediately, then refresh in the background. The stream
+    // emits the cached value first (if any) and the fresh value after.
+    _sub = _cached.morningBriefSwr(token, widget.market).listen(
+      (c) {
+        if (!mounted) return;
+        setState(() {
+          _brief = c.value;
+          _isCached = c.isCached;
+          _offline = c.offline;
+          _lastUpdated = c.lastUpdated;
+          _unavailable = false;
+          _loading = false;
+        });
+      },
+      onError: (Object e) {
+        if (!mounted) return;
+        setState(() {
+          if (_brief == null) _unavailable = true;
+          _loading = false;
+        });
+      },
+    );
   }
 
   @override
@@ -143,8 +166,18 @@ class _AiMorningBriefSectionState extends State<AiMorningBriefSection> {
               ),
             ),
           )
-        else
+        else ...[
           _BriefCard(brief: _brief!),
+          if (_lastUpdated != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6, left: 4),
+              child: CacheStatusLine(
+                lastUpdated: _lastUpdated!,
+                isCached: _isCached,
+                offline: _offline,
+              ),
+            ),
+        ],
       ],
     );
   }

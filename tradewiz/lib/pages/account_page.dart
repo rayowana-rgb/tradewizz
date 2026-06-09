@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
 import '../models/broker.dart';
@@ -11,6 +12,7 @@ import '../services/repository_scope.dart';
 import '../services/social_sign_in.dart';
 import '../theme.dart';
 import '../widgets/rebalance.dart';
+import 'cache_inspector_page.dart';
 import 'journal_page.dart';
 import '../widgets/premium.dart';
 import 'ai_analysis_page.dart';
@@ -329,6 +331,28 @@ class _AccountPageState extends State<AccountPage> {
             ),
           ),
           const SizedBox(height: 16),
+
+          // --- Cache Inspector (debug builds only, Phase L) -------------
+          if (kDebugMode) ...[
+            Card(
+              key: const Key('account_cache_inspector_link'),
+              child: ListTile(
+                leading: const Icon(Icons.storage_outlined,
+                    color: AppColors.seed),
+                title: const Text('Cache Inspector',
+                    style: TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: const Text(
+                    'Developer tool: inspect & clear the local cache.'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const CacheInspectorPage(),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
 
           // --- Reset -----------------------------------------------------
           SizedBox(

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../cache/cache_service.dart';
+import '../cache/cached_repository.dart';
 import '../models/phase3.dart';
 import '../models/watchlist_item.dart';
 import '../repositories/stock_repository.dart';
@@ -24,6 +26,10 @@ class AutoWatchlistCard extends StatefulWidget {
 class _AutoWatchlistCardState extends State<AutoWatchlistCard> {
   StockRepository get _repo =>
       widget.repository ?? RepositoryScope.of(context);
+
+  CachedRepository get _cached => widget.repository != null
+      ? CachedRepository(widget.repository!, cache: CacheService.inMemory())
+      : RepositoryScope.cachedOf(context);
 
   String? get _token {
     final notifier =
@@ -60,13 +66,15 @@ class _AutoWatchlistCardState extends State<AutoWatchlistCard> {
     }
     setState(() => _loading = true);
     try {
-      final s = await _repo.autoWatchlistSuggestions(
+      // Phase G: suggestions are SWR-cached (15-min TTL) so the card appears
+      // instantly from cache and refreshes in the background.
+      final s = await _cached.autoWatchlist(
         token,
         existing: _existingKeys(),
       );
       if (!mounted) return;
       setState(() {
-        _data = s;
+        _data = s.value;
         _loading = false;
         _error = false;
       });

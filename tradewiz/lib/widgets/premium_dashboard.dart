@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../cache/cache_service.dart';
+import '../cache/cached_repository.dart';
 import '../models/market.dart';
 import '../models/subscription.dart';
 import '../repositories/stock_repository.dart';
@@ -34,6 +36,10 @@ class _PremiumDashboardSectionState extends State<PremiumDashboardSection> {
 
   StockRepository get _repo =>
       widget.repository ?? RepositoryScope.of(context);
+
+  CachedRepository get _cached => widget.repository != null
+      ? CachedRepository(widget.repository!, cache: CacheService.inMemory())
+      : RepositoryScope.cachedOf(context);
 
   String? get _token {
     final notifier =
@@ -76,8 +82,10 @@ class _PremiumDashboardSectionState extends State<PremiumDashboardSection> {
         if (mounted) setState(() => _multibagger = m);
       });
       _safe(() async {
-        final h = await _repo.portfolioHealth(token);
-        if (mounted) setState(() => _health = h);
+        // Phase F: portfolio health is SWR-cached (5-min TTL) so it appears
+        // immediately from cache and refreshes in the background.
+        final h = await _cached.portfolioHealth(token);
+        if (mounted) setState(() => _health = h.value);
       });
     }
   }
