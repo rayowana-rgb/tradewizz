@@ -36,3 +36,8 @@ class GlobalRotationResponse(BaseModel):
     markets: List[MarketRotation] = []
     simulated: bool = True
     cached: bool = False        # True when served from the rotation TTL cache
+    # --- Trading-date-aware freshness (display-only when stale) ---
+    stale: bool = False
+    fallback: bool = False
+    freshness: str = "live"     # live|last_close|previous_close|stale|unavailable
+    data_available: bool = True

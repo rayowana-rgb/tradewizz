@@ -32,6 +32,10 @@ class OpportunitiesResponse(BaseModel):
     idx_top10: List[Opportunity] = []
     multibagger_candidates: List[Opportunity] = []
     cached: bool = False  # True when served from the radar TTL cache
+    stale: bool = False
+    fallback: bool = False
+    freshness: str = "live"  # live|last_close|previous_close|stale|unavailable
+    data_available: bool = True
 
 
 class DailyPick(BaseModel):
@@ -50,6 +54,10 @@ class DailyPicksResponse(BaseModel):
     date: str = ""  # YYYY-MM-DD (UTC)
     picks: List[DailyPick] = []
     cached: bool = False  # True when served from the radar TTL cache
+    stale: bool = False
+    fallback: bool = False
+    freshness: str = "live"
+    data_available: bool = True
 
 
 class MultibaggerCandidate(BaseModel):
@@ -71,3 +79,7 @@ class MultibaggerResponse(BaseModel):
     criteria: List[str] = []
     candidates: List[MultibaggerCandidate] = []
     cached: bool = False  # True when served from the radar TTL cache
+    stale: bool = False
+    fallback: bool = False
+    freshness: str = "live"
+    data_available: bool = True

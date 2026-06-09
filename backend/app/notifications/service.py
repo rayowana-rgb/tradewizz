@@ -110,6 +110,13 @@ class NotificationService:
             opps = self._radar.opportunities()
         except Exception:  # noqa: BLE001
             opps = None
+        # Freshness rule #5: never trigger BUY/elite/multibagger alerts on
+        # stale or unavailable fallback data — only on fresh radar output.
+        if opps is not None and (
+            getattr(opps, "stale", False)
+            or not getattr(opps, "data_available", True)
+        ):
+            opps = None
         if opps is not None:
             for o in opps.global_top10:
                 if o.score >= ELITE_SCORE:
@@ -153,6 +160,11 @@ class NotificationService:
             daily = self._radar.daily()
         except Exception:  # noqa: BLE001
             daily = None
+        if daily is not None and (
+            getattr(daily, "stale", False)
+            or not getattr(daily, "data_available", True)
+        ):
+            daily = None  # don't publish daily-pick alerts on stale data
         if daily is not None and daily.picks:
             top = daily.picks[0]
             n = self._store.add(

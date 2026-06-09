@@ -10,6 +10,19 @@ cut repeated Yahoo Finance / screener work.
 from __future__ import annotations
 
 from .ttl_cache import TTLCache
-from .cache_manager import CacheManager, get_cache_manager
+from .cache_manager import CacheManager, CacheResult, get_cache_manager
+from .freshness import (
+    OPEN_FALLBACK_MAX_AGE,
+    FreshnessDecision,
+    evaluate as evaluate_freshness,
+)
 
-__all__ = ["TTLCache", "CacheManager", "get_cache_manager"]
+__all__ = [
+    "TTLCache",
+    "CacheManager",
+    "CacheResult",
+    "get_cache_manager",
+    "FreshnessDecision",
+    "evaluate_freshness",
+    "OPEN_FALLBACK_MAX_AGE",
+]

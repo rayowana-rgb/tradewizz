@@ -194,21 +194,44 @@ class MorningBriefService:
         )
 
     def brief(self, market: Market, *, force: bool = False) -> MorningBrief:
-        """Return the cached brief for today's session, building it if needed.
+        """Return today's brief, freshness- and trading-date-aware.
 
-        Cache key is ``<MARKET>_<session_date>`` (e.g. ``IDX_2026-06-09``) so
-        each market is isolated and the brief is generated at most once per
-        TTL (15 minutes). Served-from-cache responses carry ``cached=True``.
+        The brief is a scoring/ranking artifact, so it is only served from
+        cache when the trading-date freshness policy says the entry is FRESH.
+        During open hours a too-old or previous-day entry triggers a rebuild;
+        if the rebuild fails (provider down) we serve the cached brief only as
+        a display-only fallback marked ``stale``/``fallback`` (never ranked on)
+        — or, when even that is not permitted, a partial-unavailable response.
+
+        Cache key remains ``<MARKET>_<session_date>`` (e.g. ``IDX_2026-06-09``)
+        for per-market isolation; ``cached=True`` on a hit.
         """
         key = f"{market.value}_{_session_date()}"
-        if force:
-            self._cache.invalidate(CACHE_NAMESPACE, key)
-        value, cached = self._cache.get_or_build(
-            CACHE_NAMESPACE, key, lambda: self._build(market)
+        result = self._cache.get_or_build_fresh(
+            CACHE_NAMESPACE, key, lambda: self._build(market), market,
+            force=force,
         )
-        if cached:
-            return value.model_copy(update={"cached": True})
-        return value
+        d = result.decision
+        if result.value is None:
+            # Partial unavailable: no fresh data and no displayable fallback.
+            return MorningBrief(
+                market=market, generated_at=_now_iso(),
+                session_date=_session_date(),
+                headline=(
+                    f"{market.value} morning brief is temporarily "
+                    "unavailable — live data could not be refreshed."
+                ),
+                notes=["No fresh data available; please retry shortly."],
+                simulated=False, cached=False, stale=True, fallback=True,
+                freshness="unavailable", data_available=False,
+            )
+        return result.value.model_copy(update={
+            "cached": result.cached,
+            "stale": d.stale,
+            "fallback": d.fallback,
+            "freshness": d.freshness,
+            "data_available": True,
+        })
 
     def clear_cache(self) -> None:
         self._cache.invalidate(CACHE_NAMESPACE)

@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional
 
 from ..cache_layer import CacheManager, get_cache_manager
+from ..market_session import MarketSessionState, get_market_session_state
 from ..models import Market, ScreenerCategory, ScreenerResult
 
 CACHE_NAMESPACE = "radar"
@@ -154,13 +155,16 @@ class RadarService:
         return opps
 
     def _safe_for(self, market: Market, limit: int = 50) -> List[Opportunity]:
-        """Cached ``_opportunities_for`` that never raises (bad market -> []).
+        """Freshness-gated per-market scan that never raises (bad market -> []).
 
-        Per-market results are cached under ``radar_<MARKET>`` for the radar
-        TTL (5 minutes). All higher-level radar accessors (``market_top``,
-        ``_global_pool``, ``opportunities``, ``daily``, ``multibagger``) funnel
-        through here, so ``engine.screen()`` runs at most once per market per
-        TTL — which is also what feeds Morning Brief and Global Rotation.
+        Per-market results are cached under ``radar_<MARKET>_<limit>`` for the
+        radar TTL (5 minutes), but served through the trading-date freshness
+        policy: while the market is OPEN a too-old (>30 min) or previous-day
+        entry is rebuilt rather than reused, so SCORING / RANKING never run on
+        stale data (freshness rule #5). All higher-level accessors
+        (``market_top``, ``_global_pool``, ``opportunities``, ``daily``,
+        ``multibagger``) and Morning Brief + Global Rotation funnel through
+        here, so ``engine.screen()`` runs at most once per market per fresh TTL.
         """
         key = f"{CACHE_NAMESPACE}_{market.value}_{limit}"
 
@@ -170,10 +174,15 @@ class RadarService:
             except Exception:  # noqa: BLE001
                 return []
 
-        value, _cached = self._cache.get_or_build(
-            CACHE_NAMESPACE, key, _build
+        result = self._cache.get_or_build_fresh(
+            CACHE_NAMESPACE, key, _build, market
         )
-        return value
+        # Only fresh per-market scans feed ranking. A stale fallback (provider
+        # down on a new/aged session) must NOT be ranked on, so we surface an
+        # empty pool for the scoring path rather than stale opportunities.
+        if result.usable_as_fresh:
+            return result.value or []
+        return []
 
     # -- public per-market accessors (reused by Morning Brief) ------------
     def market_top(self, market: Market, limit: int = 50) -> List[Opportunity]:
@@ -207,14 +216,35 @@ class RadarService:
         pool.sort(key=lambda o: o.composite_rank_score, reverse=True)
         return pool
 
+    def _freshness_market(self) -> Market:
+        """Market used to gate the aggregate radar caches (any-open = strict)."""
+        for m in self._markets:
+            if get_market_session_state(m) is MarketSessionState.OPEN:
+                return m
+        return self._markets[0] if self._markets else Market.IDX
+
+    def _fresh_fields(self, result) -> dict:
+        d = result.decision
+        return {
+            "cached": result.cached,
+            "stale": d.stale,
+            "fallback": d.fallback,
+            "freshness": d.freshness,
+            "data_available": result.value is not None,
+        }
+
     # -- Phase 2: /v1/radar/opportunities --------------------------------
     def opportunities(self) -> OpportunitiesResponse:
-        value, cached = self._cache.get_or_build(
-            CACHE_NAMESPACE, "radar_opportunities", self._build_opportunities
+        result = self._cache.get_or_build_fresh(
+            CACHE_NAMESPACE, "radar_opportunities",
+            self._build_opportunities, self._freshness_market(),
         )
-        if cached:
-            return value.model_copy(update={"cached": True})
-        return value
+        if result.value is None:
+            return OpportunitiesResponse(
+                generated_at=_now_iso(), stale=True, fallback=True,
+                freshness="unavailable", data_available=False,
+            )
+        return result.value.model_copy(update=self._fresh_fields(result))
 
     def _build_opportunities(self) -> OpportunitiesResponse:
         global_pool = self._global_pool()
@@ -233,14 +263,16 @@ class RadarService:
 
     # -- Phase 3: /v1/radar/daily ----------------------------------------
     def daily(self, count: int = 5) -> DailyPicksResponse:
-        value, cached = self._cache.get_or_build(
-            CACHE_NAMESPACE,
-            f"radar_daily_{count}",
-            lambda: self._build_daily(count),
+        result = self._cache.get_or_build_fresh(
+            CACHE_NAMESPACE, f"radar_daily_{count}",
+            lambda: self._build_daily(count), self._freshness_market(),
         )
-        if cached:
-            return value.model_copy(update={"cached": True})
-        return value
+        if result.value is None:
+            return DailyPicksResponse(
+                generated_at=_now_iso(), date=_today(), stale=True,
+                fallback=True, freshness="unavailable", data_available=False,
+            )
+        return result.value.model_copy(update=self._fresh_fields(result))
 
     def _build_daily(self, count: int = 5) -> DailyPicksResponse:
         pool = self._global_pool()
@@ -263,12 +295,16 @@ class RadarService:
 
     # -- Phase 4: /v1/radar/multibagger ----------------------------------
     def multibagger(self) -> MultibaggerResponse:
-        value, cached = self._cache.get_or_build(
-            CACHE_NAMESPACE, "radar_multibagger", self._build_multibagger
+        result = self._cache.get_or_build_fresh(
+            CACHE_NAMESPACE, "radar_multibagger",
+            self._build_multibagger, self._freshness_market(),
         )
-        if cached:
-            return value.model_copy(update={"cached": True})
-        return value
+        if result.value is None:
+            return MultibaggerResponse(
+                generated_at=_now_iso(), stale=True, fallback=True,
+                freshness="unavailable", data_available=False,
+            )
+        return result.value.model_copy(update=self._fresh_fields(result))
 
     def _build_multibagger(self) -> MultibaggerResponse:
         pool = self._global_pool()

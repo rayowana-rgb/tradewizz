@@ -20,11 +20,59 @@ dict shaped for ``GET /v1/system/cache`` (e.g. ``morning_brief_hits``).
 from __future__ import annotations
 
 import threading
-from typing import Callable, Dict, Optional, TypeVar
+import time
+from dataclasses import dataclass
+from datetime import date, datetime
+from typing import Callable, Dict, Generic, Optional, TypeVar
 
+from .freshness import FreshnessDecision, evaluate as evaluate_freshness
 from .ttl_cache import TTLCache
 
 T = TypeVar("T")
+
+
+@dataclass(frozen=True)
+class _Envelope(Generic[T]):
+    """What we actually store for freshness-aware entries."""
+
+    value: T
+    trading_date: date
+    cached_at_epoch: float
+
+
+@dataclass(frozen=True)
+class CacheResult(Generic[T]):
+    """Freshness-aware lookup outcome returned to scoring/display callers.
+
+    ``value`` is ``None`` only when nothing usable exists (caller should return
+    a partial-unavailable response). ``usable_as_fresh`` is the gate that
+    scoring / radar / brief / watchlist / rotation / notifications MUST honour:
+    never rank or alert on a result where this is False.
+    """
+
+    value: Optional[T]
+    cached: bool          # value came from the cache (vs a fresh build)
+    decision: FreshnessDecision
+
+    @property
+    def usable_as_fresh(self) -> bool:
+        return self.decision.usable_as_fresh and self.value is not None
+
+    @property
+    def usable_as_display(self) -> bool:
+        return self.decision.usable_as_display and self.value is not None
+
+    @property
+    def stale(self) -> bool:
+        return self.decision.stale
+
+    @property
+    def fallback(self) -> bool:
+        return self.decision.fallback
+
+    @property
+    def freshness(self) -> str:
+        return self.decision.freshness if self.value is not None else "unavailable"
 
 # Default TTLs (seconds) per namespace, per the cache spec.
 DEFAULT_TTLS: Dict[str, float] = {
@@ -109,6 +157,104 @@ class CacheManager:
             st.cache.set(key, built)
             self._bump_miss(st)
             return built, False
+
+    def get_or_build_fresh(
+        self,
+        namespace: str,
+        key: str,
+        builder: Callable[[], T],
+        market,
+        *,
+        force: bool = False,
+        now: Optional[datetime] = None,
+        now_epoch: Optional[float] = None,
+        trading_date: Optional[date] = None,
+    ) -> "CacheResult[T]":
+        """Freshness + trading-date-aware get/build.
+
+        Unlike :meth:`get_or_build`, this never serves a TTL hit blindly. It
+        evaluates the entry against the trading-date freshness policy:
+
+          * If a cached entry is **fresh** (``usable_as_fresh``), return it.
+          * Otherwise rebuild (stampede-protected). On success, cache + return
+            the fresh value.
+          * If the rebuild raises (provider down) fall back to the cached
+            entry **only when it may be displayed** — marked
+            ``stale``/``fallback`` — and never as fresh. If nothing is usable,
+            return a result with ``value=None`` (partial unavailable).
+
+        ``trading_date`` lets the caller pin the trading date a fresh build is
+        tagged with; otherwise the market's current trading date is used.
+        """
+        from ..market_session import current_trading_date
+
+        st = self._state(namespace)
+        if force:
+            st.cache.pop(key)
+
+        env: Optional[_Envelope] = st.cache.get(key)
+        decision = self._evaluate(market, env, now=now, now_epoch=now_epoch)
+
+        # Fresh cache hit -> serve it.
+        if env is not None and decision.usable_as_fresh:
+            self._bump_hit(st)
+            return CacheResult(value=env.value, cached=True, decision=decision)
+
+        # Need a (re)build. Serialize per key.
+        lock = self._key_lock(st, key)
+        with lock:
+            # Re-check: another thread may have built a fresh entry.
+            env = st.cache.get(key)
+            decision = self._evaluate(
+                market, env, now=now, now_epoch=now_epoch
+            )
+            if env is not None and decision.usable_as_fresh:
+                self._bump_hit(st)
+                return CacheResult(
+                    value=env.value, cached=True, decision=decision
+                )
+
+            try:
+                built = builder()
+            except Exception:  # noqa: BLE001 - provider failed; try fallback
+                self._bump_miss(st)
+                if env is not None and decision.usable_as_display:
+                    # Display-only stale fallback (NEVER usable_as_fresh).
+                    return CacheResult(
+                        value=env.value, cached=True, decision=decision
+                    )
+                # Nothing usable -> partial unavailable.
+                return CacheResult(
+                    value=None, cached=False, decision=decision
+                )
+
+            td = trading_date or current_trading_date(
+                market, now if now is not None else None
+            )
+            cached_at = (
+                now_epoch if now_epoch is not None
+                else (now.timestamp() if now is not None else time.time())
+            )
+            new_env = _Envelope(
+                value=built, trading_date=td, cached_at_epoch=cached_at
+            )
+            st.cache.set(key, new_env)
+            self._bump_miss(st)
+            fresh = self._evaluate(
+                market, new_env, now=now, now_epoch=now_epoch
+            )
+            return CacheResult(value=built, cached=False, decision=fresh)
+
+    def _evaluate(
+        self, market, env: Optional[_Envelope], *, now=None, now_epoch=None
+    ) -> FreshnessDecision:
+        return evaluate_freshness(
+            market,
+            entry_trading_date=env.trading_date if env else None,
+            entry_cached_at_epoch=env.cached_at_epoch if env else None,
+            now=now,
+            now_epoch=now_epoch,
+        )
 
     def invalidate(self, namespace: str, key: Optional[str] = None) -> None:
         st = self._ns.get(namespace)

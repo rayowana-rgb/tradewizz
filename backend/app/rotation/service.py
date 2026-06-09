@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 from typing import List, Optional, Protocol
 
 from ..cache_layer import CacheManager, get_cache_manager
+from ..market_session import MarketSessionState, get_market_session_state
 from ..models import Market
 from ..radar.models import Opportunity
 
@@ -135,21 +136,52 @@ class GlobalRotationService:
             recommendation=_recommendation(rotation, regime, elite),
         )
 
+    def _freshness_market(self) -> Market:
+        """Market used to evaluate rotation cache freshness.
+
+        Rotation spans many markets, so we apply the strictest reasonable
+        policy: if ANY market is OPEN, evaluate against an open one (so the
+        30-minute open-fallback and cross-day rules apply and stale previous
+        data is never ranked on). Otherwise use the first market (a last_close
+        environment is fine to serve).
+        """
+        for m in self._markets:
+            if get_market_session_state(m) is MarketSessionState.OPEN:
+                return m
+        return self._markets[0] if self._markets else Market.IDX
+
     def global_rotation(self, *, force: bool = False) -> GlobalRotationResponse:
         """Ranked markets, cached under ``rotation_global`` (15-min TTL).
 
-        Built once per TTL; served-from-cache responses carry ``cached=True``.
-        A single failing market never breaks the response — it is skipped via
-        per-market try/except and the remaining markets are returned.
+        Freshness-gated: while any market is OPEN the cached rotation is only
+        served when fresh (<=30 min, same trading date); otherwise it is
+        rebuilt. If a rebuild fails it may be DISPLAYED as a stale fallback
+        (``stale``/``fallback`` set) but is never presented as fresh ranking
+        data — callers must not act on a stale rotation. A single failing
+        market never breaks the response (per-market try/except).
         """
-        if force:
-            self._cache.invalidate(CACHE_NAMESPACE, CACHE_KEY)
-        value, cached = self._cache.get_or_build(
-            CACHE_NAMESPACE, CACHE_KEY, self._build
+        market = self._freshness_market()
+        result = self._cache.get_or_build_fresh(
+            CACHE_NAMESPACE, CACHE_KEY, self._build, market, force=force
         )
-        if cached:
-            return value.model_copy(update={"cached": True})
-        return value
+        d = result.decision
+        if result.value is None:
+            return GlobalRotationResponse(
+                generated_at=_now_iso(), session_date=_session_date(),
+                rotation_summary=(
+                    "Rotation data is temporarily unavailable — live data "
+                    "could not be refreshed."
+                ),
+                markets=[], simulated=True, stale=True, fallback=True,
+                freshness="unavailable", data_available=False,
+            )
+        return result.value.model_copy(update={
+            "cached": result.cached,
+            "stale": d.stale,
+            "fallback": d.fallback,
+            "freshness": d.freshness,
+            "data_available": True,
+        })
 
     def clear_cache(self) -> None:
         self._cache.invalidate(CACHE_NAMESPACE)

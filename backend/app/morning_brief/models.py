@@ -35,3 +35,8 @@ class MorningBrief(BaseModel):
     notes: List[str] = []
     simulated: bool = False         # research only; no positions involved
     cached: bool = False            # True when served from the daily cache
+    # --- Trading-date-aware freshness (display-only when stale) ---
+    stale: bool = False             # True when data is older than fresh policy
+    fallback: bool = False          # True when served as a fallback
+    freshness: str = "live"         # live|last_close|previous_close|stale|unavailable
+    data_available: bool = True     # False -> partial-unavailable response
