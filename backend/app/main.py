@@ -365,6 +365,12 @@ _set_notifications_service(_notification_service)
 from .analytics.router import router as analytics_router  # noqa: E402
 app.include_router(analytics_router)
 
+# System / cache monitoring (Phase F): GET /v1/system/cache. The shared cache
+# manager is a process-wide singleton reused by Morning Brief, Global Rotation
+# and Opportunity Radar, so the counters here reflect those caches directly.
+from .system.router import router as system_router  # noqa: E402
+app.include_router(system_router)
+
 
 def _optional_user_id(authorization):
     """Resolve a user id from a Bearer token if present; else None.

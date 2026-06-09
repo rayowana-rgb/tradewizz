@@ -35,3 +35,4 @@ class GlobalRotationResponse(BaseModel):
     rotation_summary: str = ""
     markets: List[MarketRotation] = []
     simulated: bool = True
+    cached: bool = False        # True when served from the rotation TTL cache

@@ -21,8 +21,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import List, Optional, Protocol
 
+from ..cache_layer import CacheManager, get_cache_manager
 from ..models import Market
 from ..radar.models import Opportunity
+
+CACHE_NAMESPACE = "rotation"
+CACHE_KEY = "rotation_global"
 from .models import (
     GlobalRotationResponse,
     MarketRotation,
@@ -78,9 +82,11 @@ class GlobalRotationService:
         self,
         radar: RadarLike,
         markets: Optional[List[Market]] = None,
+        cache: Optional[CacheManager] = None,
     ):
         self._radar = radar
         self._markets = markets or list(Market)
+        self._cache = cache or get_cache_manager()
 
     def _market_rotation(self, market: Market) -> MarketRotation:
         top = self._radar.market_top(market, limit=50)
@@ -129,7 +135,26 @@ class GlobalRotationService:
             recommendation=_recommendation(rotation, regime, elite),
         )
 
-    def global_rotation(self) -> GlobalRotationResponse:
+    def global_rotation(self, *, force: bool = False) -> GlobalRotationResponse:
+        """Ranked markets, cached under ``rotation_global`` (15-min TTL).
+
+        Built once per TTL; served-from-cache responses carry ``cached=True``.
+        A single failing market never breaks the response — it is skipped via
+        per-market try/except and the remaining markets are returned.
+        """
+        if force:
+            self._cache.invalidate(CACHE_NAMESPACE, CACHE_KEY)
+        value, cached = self._cache.get_or_build(
+            CACHE_NAMESPACE, CACHE_KEY, self._build
+        )
+        if cached:
+            return value.model_copy(update={"cached": True})
+        return value
+
+    def clear_cache(self) -> None:
+        self._cache.invalidate(CACHE_NAMESPACE)
+
+    def _build(self) -> GlobalRotationResponse:
         rows: List[MarketRotation] = []
         for market in self._markets:
             try:

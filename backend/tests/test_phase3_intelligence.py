@@ -17,6 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app.main as main
+from app.cache_layer.cache_manager import CacheManager as _CacheManager
 from app.auto_watchlist import router as awl_router
 from app.auto_watchlist.service import AutoWatchlistService
 from app.auto_watchlist.store import SqliteAutoWatchlistStore
@@ -130,7 +131,8 @@ def _build_client(*, score_map=None):
     sub_router.set_service(sub)
 
     markets = [Market.US, Market.IDX, Market.VIETNAM]
-    radar = RadarService(_provider, markets=markets)
+    _cache = _CacheManager()
+    radar = RadarService(_provider, markets=markets, cache=_cache)
     radar_router.set_service(radar)
 
     state = {"positions": [], "account": _Acct(1_000_000.0, 1_000_000.0)}
@@ -169,7 +171,9 @@ def _build_client(*, score_map=None):
     rebal_router.set_service(rebal)
 
     # Global Rotation Engine.
-    rotation = GlobalRotationService(radar=radar, markets=markets)
+    rotation = GlobalRotationService(
+        radar=radar, markets=markets, cache=_cache
+    )
     rotation_router.set_service(rotation)
 
     # Notifications wired with all Phase-3 services.
@@ -482,10 +486,11 @@ def test_rotation_supports_all_9_markets():
     c = _build_client()
     # Rewire rotation with the full market list so all 9 appear.
     c._rotation = GlobalRotationService(radar=None)  # placeholder
-    radar = RadarService(_provider, markets=ALL_MARKETS)
+    _cache = _CacheManager()
+    radar = RadarService(_provider, markets=ALL_MARKETS, cache=_cache)
     radar_router.set_service(radar)
     rotation_router.set_service(
-        GlobalRotationService(radar=radar, markets=ALL_MARKETS)
+        GlobalRotationService(radar=radar, markets=ALL_MARKETS, cache=_cache)
     )
     h = _register(c)
     body = c.get("/v1/rotation/global", headers=h).json()

@@ -19,7 +19,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional
 
+from ..cache_layer import CacheManager, get_cache_manager
 from ..models import Market, ScreenerCategory, ScreenerResult
+
+CACHE_NAMESPACE = "radar"
 from .models import (
     DailyPick,
     DailyPicksResponse,
@@ -97,10 +100,15 @@ class RadarService:
         self,
         screen_provider: ScreenProvider,
         markets: Optional[List[Market]] = None,
+        cache: Optional[CacheManager] = None,
     ):
         self._screen = screen_provider
         # Markets contributing to the GLOBAL scan. Defaults to all supported.
         self._markets = markets or list(Market)
+        self._cache = cache or get_cache_manager()
+
+    def clear_cache(self) -> None:
+        self._cache.invalidate(CACHE_NAMESPACE)
 
     # -- scan + rank -----------------------------------------------------
     def _opportunities_for(
@@ -146,11 +154,26 @@ class RadarService:
         return opps
 
     def _safe_for(self, market: Market, limit: int = 50) -> List[Opportunity]:
-        """_opportunities_for that never raises (a bad market yields [])."""
-        try:
-            return self._opportunities_for(market, limit=limit)
-        except Exception:  # noqa: BLE001
-            return []
+        """Cached ``_opportunities_for`` that never raises (bad market -> []).
+
+        Per-market results are cached under ``radar_<MARKET>`` for the radar
+        TTL (5 minutes). All higher-level radar accessors (``market_top``,
+        ``_global_pool``, ``opportunities``, ``daily``, ``multibagger``) funnel
+        through here, so ``engine.screen()`` runs at most once per market per
+        TTL — which is also what feeds Morning Brief and Global Rotation.
+        """
+        key = f"{CACHE_NAMESPACE}_{market.value}_{limit}"
+
+        def _build() -> List[Opportunity]:
+            try:
+                return self._opportunities_for(market, limit=limit)
+            except Exception:  # noqa: BLE001
+                return []
+
+        value, _cached = self._cache.get_or_build(
+            CACHE_NAMESPACE, key, _build
+        )
+        return value
 
     # -- public per-market accessors (reused by Morning Brief) ------------
     def market_top(self, market: Market, limit: int = 50) -> List[Opportunity]:
@@ -178,15 +201,22 @@ class RadarService:
         """Ranked opportunities across all markets (deduped, sorted)."""
         pool: List[Opportunity] = []
         for mkt in self._markets:
-            try:
-                pool.extend(self._opportunities_for(mkt, limit=per_market))
-            except Exception:  # noqa: BLE001 - one bad market can't break radar
-                continue
+            # _safe_for is cached + never raises (one bad market can't break
+            # the radar and won't re-run engine.screen() within the TTL).
+            pool.extend(self._safe_for(mkt, limit=per_market))
         pool.sort(key=lambda o: o.composite_rank_score, reverse=True)
         return pool
 
     # -- Phase 2: /v1/radar/opportunities --------------------------------
     def opportunities(self) -> OpportunitiesResponse:
+        value, cached = self._cache.get_or_build(
+            CACHE_NAMESPACE, "radar_opportunities", self._build_opportunities
+        )
+        if cached:
+            return value.model_copy(update={"cached": True})
+        return value
+
+    def _build_opportunities(self) -> OpportunitiesResponse:
         global_pool = self._global_pool()
         us = self._safe_for(Market.US)
         idx = self._safe_for(Market.IDX)
@@ -203,6 +233,16 @@ class RadarService:
 
     # -- Phase 3: /v1/radar/daily ----------------------------------------
     def daily(self, count: int = 5) -> DailyPicksResponse:
+        value, cached = self._cache.get_or_build(
+            CACHE_NAMESPACE,
+            f"radar_daily_{count}",
+            lambda: self._build_daily(count),
+        )
+        if cached:
+            return value.model_copy(update={"cached": True})
+        return value
+
+    def _build_daily(self, count: int = 5) -> DailyPicksResponse:
         pool = self._global_pool()
         picks: List[DailyPick] = []
         for i, o in enumerate(pool[:count], start=1):
@@ -223,6 +263,14 @@ class RadarService:
 
     # -- Phase 4: /v1/radar/multibagger ----------------------------------
     def multibagger(self) -> MultibaggerResponse:
+        value, cached = self._cache.get_or_build(
+            CACHE_NAMESPACE, "radar_multibagger", self._build_multibagger
+        )
+        if cached:
+            return value.model_copy(update={"cached": True})
+        return value
+
+    def _build_multibagger(self) -> MultibaggerResponse:
         pool = self._global_pool()
         candidates: List[MultibaggerCandidate] = []
         for o in pool:

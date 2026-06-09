@@ -18,6 +18,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app.main as main
+from app.cache_layer.cache_manager import CacheManager as _CacheManager
 from app.analytics import router as analytics_router  # noqa: F401
 from app.journal import router as journal_router
 from app.journal.service import JournalService
@@ -102,7 +103,9 @@ def _build_client():
     )
     sub_router.set_service(sub)
 
-    radar = RadarService(_provider, markets=[Market.US, Market.IDX])
+    _cache = _CacheManager()
+    radar = RadarService(_provider, markets=[Market.US, Market.IDX],
+                         cache=_cache)
     radar_router.set_service(radar)
 
     state = {"positions": [], "account": _Acct(1_000_000.0, 1_000_000.0)}
@@ -112,7 +115,7 @@ def _build_client():
     )
     health_router.set_service(health)
 
-    brief_router.set_service(MorningBriefService(radar=radar))
+    brief_router.set_service(MorningBriefService(radar=radar, cache=_cache))
 
     journal_store = SqliteJournalStore(":memory:")
     journal = JournalService(

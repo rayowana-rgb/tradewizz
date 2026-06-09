@@ -13,6 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app.main as main
+from app.cache_layer.cache_manager import CacheManager as _CacheManager
 from app.models import Market, ScreenerCategory, ScreenerMatch, ScreenerResult
 from app.portfolio_health import router as health_router
 from app.portfolio_health.service import PortfolioHealthService
@@ -61,7 +62,8 @@ def _build_client(preview_mode: bool):
     )
     sub_router.set_service(sub)
     radar_router.set_service(
-        RadarService(_provider, markets=[Market.US, Market.IDX])
+        RadarService(_provider, markets=[Market.US, Market.IDX],
+                     cache=_CacheManager())
     )
 
     # Simulated positions per user, swappable by the test.

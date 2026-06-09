@@ -6,6 +6,7 @@ ranking + selection logic is tested in isolation.
 
 from __future__ import annotations
 
+from app.cache_layer.cache_manager import CacheManager as _CacheManager
 from app.models import Market, ScreenerCategory, ScreenerMatch, ScreenerResult
 from app.radar.service import RadarService
 
@@ -66,6 +67,7 @@ def _svc():
     return RadarService(
         screen_provider=_fake_provider({Market.US: _bull_us(), Market.IDX: _idx()}),
         markets=[Market.US, Market.IDX],
+        cache=_CacheManager(),
     )
 
 
@@ -122,6 +124,7 @@ def test_one_bad_market_does_not_break_radar():
             raise RuntimeError("data source down")
         return _make_result(market, _idx())
 
-    svc = RadarService(provider, markets=[Market.US, Market.IDX])
+    svc = RadarService(provider, markets=[Market.US, Market.IDX],
+                       cache=_CacheManager())
     resp = svc.opportunities()  # must not raise
     assert resp.idx_top10  # IDX still produced

@@ -16,12 +16,14 @@ per market per UTC session date; the cache is in-memory and best-effort.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from threading import Lock
 from typing import Dict, List, Optional, Protocol, Tuple
 
+from ..cache_layer import CacheManager, get_cache_manager
 from ..models import Market
 from ..radar.models import Opportunity
 from .models import BriefPick, MorningBrief
+
+CACHE_NAMESPACE = "morning_brief"
 
 
 class RadarLike(Protocol):
@@ -139,10 +141,13 @@ def _headline(market: Market, regime: str, top: Optional[BriefPick]) -> str:
 class MorningBriefService:
     """Builds + caches a once-per-session brief per market."""
 
-    def __init__(self, radar: RadarLike):
+    def __init__(
+        self,
+        radar: RadarLike,
+        cache: Optional[CacheManager] = None,
+    ):
         self._radar = radar
-        self._cache: Dict[Tuple[str, str], MorningBrief] = {}
-        self._lock = Lock()
+        self._cache = cache or get_cache_manager()
 
     def _build(self, market: Market) -> MorningBrief:
         top = self._radar.market_top(market, limit=50)
@@ -189,18 +194,21 @@ class MorningBriefService:
         )
 
     def brief(self, market: Market, *, force: bool = False) -> MorningBrief:
-        """Return the cached brief for today's session, building it if needed."""
-        key = (market.value, _session_date())
-        if not force:
-            with self._lock:
-                hit = self._cache.get(key)
-            if hit is not None:
-                return hit.model_copy(update={"cached": True})
-        built = self._build(market)
-        with self._lock:
-            self._cache[key] = built
-        return built
+        """Return the cached brief for today's session, building it if needed.
+
+        Cache key is ``<MARKET>_<session_date>`` (e.g. ``IDX_2026-06-09``) so
+        each market is isolated and the brief is generated at most once per
+        TTL (15 minutes). Served-from-cache responses carry ``cached=True``.
+        """
+        key = f"{market.value}_{_session_date()}"
+        if force:
+            self._cache.invalidate(CACHE_NAMESPACE, key)
+        value, cached = self._cache.get_or_build(
+            CACHE_NAMESPACE, key, lambda: self._build(market)
+        )
+        if cached:
+            return value.model_copy(update={"cached": True})
+        return value
 
     def clear_cache(self) -> None:
-        with self._lock:
-            self._cache.clear()
+        self._cache.invalidate(CACHE_NAMESPACE)
