@@ -72,6 +72,43 @@ class StockRepository {
     return _client.authGet(path, bearer: token);
   }
 
+  // --- Snapshot endpoints (Phase 6, offline-first) -------------------------
+  // One request per surface, served from the backend's pre-computed cache.
+  Future<Map<String, dynamic>> rawDashboardSnapshot(
+    String token, {
+    required Market market,
+    bool force = false,
+  }) {
+    final f = force ? '&force=true' : '';
+    return _client.authGet(
+      '/snapshot/dashboard?market=${market.code}$f',
+      bearer: token,
+    );
+  }
+
+  Future<Map<String, dynamic>> rawPortfolioSnapshot(
+    String token, {
+    bool force = false,
+  }) {
+    final q = force ? '?force=true' : '';
+    return _client.authGet('/snapshot/portfolio$q', bearer: token);
+  }
+
+  Future<Map<String, dynamic>> rawWatchlistSnapshot(
+    String token, {
+    required Market market,
+    List<String> existing = const [],
+    bool force = false,
+  }) {
+    final params = <String>['market=${market.code}'];
+    if (force) params.add('force=true');
+    for (final e in existing) {
+      params.add('existing=${Uri.encodeQueryComponent(e)}');
+    }
+    return _client.authGet('/snapshot/watchlist?${params.join('&')}',
+        bearer: token);
+  }
+
   /// Full analysis for a single symbol. Backs `/analyze/{symbol}`.
   Future<Sourced<AnalysisResult>> analyze(String symbol, Market market) async {
     final res = await _client.analyze(symbol, market);

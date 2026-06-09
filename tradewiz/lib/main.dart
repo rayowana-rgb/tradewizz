@@ -9,6 +9,7 @@ import 'pages/dashboard_page.dart';
 import 'pages/screener_page.dart';
 import 'pages/watchlist_page.dart';
 import 'repositories/stock_repository.dart';
+import 'snapshot/snapshot_repository.dart';
 import 'services/auth_scope.dart';
 import 'services/auth_store.dart';
 import 'services/entitlements_scope.dart';
@@ -70,6 +71,9 @@ class _TradeWizAppState extends State<TradeWizApp> {
       // Use the shared, persistent (Hive-backed) cache in production so SWR
       // state survives navigation and relaunches.
       cached: CachedRepository(_repository, cache: CacheService.instance),
+      // Offline-first snapshot repository on the shared persistent cache.
+      snapshot:
+          SnapshotRepository(_repository, cache: CacheService.instance),
       child: AuthScope(
         store: _auth,
         child: EntitlementsScope(

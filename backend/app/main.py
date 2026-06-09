@@ -193,7 +193,8 @@ from .morning_brief.router import (  # noqa: E402
 from .morning_brief.service import MorningBriefService  # noqa: E402
 
 app.include_router(morning_brief_router)
-_set_brief_service(MorningBriefService(radar=_radar_service))
+_brief_service = MorningBriefService(radar=_radar_service)
+_set_brief_service(_brief_service)
 
 # Portfolio Health + Position Quality (Elite). Reads SIMULATED positions and
 # the existing engine score per symbol.
@@ -278,14 +279,13 @@ def _journal_score_snapshots(user_id):
 
 
 app.include_router(portfolio_manager_router)
-_set_pm_service(
-    PortfolioManagerService(
-        health_service=_health_service,
-        positions_provider=_sim_service.positions,
-        account_provider=_sim_service.account,
-        snapshot_provider=_journal_score_snapshots,
-    )
+_pm_service = PortfolioManagerService(
+    health_service=_health_service,
+    positions_provider=_sim_service.positions,
+    account_provider=_sim_service.account,
+    snapshot_provider=_journal_score_snapshots,
 )
+_set_pm_service(_pm_service)
 
 # --------------------------------------------------------------------------- #
 # Phase 3 (Auto Watchlist AI, Portfolio Rebalancing AI, Global Rotation Engine).
@@ -806,3 +806,65 @@ def debug_cache_clear(
     )
     return {"mode": mode, "symbol": symbol, "market": market,
             "removed": removed}
+
+
+# --------------------------------------------------------------------------- #
+# Phase 6 (Offline-first): Snapshot engine. Aggregates the OUTPUT of the
+# existing services into pre-computed, server-cached documents so the app makes
+# ONE request per surface instead of 10-20. No scoring/ranking/accounting lives
+# here — it only calls the services above and serializes their results.
+# --------------------------------------------------------------------------- #
+from .snapshots.router import (  # noqa: E402
+    router as snapshot_router,
+    set_service as _set_snapshot_service,
+)
+from .snapshots.service import SnapshotService  # noqa: E402
+from .snapshots.scheduler import SnapshotScheduler  # noqa: E402
+
+
+def _notifications_list(uid: int):
+    """(items, unread) tuple, mirroring the notifications endpoint."""
+    return _notification_service.list(uid)
+
+
+_snapshot_service = SnapshotService(
+    indices_provider=lambda: [q.to_dict() for q in
+                              market_indices_service.get_indices()],
+    brief_provider=_brief_service.brief,
+    rotation_provider=_rotation_service.global_rotation,
+    opportunities_provider=_radar_service.opportunities,
+    daily_provider=_radar_service.daily,
+    multibagger_provider=_radar_service.multibagger,
+    watchlist_provider=lambda uid, existing:
+        _auto_watchlist_service.suggestions(uid, existing=existing),
+    notifications_provider=_notifications_list,
+    account_provider=_sim_service.account,
+    positions_provider=_sim_service.positions,
+    health_provider=_health_service.health,
+    quality_provider=_health_service.position_quality,
+    manager_provider=_pm_service.report,
+)
+app.include_router(snapshot_router)
+_set_snapshot_service(_snapshot_service)
+
+
+def set_snapshot_service(service) -> None:
+    """Test hook: swap the snapshot service."""
+    global _snapshot_service
+    _snapshot_service = service
+    _set_snapshot_service(service)
+
+
+# Background snapshot scheduler (Phase E). Disabled under pytest / when
+# TRADEWIZZ_DISABLE_SCHEDULER is set so tests stay deterministic.
+_snapshot_scheduler = SnapshotScheduler(_snapshot_service)
+
+if not os.environ.get("TRADEWIZZ_DISABLE_SCHEDULER") and \
+        not os.environ.get("PYTEST_CURRENT_TEST"):
+    @app.on_event("startup")
+    def _start_snapshot_scheduler() -> None:  # pragma: no cover
+        _snapshot_scheduler.start()
+
+    @app.on_event("shutdown")
+    def _stop_snapshot_scheduler() -> None:  # pragma: no cover
+        _snapshot_scheduler.stop()

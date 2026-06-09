@@ -13,6 +13,7 @@ import '../services/social_sign_in.dart';
 import '../theme.dart';
 import '../widgets/rebalance.dart';
 import 'cache_inspector_page.dart';
+import 'snapshot_inspector_page.dart';
 import 'journal_page.dart';
 import '../widgets/premium.dart';
 import 'ai_analysis_page.dart';
@@ -347,6 +348,24 @@ class _AccountPageState extends State<AccountPage> {
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => const CacheInspectorPage(),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Card(
+              key: const Key('account_snapshot_inspector_link'),
+              child: ListTile(
+                leading: const Icon(Icons.dashboard_customize_outlined,
+                    color: AppColors.seed),
+                title: const Text('Snapshot Inspector',
+                    style: TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: const Text(
+                    'Developer tool: snapshot age, TTL, size & refresh.'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const SnapshotInspectorPage(),
                   ),
                 ),
               ),

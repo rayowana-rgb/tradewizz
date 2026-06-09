@@ -7,6 +7,7 @@ import '../models/market_index.dart';
 import '../models/market_overview.dart';
 import '../models/screener_result.dart';
 import '../repositories/stock_repository.dart';
+import '../snapshot/snapshot_repository.dart';
 import '../services/api_client.dart';
 import '../services/auth_scope.dart';
 import '../services/data_source.dart';
@@ -33,7 +34,9 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage> {
   StockRepository? _repo;
   CachedRepository? _cached;
+  SnapshotRepository? _snapshot;
   bool _loading = false;
+  bool _snapshotOffline = false;
   DataSource? _source;
   List<ScreenerMatch> _movers = const [];
   MarketIndex? _index;
@@ -54,6 +57,9 @@ class _DashboardPageState extends State<DashboardPage> {
     _cached ??= widget.repository != null
         ? CachedRepository(widget.repository!, cache: CacheService.inMemory())
         : RepositoryScope.cachedOf(context);
+    _snapshot ??= widget.repository != null
+        ? SnapshotRepository(widget.repository!, cache: CacheService.inMemory())
+        : RepositoryScope.snapshotOf(context);
     _load();
     // Phase K: warm Morning Brief + Rotation + Indices in parallel on first
     // open so the next launch is near-instant.
@@ -62,6 +68,9 @@ class _DashboardPageState extends State<DashboardPage> {
       final token = _token;
       if (token != null) {
         _cached!.preloadDashboard(token, widget.market);
+        // Phase H/I: warm the single dashboard snapshot (1 request) so the
+        // next launch can render straight from Hive.
+        _snapshot!.preload(token, widget.market);
       }
     }
   }
@@ -72,12 +81,31 @@ class _DashboardPageState extends State<DashboardPage> {
     if (oldWidget.market != widget.market) _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool forceSnapshot = false}) async {
     setState(() => _loading = true);
     // Index data and movers load independently: a movers/screen failure must
     // not blank the index, and vice versa.
-    await Future.wait([_loadMovers(), _loadIndex(), _loadOverview()]);
+    await Future.wait([
+      _loadMovers(),
+      _loadIndex(),
+      _loadOverview(),
+      _refreshSnapshot(force: forceSnapshot),
+    ]);
     if (mounted) setState(() => _loading = false);
+  }
+
+  /// Phase K: pull-to-refresh forces a fresh dashboard snapshot (updates Hive).
+  Future<void> _refreshSnapshot({bool force = false}) async {
+    final token = _token;
+    if (token == null) return;
+    try {
+      final snap = await _snapshot!.fetchDashboardSnapshot(
+          token, widget.market, force: force);
+      if (!mounted) return;
+      setState(() => _snapshotOffline = snap.offline);
+    } catch (_) {
+      // Keep whatever the per-widget SWR paths already rendered.
+    }
   }
 
   Future<void> _loadMovers() async {
@@ -147,7 +175,8 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget build(BuildContext context) {
     final market = widget.market;
     return RefreshIndicator(
-      onRefresh: _load,
+      // Phase K: pull-to-refresh forces a snapshot reload and updates Hive/UI.
+      onRefresh: () => _load(forceSnapshot: true),
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
@@ -161,7 +190,7 @@ class _DashboardPageState extends State<DashboardPage> {
           const SizedBox(height: 8),
           // Phase J: offline banner when we're showing cached index data
           // because the backend was unreachable.
-          if (_indexOffline && _indexUpdated != null)
+          if ((_indexOffline || _snapshotOffline) && _indexUpdated != null)
             OfflineBanner(lastUpdated: _indexUpdated!),
           ConnectionBanner(
             source: _source,
