@@ -15,6 +15,7 @@ import 'services/watchlist_scope.dart';
 import 'services/watchlist_store.dart';
 import 'theme.dart';
 import 'widgets/market_selector.dart';
+import 'widgets/notification_bell.dart';
 
 void main() {
   runApp(const TradeWizApp());
@@ -119,12 +120,14 @@ class _HomeShellState extends State<HomeShell> {
           // Market selector only on market-scoped tabs (Dashboard, Watchlist).
           if (_index == 0 || _index == 2)
             Padding(
-              padding: const EdgeInsets.only(right: 12),
+              padding: const EdgeInsets.only(right: 4),
               child: MarketSelector(
                 selected: _market,
                 onChanged: _onMarketChanged,
               ),
             ),
+          const NotificationBell(),
+          const SizedBox(width: 4),
         ],
       ),
       body: SafeArea(child: pages[_index]),

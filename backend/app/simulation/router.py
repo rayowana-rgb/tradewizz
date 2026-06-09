@@ -6,7 +6,7 @@ NO endpoint here ever contacts a broker. All responses carry ``simulated=true``.
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Callable, Optional
 
 from fastapi import APIRouter, Header, HTTPException
 
@@ -30,9 +30,20 @@ router = APIRouter(prefix="/v1/sim", tags=["simulation"])
 _service: Optional[SimulationService] = None
 
 
+# Optional best-effort hook invoked AFTER a simulated order is filled. Used by
+# the Portfolio Journal to snapshot buys / close sells. It NEVER affects the
+# simulation accounting and any failure is swallowed.
+_trade_hook: Optional[Callable[..., None]] = None
+
+
 def set_service(service: SimulationService) -> None:
     global _service
     _service = service
+
+
+def set_trade_hook(hook: Optional[Callable[..., None]]) -> None:
+    global _trade_hook
+    _trade_hook = hook
 
 
 def get_service() -> SimulationService:
@@ -103,12 +114,22 @@ def sim_order_place(
 ) -> SimulatedOrderResult:
     uid = _user_id(authorization)
     try:
-        return get_service().place(
+        result = get_service().place(
             uid, req.symbol, req.market, req.side, req.quantity,
             req.order_type, req.price,
         )
     except SimulationError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message)
+    # Best-effort journal hook (after the fill; never blocks the response).
+    if _trade_hook is not None:
+        try:
+            _trade_hook(
+                uid, result.symbol, result.market, result.side,
+                result.quantity, result.price,
+            )
+        except Exception:  # noqa: BLE001
+            pass
+    return result
 
 
 @router.post("/reset", response_model=SimulatedResetResult)

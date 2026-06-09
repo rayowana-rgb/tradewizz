@@ -4,6 +4,7 @@ import '../models/broker_connection.dart';
 import '../models/market.dart';
 import '../models/market_index.dart';
 import '../models/market_overview.dart';
+import '../models/phase2.dart';
 import '../models/portfolio.dart';
 import '../models/screener_result.dart';
 import '../models/simulation.dart';
@@ -314,6 +315,65 @@ class StockRepository {
   Future<PortfolioHealth> portfolioHealth(String token) async {
     final j = await _client.authGet('/portfolio/health', bearer: token);
     return PortfolioHealth.fromJson(j);
+  }
+
+  // --- Phase 2: AI Morning Brief -------------------------------------------
+
+  /// Once-per-session AI Morning Brief for a market. Backs
+  /// `GET /v1/morning-brief/{market}`.
+  Future<MorningBrief> morningBrief(String token, Market market) async {
+    final j = await _client.authGet(
+      '/morning-brief/${market.code}',
+      bearer: token,
+    );
+    return MorningBrief.fromJson(j);
+  }
+
+  // --- Phase 2: AI Portfolio Manager ---------------------------------------
+
+  /// Rule-based advisory over the simulated portfolio. Backs
+  /// `GET /v1/portfolio/manager`.
+  Future<PortfolioManagerReport> portfolioManager(String token) async {
+    final j = await _client.authGet('/portfolio/manager', bearer: token);
+    return PortfolioManagerReport.fromJson(j);
+  }
+
+  // --- Phase 2: Portfolio Journal ------------------------------------------
+
+  /// The user's research journal entries. Backs `GET /v1/journal`.
+  Future<List<JournalEntry>> journal(String token) async {
+    final j = await _client.authGet('/journal', bearer: token);
+    return (j['entries'] as List<dynamic>? ?? [])
+        .map((e) => JournalEntry.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Aggregate journal statistics. Backs `GET /v1/journal/stats`.
+  Future<JournalStats> journalStats(String token) async {
+    final j = await _client.authGet('/journal/stats', bearer: token);
+    return JournalStats.fromJson(j);
+  }
+
+  // --- Phase 2: In-app Notifications ---------------------------------------
+
+  /// List in-app notifications + unread count. Backs `GET /v1/notifications`.
+  Future<NotificationList> notifications(String token) async {
+    final j = await _client.authGet('/notifications', bearer: token);
+    return NotificationList.fromJson(j);
+  }
+
+  /// Mark notifications read (specific ids, or all when null). Backs
+  /// `POST /v1/notifications/read`.
+  Future<int> markNotificationsRead(
+    String token, {
+    List<int>? ids,
+  }) async {
+    final j = await _client.authPost(
+      '/notifications/read',
+      {'ids': ids},
+      bearer: token,
+    );
+    return (j['unread_count'] ?? 0 as num).toInt();
   }
 
   // --- Auth -----------------------------------------------------------------

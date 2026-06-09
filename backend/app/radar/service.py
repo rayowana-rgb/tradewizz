@@ -152,6 +152,28 @@ class RadarService:
         except Exception:  # noqa: BLE001
             return []
 
+    # -- public per-market accessors (reused by Morning Brief) ------------
+    def market_top(self, market: Market, limit: int = 50) -> List[Opportunity]:
+        """Ranked opportunities for a single market (never raises).
+
+        Public, read-only accessor over the existing ranking pipeline so other
+        features (e.g. the AI Morning Brief) can reuse Radar output without
+        recomputing any scoring/indicators.
+        """
+        return self._safe_for(market, limit=limit)
+
+    def market_multibaggers(
+        self, market: Market, limit: int = 50
+    ) -> List[Opportunity]:
+        """Multibagger-qualifying opportunities within a single market."""
+        return [o for o in self._safe_for(market, limit=limit)
+                if _is_multibagger(o)]
+
+    def market_regime(self, market: Market, limit: int = 50) -> str:
+        """The bull/neutral/bear regime for a single market scan."""
+        top = self._safe_for(market, limit=limit)
+        return top[0].market_regime if top else REGIME_NEUTRAL
+
     def _global_pool(self, per_market: int = 30) -> List[Opportunity]:
         """Ranked opportunities across all markets (deduped, sorted)."""
         pool: List[Opportunity] = []

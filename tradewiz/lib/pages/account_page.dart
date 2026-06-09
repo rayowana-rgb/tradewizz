@@ -10,6 +10,7 @@ import '../services/entitlements_scope.dart';
 import '../services/repository_scope.dart';
 import '../services/social_sign_in.dart';
 import '../theme.dart';
+import 'journal_page.dart';
 import '../widgets/premium.dart';
 import 'ai_analysis_page.dart';
 import 'auth_pages.dart';
@@ -295,6 +296,34 @@ class _AccountPageState extends State<AccountPage> {
           ),
           _TradesCard(trades: _trades),
           const SizedBox(height: 20),
+
+          // --- Portfolio Journal & AI Manager ---------------------------
+          Card(
+            key: const Key('account_journal_link'),
+            child: ListTile(
+              leading: const Icon(Icons.smart_toy_outlined,
+                  color: AppColors.seed),
+              title: const Text('AI Portfolio Manager & Journal',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: const Text(
+                  'Rule-based guidance + your simulated trade diary.'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => Scaffold(
+                    appBar: AppBar(
+                      title: const Text('Portfolio Insights',
+                          style: TextStyle(fontWeight: FontWeight.w700)),
+                    ),
+                    body: SafeArea(
+                      child: JournalPage(repository: widget.repository),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
 
           // --- Reset -----------------------------------------------------
           SizedBox(

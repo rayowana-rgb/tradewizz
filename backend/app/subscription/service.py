@@ -51,6 +51,11 @@ EVENT_PORTFOLIO_QUALITY_OPENED = "portfolio_quality_opened"
 EVENT_MULTIBAGGER_OPENED = "multibagger_opened"
 EVENT_AI_PORTFOLIO_MANAGER_OPENED = "ai_portfolio_manager_opened"
 EVENT_WAITLIST_JOINED = "waitlist_joined"
+# Phase 2 (retention) preview-demand events, recorded verbatim.
+EVENT_MORNING_BRIEF_OPENED = "morning_brief_opened"
+EVENT_NOTIFICATION_OPENED = "notification_opened"
+EVENT_PORTFOLIO_MANAGER_OPENED = "portfolio_manager_opened"
+EVENT_JOURNAL_OPENED = "journal_opened"
 
 
 def _preview_mode_default() -> bool:

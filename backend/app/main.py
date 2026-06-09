@@ -181,7 +181,19 @@ def _radar_screen(market, limit=50, min_score=0.0, min_value_traded=0.0):
 
 
 app.include_router(radar_router)
-_set_radar_service(RadarService(screen_provider=_radar_screen))
+_radar_service = RadarService(screen_provider=_radar_screen)
+_set_radar_service(_radar_service)
+
+# AI Morning Brief (Phase 2): a rule-based, once-per-session market summary.
+# Reuses the Radar (screener + ranking + regime); no LLM, no broker contact.
+from .morning_brief.router import router as morning_brief_router  # noqa: E402
+from .morning_brief.router import (  # noqa: E402
+    set_service as _set_brief_service,
+)
+from .morning_brief.service import MorningBriefService  # noqa: E402
+
+app.include_router(morning_brief_router)
+_set_brief_service(MorningBriefService(radar=_radar_service))
 
 # Portfolio Health + Position Quality (Elite). Reads SIMULATED positions and
 # the existing engine score per symbol.
@@ -202,12 +214,100 @@ def _symbol_score(symbol, market):
 
 
 app.include_router(health_router)
-_set_health_service(
-    PortfolioHealthService(
-        positions_provider=_sim_service.positions,
-        score_provider=_symbol_score,
+_health_service = PortfolioHealthService(
+    positions_provider=_sim_service.positions,
+    score_provider=_symbol_score,
+)
+_set_health_service(_health_service)
+
+# --------------------------------------------------------------------------- #
+# Phase 2 (Retention & differentiation): AI Portfolio Manager, Portfolio
+# Journal, in-app Notifications, and community demand analytics. All rule-based
+# (no LLM), reuse existing signals, and touch SIMULATED data only.
+# --------------------------------------------------------------------------- #
+
+# AI Portfolio Manager (highest priority): rule-based advisory over the sim.
+from .portfolio_manager.router import (  # noqa: E402
+    router as portfolio_manager_router,
+    set_service as _set_pm_service,
+)
+from .portfolio_manager.service import (  # noqa: E402
+    PortfolioManagerService,
+)
+
+# Portfolio Journal: snapshot on buy / close on sell (fed by a sim trade hook).
+from .journal.router import (  # noqa: E402
+    router as journal_router,
+    set_service as _set_journal_service,
+)
+from .journal.service import JournalService  # noqa: E402
+from .journal.store import SqliteJournalStore  # noqa: E402
+
+_journal_store = SqliteJournalStore(
+    os.environ.get("TRADEWIZZ_JOURNAL_DB_PATH")
+)
+_journal_service = JournalService(
+    store=_journal_store,
+    score_provider=_symbol_score,
+    health_service=_health_service,
+    radar_service=_radar_service,
+)
+app.include_router(journal_router)
+_set_journal_service(_journal_service)
+
+# Best-effort journal hook on simulated trades (does NOT alter accounting).
+from .simulation.router import set_trade_hook as _set_sim_trade_hook  # noqa: E402
+_set_sim_trade_hook(
+    lambda uid, symbol, market, side, qty, price: _journal_service.on_trade(
+        uid, symbol, market, side, qty, price
     )
 )
+
+# AI Portfolio Manager wiring (needs health + sim positions/account + journal
+# score snapshots for the "score has fallen" rule).
+def _journal_score_snapshots(user_id):
+    """Map (symbol, market) -> entry score from OPEN journal entries."""
+    snapshots = {}
+    try:
+        for e in _journal_store.list_entries(user_id):
+            if e.status == "OPEN" and e.score > 0:
+                snapshots[(e.symbol, e.market)] = e.score
+    except Exception:  # noqa: BLE001
+        return {}
+    return snapshots
+
+
+app.include_router(portfolio_manager_router)
+_set_pm_service(
+    PortfolioManagerService(
+        health_service=_health_service,
+        positions_provider=_sim_service.positions,
+        account_provider=_sim_service.account,
+        snapshot_provider=_journal_score_snapshots,
+    )
+)
+
+# In-app Notification Engine: generates from radar + portfolio health.
+from .notifications.router import (  # noqa: E402
+    router as notifications_router,
+    set_service as _set_notifications_service,
+)
+from .notifications.service import NotificationService  # noqa: E402
+from .notifications.store import SqliteNotificationStore  # noqa: E402
+
+_notification_service = NotificationService(
+    store=SqliteNotificationStore(
+        os.environ.get("TRADEWIZZ_NOTIFICATIONS_DB_PATH")
+    ),
+    radar_service=_radar_service,
+    health_service=_health_service,
+)
+app.include_router(notifications_router)
+_set_notifications_service(_notification_service)
+
+# Community demand analytics (Most Requested Features).
+from .analytics.router import router as analytics_router  # noqa: E402
+app.include_router(analytics_router)
 
 
 def _optional_user_id(authorization):

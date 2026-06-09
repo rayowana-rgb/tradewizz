@@ -10,6 +10,7 @@ import '../services/data_source.dart';
 import '../services/repository_scope.dart';
 import '../theme.dart';
 import '../widgets/connection_pill.dart';
+import '../widgets/morning_brief.dart';
 import '../widgets/premium_dashboard.dart';
 
 /// Clean overview: market summary cards + top movers for the selected market.
@@ -134,6 +135,12 @@ class _DashboardPageState extends State<DashboardPage> {
             retrying: _loading,
           ),
           _MarketHeader(market: market),
+          const SizedBox(height: 24),
+          // 1. AI Morning Brief (top of the dashboard).
+          AiMorningBriefSection(
+            market: market,
+            repository: widget.repository,
+          ),
           const SizedBox(height: 16),
           Row(
             children: [
@@ -166,8 +173,10 @@ class _DashboardPageState extends State<DashboardPage> {
             market: market,
           ),
           const SizedBox(height: 24),
+          // 2. TradeWizz PRO Preview.
           PremiumDashboardSection(repository: widget.repository),
           const SizedBox(height: 24),
+          // 4. Top Movers (Portfolio Summary lives on its own tab).
           const _SectionTitle('Top Movers'),
           const SizedBox(height: 8),
           if (_loading)
