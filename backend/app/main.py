@@ -10,7 +10,7 @@ import logging
 import os
 from typing import List, Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from .backtest import (
@@ -124,12 +124,105 @@ from .simulation.router import set_service as _set_sim_service  # noqa: E402
 from .simulation.service import SimulationService  # noqa: E402
 
 app.include_router(sim_router)
-_set_sim_service(
-    SimulationService(
-        price_provider=lambda symbol, market: engine.latest_price(symbol, market),
-        universe=engine._universe,
+_sim_service = SimulationService(
+    price_provider=lambda symbol, market: engine.latest_price(symbol, market),
+    universe=engine._universe,
+)
+_set_sim_service(_sim_service)
+
+# --------------------------------------------------------------------------- #
+# Monetization: subscriptions (FREE/PRO/ELITE), Opportunity Radar, Daily Picks,
+# Multibagger Finder, Portfolio Health + Position Quality, and usage analytics.
+# Research/AI/simulation only - NO broker integration, NO real-money trading.
+# --------------------------------------------------------------------------- #
+from .subscription.router import router as subscription_router  # noqa: E402
+from .subscription.router import set_service as _set_sub_service  # noqa: E402
+from .subscription.router import get_service as _get_sub_service  # noqa: E402
+from .subscription.service import (  # noqa: E402
+    METRIC_WATCHLIST,
+    SubscriptionError,
+    SubscriptionService,
+)
+
+app.include_router(subscription_router)
+_subscription_service = SubscriptionService()
+_set_sub_service(_subscription_service)
+
+# AI Opportunity Radar / Daily Picks / Multibagger. Reuse the screener engine.
+from .radar.router import router as radar_router  # noqa: E402
+from .radar.router import set_service as _set_radar_service  # noqa: E402
+from .radar.service import RadarService  # noqa: E402
+
+
+def _radar_screen(market, limit=50, min_score=0.0, min_value_traded=0.0):
+    """Screen a market for the radar via the market-close cache (real data)."""
+    cache_key = make_cache_key(
+        category="",
+        limit=limit,
+        min_score=min_score,
+        min_value_traded=min_value_traded,
+    )
+
+    def _run() -> ScreenerResult:
+        return engine.screen(
+            market,
+            limit=limit,
+            min_score=min_score,
+            categories=None,
+            min_value_traded=min_value_traded,
+        )
+
+    service = ScreenerCacheService(
+        screener_snapshot_store,
+        _run,
+        now_provider=_screener_now_override,
+    )
+    return service.get(market, cache_key)
+
+
+app.include_router(radar_router)
+_set_radar_service(RadarService(screen_provider=_radar_screen))
+
+# Portfolio Health + Position Quality (Elite). Reads SIMULATED positions and
+# the existing engine score per symbol.
+from .portfolio_health.router import router as health_router  # noqa: E402
+from .portfolio_health.router import (  # noqa: E402
+    set_service as _set_health_service,
+)
+from .portfolio_health.service import PortfolioHealthService  # noqa: E402
+
+
+def _symbol_score(symbol, market):
+    """Single-symbol score via the existing engine (ScreenerMatch or None)."""
+    try:
+        result = engine.screen(market, symbols=[symbol], limit=1)
+        return result.matches[0] if result.matches else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+app.include_router(health_router)
+_set_health_service(
+    PortfolioHealthService(
+        positions_provider=_sim_service.positions,
+        score_provider=_symbol_score,
     )
 )
+
+
+def _optional_user_id(authorization):
+    """Resolve a user id from a Bearer token if present; else None.
+
+    Lets /analyze + /screen stay anonymous-friendly while enforcing per-tier
+    limits + recording analytics only for authenticated users.
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return None
+    token = authorization.split(" ", 1)[1].strip()
+    try:
+        return _get_auth_service().verify_token(token)
+    except Exception:  # noqa: BLE001 - invalid token => treat as anonymous
+        return None
 
 # Market-close screener cache. Heavy screening runs once per market/category
 # after market close; the saved snapshot is reused until the next close. This
@@ -291,10 +384,28 @@ def market_overview(market: str) -> dict:
 
 
 @app.get(f"{API_PREFIX}/analyze/{{symbol}}", response_model=AnalysisResult)
-def analyze(symbol: str, market: Market = Market.IDX) -> AnalysisResult:
-    """Full analysis for a single symbol (real engine, mock fallback)."""
+def analyze(
+    symbol: str,
+    market: Market = Market.IDX,
+    authorization: Optional[str] = Header(default=None),
+) -> AnalysisResult:
+    """Full analysis for a single symbol (real engine, mock fallback).
+
+    Anonymous callers are unmetered (back-compat). For an authenticated user
+    the per-tier daily-analysis limit is enforced (FREE = 5/day) and the use is
+    recorded for analytics; PRO/ELITE are unlimited.
+    """
     if not symbol.strip():
         raise HTTPException(status_code=400, detail="symbol is required")
+    uid = _optional_user_id(authorization)
+    if uid is not None:
+        try:
+            _get_sub_service().check_and_count_analysis(uid)
+        except SubscriptionError as exc:
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail={"message": exc.message, **exc.extra},
+            )
     # Diagnostics: make the symbol+market -> Yahoo-ticker routing observable so
     # an HKEX request can never be silently mistaken for IDX (e.g. .JK vs .HK).
     logger.info(
@@ -349,6 +460,7 @@ def screen(
         description="Re-run heavy screening and save a fresh snapshot. Allowed "
         "only when the market is CLOSED; ignored (with a warning) when OPEN.",
     ),
+    authorization: Optional[str] = Header(default=None),
 ) -> ScreenerResult:
     """Screener results for a market (market-close cached).
 
@@ -372,6 +484,11 @@ def screen(
     then change_percent desc.
     """
     parsed_market = _parse_market(market)
+    # Per-tier screener cap: FREE sees at most 20 results; PRO/ELITE unlimited.
+    # Anonymous callers keep the requested limit (back-compat).
+    uid = _optional_user_id(authorization)
+    if uid is not None:
+        limit = _get_sub_service().cap_screener_limit(uid, limit)
     floor = (
         default_min_value_traded(parsed_market)
         if min_value_traded is None

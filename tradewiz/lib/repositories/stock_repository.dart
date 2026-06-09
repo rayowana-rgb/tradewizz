@@ -7,6 +7,7 @@ import '../models/market_overview.dart';
 import '../models/portfolio.dart';
 import '../models/screener_result.dart';
 import '../models/simulation.dart';
+import '../models/subscription.dart';
 import '../models/user.dart';
 import '../services/api_client.dart';
 import '../services/data_source.dart';
@@ -236,6 +237,56 @@ class StockRepository {
   Future<SimAccount> simReset(String token) async {
     await _client.authPost('/sim/reset', const {}, bearer: token);
     return simAccount(token);
+  }
+
+  // --- Subscription / monetization -----------------------------------------
+
+  /// Public plan comparison table (FREE / PRO / ELITE) for the paywall.
+  Future<PlanComparison> subscriptionPlans() async {
+    final j = await _client.authGet('/subscription/plans');
+    return PlanComparison.fromJson(j);
+  }
+
+  /// Current tier + limits + today's usage; the app gates its UI from this.
+  Future<Entitlements> entitlements(String token) async {
+    final j = await _client.authGet('/subscription/entitlements', bearer: token);
+    return Entitlements.fromJson(j);
+  }
+
+  /// Activate a tier (placeholder billing — no real payment is taken).
+  Future<Entitlements> upgrade(String token, Tier tier) async {
+    await _client.authPost(
+      '/subscription/upgrade',
+      {'tier': tier.code},
+      bearer: token,
+    );
+    return entitlements(token);
+  }
+
+  // --- AI Opportunity Radar (Pro) ------------------------------------------
+
+  Future<OpportunitiesResult> radarOpportunities(String token) async {
+    final j = await _client.authGet('/radar/opportunities', bearer: token);
+    return OpportunitiesResult.fromJson(j);
+  }
+
+  Future<DailyPicks> radarDaily(String token) async {
+    final j = await _client.authGet('/radar/daily', bearer: token);
+    return DailyPicks.fromJson(j);
+  }
+
+  // --- Multibagger Finder (Elite) ------------------------------------------
+
+  Future<MultibaggerResult> radarMultibagger(String token) async {
+    final j = await _client.authGet('/radar/multibagger', bearer: token);
+    return MultibaggerResult.fromJson(j);
+  }
+
+  // --- Portfolio Health + Position Quality (Elite) -------------------------
+
+  Future<PortfolioHealth> portfolioHealth(String token) async {
+    final j = await _client.authGet('/portfolio/health', bearer: token);
+    return PortfolioHealth.fromJson(j);
   }
 
   // --- Auth -----------------------------------------------------------------

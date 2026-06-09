@@ -97,4 +97,13 @@ enum Market {
 
   /// Whether manual Buy/Sell via Moomoo is offered for this market.
   final bool tradableViaMoomoo;
+
+  /// Resolve a [Market] from its wire code (e.g. 'US'); defaults to IDX.
+  static Market fromCode(String? code) {
+    final c = (code ?? '').toUpperCase();
+    return Market.values.firstWhere(
+      (m) => m.code == c,
+      orElse: () => Market.idx,
+    );
+  }
 }

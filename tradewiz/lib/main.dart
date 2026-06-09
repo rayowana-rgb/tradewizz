@@ -9,6 +9,7 @@ import 'pages/watchlist_page.dart';
 import 'repositories/stock_repository.dart';
 import 'services/auth_scope.dart';
 import 'services/auth_store.dart';
+import 'services/entitlements_scope.dart';
 import 'services/repository_scope.dart';
 import 'services/watchlist_scope.dart';
 import 'services/watchlist_store.dart';
@@ -32,18 +33,26 @@ class _TradeWizAppState extends State<TradeWizApp> {
   final AuthStore _auth =
       AuthStore(persistence: SharedPrefsAuthPersistence());
   final StockRepository _repository = StockRepository();
+  late final EntitlementsStore _entitlements =
+      EntitlementsStore(repository: _repository);
+
+  void _syncEntitlements() => _entitlements.syncToken(_auth.token);
 
   @override
   void initState() {
     super.initState();
     _watchlist.load();
+    // Reload entitlements whenever the session token changes (login/logout).
+    _auth.addListener(_syncEntitlements);
     _auth.load();
   }
 
   @override
   void dispose() {
+    _auth.removeListener(_syncEntitlements);
     _watchlist.dispose();
     _auth.dispose();
+    _entitlements.dispose();
     super.dispose();
   }
 
@@ -53,13 +62,16 @@ class _TradeWizAppState extends State<TradeWizApp> {
       repository: _repository,
       child: AuthScope(
         store: _auth,
-        child: WatchlistScope(
-          store: _watchlist,
-          child: MaterialApp(
+        child: EntitlementsScope(
+          store: _entitlements,
+          child: WatchlistScope(
+            store: _watchlist,
+            child: MaterialApp(
             title: 'TradeWiz',
             debugShowCheckedModeBanner: false,
-            theme: buildTradeWizTheme(),
-            home: const HomeShell(),
+              theme: buildTradeWizTheme(),
+              home: const HomeShell(),
+            ),
           ),
         ),
       ),

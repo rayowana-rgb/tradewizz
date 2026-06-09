@@ -10,6 +10,7 @@ import '../services/data_source.dart';
 import '../services/repository_scope.dart';
 import '../theme.dart';
 import '../widgets/connection_pill.dart';
+import '../widgets/premium_dashboard.dart';
 
 /// Clean overview: market summary cards + top movers for the selected market.
 class DashboardPage extends StatefulWidget {
@@ -164,6 +165,10 @@ class _DashboardPageState extends State<DashboardPage> {
             loading: _loading && _overview == null && !_overviewUnavailable,
             market: market,
           ),
+          const SizedBox(height: 24),
+          const _SectionTitle('Radar & Portfolio'),
+          const SizedBox(height: 8),
+          PremiumDashboardSection(repository: widget.repository),
           const SizedBox(height: 24),
           const _SectionTitle('Top Movers'),
           const SizedBox(height: 8),

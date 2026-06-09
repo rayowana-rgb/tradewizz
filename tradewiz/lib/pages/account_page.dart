@@ -8,9 +8,11 @@ import '../services/auth_scope.dart';
 import '../services/repository_scope.dart';
 import '../services/social_sign_in.dart';
 import '../theme.dart';
+import '../widgets/premium.dart';
 import 'ai_analysis_page.dart';
 import 'auth_pages.dart';
 import 'order_ticket_page.dart';
+import 'upgrade_page.dart';
 
 /// Account tab. Logged out -> Login / Register. Logged in -> profile + a
 /// SIMULATED paper-trading portfolio (cash, equity, buying power, P/L,
@@ -181,6 +183,7 @@ class _AccountPageState extends State<AccountPage> {
                       const SizedBox(height: 2),
                       Text(
                         user.email,
+                        // ignore: prefer_const_constructors
                         key: const Key('account_email'),
                         style: const TextStyle(
                             fontWeight: FontWeight.w800, fontSize: 16),
@@ -188,7 +191,28 @@ class _AccountPageState extends State<AccountPage> {
                     ],
                   ),
                 ),
+                const TierChip(),
               ]),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // --- Plan / upgrade entry -------------------------------------
+          Card(
+            key: const Key('account_plan_card'),
+            child: ListTile(
+              leading: const Icon(Icons.workspace_premium,
+                  color: AppColors.seed),
+              title: const Text('Plans & Upgrade'),
+              subtitle: const Text(
+                  'Unlock the AI Radar, Daily Picks, Multibagger & '
+                  'Portfolio Health.'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => UpgradePage(repository: widget.repository),
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 16),

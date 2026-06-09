@@ -176,6 +176,8 @@ void main() {
     await tester.pumpWidget(_wrap(AccountPage(repository: repo), repo));
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.byKey(const Key('holding_buy_AAPL_US')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('holding_buy_AAPL_US')));
     await tester.pumpAndSettle();
 
@@ -193,6 +195,8 @@ void main() {
     await tester.pumpWidget(_wrap(AccountPage(repository: repo), repo));
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.byKey(const Key('holding_sell_AAPL_US')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('holding_sell_AAPL_US')));
     await tester.pumpAndSettle();
 
