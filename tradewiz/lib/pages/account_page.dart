@@ -10,6 +10,7 @@ import '../services/entitlements_scope.dart';
 import '../services/repository_scope.dart';
 import '../services/social_sign_in.dart';
 import '../theme.dart';
+import '../widgets/rebalance.dart';
 import 'journal_page.dart';
 import '../widgets/premium.dart';
 import 'ai_analysis_page.dart';
@@ -295,7 +296,11 @@ class _AccountPageState extends State<AccountPage> {
                     TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
           ),
           _TradesCard(trades: _trades),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
+
+          // --- Portfolio Rebalancing AI ---------------------------------
+          RebalanceCard(repository: widget.repository),
+          const SizedBox(height: 24),
 
           // --- Portfolio Journal & AI Manager ---------------------------
           Card(

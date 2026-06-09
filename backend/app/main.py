@@ -287,7 +287,60 @@ _set_pm_service(
     )
 )
 
-# In-app Notification Engine: generates from radar + portfolio health.
+# --------------------------------------------------------------------------- #
+# Phase 3 (Auto Watchlist AI, Portfolio Rebalancing AI, Global Rotation Engine).
+# All rule-based, reuse the existing Radar/Health/Sim pipelines, touch only
+# SIMULATED data, and never contact a broker.
+# --------------------------------------------------------------------------- #
+
+# Auto Watchlist AI: rule-based daily watchlist suggestions from the Radar.
+from .auto_watchlist.router import (  # noqa: E402
+    router as auto_watchlist_router,
+    set_service as _set_auto_watchlist_service,
+)
+from .auto_watchlist.service import AutoWatchlistService  # noqa: E402
+from .auto_watchlist.store import SqliteAutoWatchlistStore  # noqa: E402
+
+_auto_watchlist_service = AutoWatchlistService(
+    radar=_radar_service,
+    store=SqliteAutoWatchlistStore(
+        os.environ.get("TRADEWIZZ_AUTO_WATCHLIST_DB_PATH")
+    ),
+    positions_provider=_sim_service.positions,
+)
+app.include_router(auto_watchlist_router)
+_set_auto_watchlist_service(_auto_watchlist_service)
+
+# Portfolio Rebalancing AI: ADD/HOLD/REDUCE/EXIT over the simulation.
+from .rebalance.router import (  # noqa: E402
+    router as rebalance_router,
+    set_service as _set_rebalance_service,
+)
+from .rebalance.service import RebalanceService  # noqa: E402
+
+_rebalance_service = RebalanceService(
+    health_service=_health_service,
+    positions_provider=_sim_service.positions,
+    account_provider=_sim_service.account,
+    score_provider=_symbol_score,
+    regime_provider=_radar_service.market_regime,
+)
+app.include_router(rebalance_router)
+_set_rebalance_service(_rebalance_service)
+
+# Global Rotation Engine: rank all markets by opportunity environment.
+from .rotation.router import (  # noqa: E402
+    router as rotation_router,
+    set_service as _set_rotation_service,
+)
+from .rotation.service import GlobalRotationService  # noqa: E402
+
+_rotation_service = GlobalRotationService(radar=_radar_service)
+app.include_router(rotation_router)
+_set_rotation_service(_rotation_service)
+
+# In-app Notification Engine: generates from radar + portfolio health + the
+# Phase 3 Auto Watchlist / Rebalance / Rotation services.
 from .notifications.router import (  # noqa: E402
     router as notifications_router,
     set_service as _set_notifications_service,
@@ -301,6 +354,9 @@ _notification_service = NotificationService(
     ),
     radar_service=_radar_service,
     health_service=_health_service,
+    auto_watchlist_service=_auto_watchlist_service,
+    rebalance_service=_rebalance_service,
+    rotation_service=_rotation_service,
 )
 app.include_router(notifications_router)
 _set_notifications_service(_notification_service)

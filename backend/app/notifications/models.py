@@ -11,6 +11,11 @@ TYPE_ELITE_OPPORTUNITY = "new_elite_opportunity"
 TYPE_MULTIBAGGER = "new_multibagger_candidate"
 TYPE_PORTFOLIO_WARNING = "portfolio_health_warning"
 TYPE_DAILY_PICK = "daily_pick_published"
+# Phase 3 notification types.
+TYPE_AUTO_WATCHLIST_READY = "auto_watchlist_suggestion_ready"
+TYPE_REBALANCE_REQUIRED = "rebalance_action_required"
+TYPE_ROTATION_CHANGED = "global_rotation_changed"
+TYPE_BEST_MARKET = "new_best_market_today"
 
 
 class Notification(BaseModel):

@@ -56,6 +56,14 @@ EVENT_MORNING_BRIEF_OPENED = "morning_brief_opened"
 EVENT_NOTIFICATION_OPENED = "notification_opened"
 EVENT_PORTFOLIO_MANAGER_OPENED = "portfolio_manager_opened"
 EVENT_JOURNAL_OPENED = "journal_opened"
+# Phase 3 (Auto Watchlist AI, Rebalancing AI, Global Rotation) events.
+EVENT_AUTO_WATCHLIST_OPENED = "auto_watchlist_opened"
+EVENT_AUTO_WATCHLIST_APPLIED = "auto_watchlist_applied"
+EVENT_AUTO_WATCHLIST_IGNORED = "auto_watchlist_ignored"
+EVENT_REBALANCE_OPENED = "rebalance_opened"
+EVENT_REBALANCE_ACTION_CLICKED = "rebalance_action_clicked"
+EVENT_GLOBAL_ROTATION_OPENED = "global_rotation_opened"
+EVENT_GLOBAL_ROTATION_MARKET_CLICKED = "global_rotation_market_clicked"
 
 
 def _preview_mode_default() -> bool:

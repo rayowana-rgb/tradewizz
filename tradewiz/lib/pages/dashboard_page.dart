@@ -9,7 +9,9 @@ import '../services/api_client.dart';
 import '../services/data_source.dart';
 import '../services/repository_scope.dart';
 import '../theme.dart';
+import '../widgets/auto_watchlist.dart';
 import '../widgets/connection_pill.dart';
+import '../widgets/global_rotation.dart';
 import '../widgets/morning_brief.dart';
 import '../widgets/premium_dashboard.dart';
 
@@ -141,6 +143,9 @@ class _DashboardPageState extends State<DashboardPage> {
             market: market,
             repository: widget.repository,
           ),
+          const SizedBox(height: 24),
+          // 1b. Auto Watchlist AI — daily picks ready to add.
+          AutoWatchlistCard(repository: widget.repository),
           const SizedBox(height: 16),
           Row(
             children: [
@@ -175,6 +180,9 @@ class _DashboardPageState extends State<DashboardPage> {
           const SizedBox(height: 24),
           // 2. TradeWizz PRO Preview.
           PremiumDashboardSection(repository: widget.repository),
+          const SizedBox(height: 24),
+          // 2b. Global Rotation Engine — best market today.
+          GlobalRotationCard(repository: widget.repository),
           const SizedBox(height: 24),
           // 4. Top Movers (Portfolio Summary lives on its own tab).
           const _SectionTitle('Top Movers'),

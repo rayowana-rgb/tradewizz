@@ -2,14 +2,17 @@ import 'package:flutter/material.dart';
 
 import '../models/market.dart';
 import '../models/watchlist_item.dart';
+import '../repositories/stock_repository.dart';
 import '../services/watchlist_scope.dart';
+import '../widgets/auto_watchlist.dart';
 import 'ai_analysis_page.dart';
 
 /// Watchlist for the selected market, backed by the shared [WatchlistStore].
 class WatchlistPage extends StatelessWidget {
-  const WatchlistPage({super.key, required this.market});
+  const WatchlistPage({super.key, required this.market, this.repository});
 
   final Market market;
+  final StockRepository? repository;
 
   @override
   Widget build(BuildContext context) {
@@ -17,12 +20,23 @@ class WatchlistPage extends StatelessWidget {
     final items = store.forMarket(market);
 
     if (items.isEmpty) {
-      return _EmptyWatchlist(market: market);
+      return ListView(
+        key: const Key('watchlist_empty_list'),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        children: [
+          AutoWatchlistCard(repository: repository),
+          const SizedBox(height: 24),
+          _EmptyWatchlist(market: market),
+        ],
+      );
     }
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       children: [
+        // AI Suggestions section (Auto Watchlist AI).
+        AutoWatchlistCard(repository: repository),
+        const SizedBox(height: 24),
         Card(
           child: Column(
             children: [

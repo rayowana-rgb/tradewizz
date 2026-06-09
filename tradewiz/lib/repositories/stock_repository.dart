@@ -5,6 +5,7 @@ import '../models/market.dart';
 import '../models/market_index.dart';
 import '../models/market_overview.dart';
 import '../models/phase2.dart';
+import '../models/phase3.dart';
 import '../models/portfolio.dart';
 import '../models/screener_result.dart';
 import '../models/simulation.dart';
@@ -374,6 +375,90 @@ class StockRepository {
       bearer: token,
     );
     return (j['unread_count'] ?? 0 as num).toInt();
+  }
+
+  // --- Phase 3: Auto Watchlist AI ------------------------------------------
+
+  /// Ranked daily watchlist suggestions. Backs
+  /// `GET /v1/auto-watchlist/suggestions`. [existing] are the client's current
+  /// watchlist keys ("MARKET:SYMBOL" or bare "SYMBOL") to exclude duplicates.
+  Future<AutoWatchlistSuggestions> autoWatchlistSuggestions(
+    String token, {
+    List<String> existing = const [],
+  }) async {
+    var path = '/auto-watchlist/suggestions';
+    if (existing.isNotEmpty) {
+      final qs = existing
+          .map((e) => 'existing=${Uri.encodeQueryComponent(e)}')
+          .join('&');
+      path = '$path?$qs';
+    }
+    final j = await _client.authGet(path, bearer: token);
+    return AutoWatchlistSuggestions.fromJson(j);
+  }
+
+  /// Apply selected suggestions (or all of today's when [items] is empty).
+  /// Backs `POST /v1/auto-watchlist/apply`. [existing] are the client's
+  /// current watchlist keys so already-present names are skipped.
+  Future<ApplyResult> applyAutoWatchlist(
+    String token, {
+    List<AutoWatchlistSuggestion> items = const [],
+    List<String> existing = const [],
+  }) async {
+    final body = <String, dynamic>{
+      'items': items
+          .map((s) => {'symbol': s.symbol, 'market': s.market.code})
+          .toList(),
+      'existing': existing,
+    };
+    final j = await _client.authPost(
+      '/auto-watchlist/apply',
+      body,
+      bearer: token,
+    );
+    return ApplyResult.fromJson(j);
+  }
+
+  /// Read Auto Watchlist AI settings. Backs `GET /v1/auto-watchlist/settings`.
+  Future<AutoWatchlistSettings> autoWatchlistSettings(String token) async {
+    final j = await _client.authGet('/auto-watchlist/settings', bearer: token);
+    return AutoWatchlistSettings.fromJson(j);
+  }
+
+  /// Persist Auto Watchlist AI settings. Backs
+  /// `POST /v1/auto-watchlist/settings`.
+  Future<AutoWatchlistSettings> saveAutoWatchlistSettings(
+    String token,
+    AutoWatchlistSettings settings,
+  ) async {
+    final j = await _client.authPost(
+      '/auto-watchlist/settings',
+      settings.toJson(),
+      bearer: token,
+    );
+    return AutoWatchlistSettings.fromJson(j);
+  }
+
+  // --- Phase 3: Portfolio Rebalancing AI -----------------------------------
+
+  /// ADD/HOLD/REDUCE/EXIT suggestions over the simulation. Backs
+  /// `GET /v1/portfolio/rebalance`.
+  Future<RebalanceReport> rebalance(String token, {String? profile}) async {
+    var path = '/portfolio/rebalance';
+    if (profile != null && profile.isNotEmpty) {
+      path = '$path?profile=${Uri.encodeQueryComponent(profile)}';
+    }
+    final j = await _client.authGet(path, bearer: token);
+    return RebalanceReport.fromJson(j);
+  }
+
+  // --- Phase 3: Global Rotation Engine -------------------------------------
+
+  /// Rank all markets by opportunity environment. Backs
+  /// `GET /v1/rotation/global`.
+  Future<GlobalRotation> globalRotation(String token) async {
+    final j = await _client.authGet('/rotation/global', bearer: token);
+    return GlobalRotation.fromJson(j);
   }
 
   // --- Auth -----------------------------------------------------------------

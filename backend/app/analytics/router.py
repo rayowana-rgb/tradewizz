@@ -23,7 +23,12 @@ from ..auth.service import AuthError
 from ..subscription.router import get_service as get_sub_service
 from ..subscription.service import (
     EVENT_AI_PORTFOLIO_MANAGER_OPENED,
+    EVENT_AUTO_WATCHLIST_APPLIED,
+    EVENT_AUTO_WATCHLIST_IGNORED,
+    EVENT_AUTO_WATCHLIST_OPENED,
     EVENT_DAILY_PICKS_OPENED,
+    EVENT_GLOBAL_ROTATION_MARKET_CLICKED,
+    EVENT_GLOBAL_ROTATION_OPENED,
     EVENT_JOURNAL_OPENED,
     EVENT_MORNING_BRIEF_OPENED,
     EVENT_MULTIBAGGER_OPENED,
@@ -32,6 +37,8 @@ from ..subscription.service import (
     EVENT_PORTFOLIO_MANAGER_OPENED,
     EVENT_PORTFOLIO_QUALITY_OPENED,
     EVENT_RADAR_OPENED,
+    EVENT_REBALANCE_ACTION_CLICKED,
+    EVENT_REBALANCE_OPENED,
 )
 
 router = APIRouter(prefix="/v1/analytics", tags=["analytics"])
@@ -48,6 +55,13 @@ _FEATURE_LABELS = {
     EVENT_MORNING_BRIEF_OPENED: "AI Morning Brief",
     EVENT_NOTIFICATION_OPENED: "Notifications",
     EVENT_JOURNAL_OPENED: "Portfolio Journal",
+    EVENT_AUTO_WATCHLIST_OPENED: "Auto Watchlist AI",
+    EVENT_AUTO_WATCHLIST_APPLIED: "Auto Watchlist AI",
+    EVENT_AUTO_WATCHLIST_IGNORED: "Auto Watchlist AI",
+    EVENT_REBALANCE_OPENED: "Portfolio Rebalancing AI",
+    EVENT_REBALANCE_ACTION_CLICKED: "Portfolio Rebalancing AI",
+    EVENT_GLOBAL_ROTATION_OPENED: "Global Rotation Engine",
+    EVENT_GLOBAL_ROTATION_MARKET_CLICKED: "Global Rotation Engine",
 }
 
 
