@@ -119,7 +119,11 @@ class RadarService:
         result = self._screen(
             market=market, limit=limit, min_score=0.0, min_value_traded=0.0
         )
-        matches = result.matches
+        # Phase H: illiquid names (value traded below the investable threshold)
+        # are never opportunities — they can't be hero / radar / daily picks /
+        # multibagger. They remain visible in the raw screener (with a warning)
+        # but are excluded from every "best stock" selection here.
+        matches = [m for m in result.matches if not getattr(m, "illiquid", False)]
         if not matches:
             return []
         regime = _regime_from_breadth(matches)

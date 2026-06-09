@@ -276,3 +276,69 @@ class MarketIndicesService:
             updated_at=_now_iso(),
             available=False,
         )
+
+
+class MarketConditionService:
+    """Phase E: rule-based Fear/Greed condition for a market's index.
+
+    Fetches ~1y of the market's benchmark index (index-tolerant: only Close is
+    required) and classifies it via :func:`condition.classify_condition`.
+    Cached ~5 minutes per market. Any failure -> a neutral ``UNKNOWN`` result
+    (never crashes, never fabricates).
+    """
+
+    def __init__(
+        self,
+        fetcher: Optional[Fetcher] = None,
+        ttl_seconds: int = 300,
+        clock: Callable[[], float] = time.time,
+    ):
+        self._fetch: Fetcher = fetcher or _index_fetch
+        self._ttl = ttl_seconds
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._cache: Dict[Market, tuple] = {}
+
+    def get(self, market: Market):
+        from .condition import MarketCondition, classify_condition
+
+        with self._lock:
+            entry = self._cache.get(market)
+            if entry is not None and self._clock() - entry[0] < self._ttl:
+                return entry[1]
+        spec = INDEX_BY_MARKET.get(market)
+        if spec is None:
+            return MarketCondition(
+                "UNKNOWN", 50, "No index available for this market."
+            )
+        try:
+            df = self._fetch(spec.symbol, "1y", "1d")
+            closes, highs, lows = _ohlc_series(df)
+            result = classify_condition(closes, highs, lows)
+        except Exception:  # noqa: BLE001 - best-effort, never crash
+            result = MarketCondition(
+                "UNKNOWN", 50, "Market condition data unavailable."
+            )
+        with self._lock:
+            self._cache[market] = (self._clock(), result)
+        return result
+
+
+def _ohlc_series(df: pd.DataFrame):
+    """Extract (closes, highs, lows) numeric lists oldest->newest, NaN-safe."""
+    if df is None or df.empty or "Close" not in df.columns:
+        return None, None, None
+
+    def _col(name):
+        if name not in df.columns:
+            return None
+        s = df[name]
+        if isinstance(s, pd.DataFrame):
+            s = s.iloc[:, 0]
+        s = pd.to_numeric(s, errors="coerce").dropna()
+        return [float(x) for x in s.tolist()]
+
+    closes = _col("Close")
+    highs = _col("High")
+    lows = _col("Low")
+    return closes, highs, lows

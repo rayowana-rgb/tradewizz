@@ -66,6 +66,9 @@ class AnalysisResult(BaseModel):
     trailing_stop_percent: Optional[float] = None
     trailing_stop_price: Optional[float] = None
     profit_probability: Optional[float] = None  # 0..1 placeholder (ML later)
+    # --- Phase F liquidity safety (additive, optional) ---
+    illiquid: bool = False  # True => value traded below investable threshold
+    liquidity_note: Optional[str] = None  # explanation when a cap was applied
 
 
 class WeeklyPrediction(BaseModel):
@@ -87,6 +90,9 @@ class ScreenerMatch(BaseModel):
     # Daily turnover (close * volume) in the market's currency. Additive/
     # backward-compatible; used as the liquidity tiebreaker + filter in ranking.
     value_traded: float = 0.0
+    # --- Phase F liquidity safety (additive, optional) ---
+    illiquid: bool = False  # True => value traded below investable threshold
+    liquidity_note: Optional[str] = None  # "Illiquid — not investable" etc.
 
 
 class ScreenerResult(BaseModel):

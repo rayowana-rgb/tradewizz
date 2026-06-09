@@ -125,17 +125,23 @@ void main() {
     expect(find.byKey(const Key('home_brief')), findsOneWidget);
     expect(find.text('15s read'), findsOneWidget);
 
-    // Portfolio-first card present (above the fold under the brief).
-    expect(find.byKey(const Key('home_portfolio')), findsOneWidget);
-    expect(find.byKey(const Key('home_watchlist')), findsOneWidget);
+    // Index movement card present (Phase C) just under the brief.
+    expect(find.byKey(const Key('home_index_card')), findsOneWidget);
 
-    // Today's Ideas merged feed (scroll the list to reach it).
+    // Portfolio + watchlist + ideas live further down: scroll to reach them.
     final list = find.byKey(const Key('home_list'));
+    final scrollable =
+        find.descendant(of: list, matching: find.byType(Scrollable));
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('home_portfolio')),
+      300,
+      scrollable: scrollable,
+    );
+    expect(find.byKey(const Key('home_portfolio')), findsOneWidget);
     await tester.scrollUntilVisible(
       find.byKey(const Key('home_idea_TLKM')),
       300,
-      scrollable: find.descendant(
-          of: list, matching: find.byType(Scrollable)),
+      scrollable: scrollable,
     );
     expect(find.byKey(const Key('home_idea_TLKM')), findsOneWidget);
   });

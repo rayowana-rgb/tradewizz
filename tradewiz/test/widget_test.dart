@@ -68,13 +68,13 @@ void main() {
     final navBar = find.byType(NavigationBar);
     expect(navBar, findsOneWidget);
 
-    // Phase H: final navigation Home / Watchlist / Explore / Portfolio /
-    // Account, in order.
+    // Final navigation Home / Watchlist / Explore / AI Analysis / Account, in
+    // order. (Portfolio moved into Account; AI Analysis restored.)
     for (final label in [
       'Home',
       'Watchlist',
       'Explore',
-      'Portfolio',
+      'AI Analysis',
       'Account',
     ]) {
       expect(
@@ -84,10 +84,10 @@ void main() {
       );
     }
 
-    // Old destinations are gone.
+    // Old / removed destinations are gone.
     expect(find.descendant(of: navBar, matching: find.text('Dashboard')),
         findsNothing);
-    expect(find.descendant(of: navBar, matching: find.text('AI Analysis')),
+    expect(find.descendant(of: navBar, matching: find.text('Portfolio')),
         findsNothing);
   });
 }

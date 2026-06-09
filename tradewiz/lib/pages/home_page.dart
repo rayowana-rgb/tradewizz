@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../home/activation_scope.dart';
 import '../home/todays_ideas.dart';
 import '../models/market.dart';
+import '../models/market_index.dart';
+import '../models/market_overview.dart';
 import '../models/phase2.dart';
 import '../models/simulation.dart';
 import '../models/user_profile_prefs.dart';
@@ -53,6 +55,10 @@ class _HomePageState extends State<HomePage> {
   List<SimPosition> _positions = const [];
   bool _briefCounted = false;
   bool _viewedCounted = false;
+  // Phase C/D/E: index movement, market activity, Fear/Greed condition.
+  MarketIndex? _index;
+  MarketOverview? _overview;
+  MarketCondition _condition = MarketCondition.unknown;
 
   @override
   void didChangeDependencies() {
@@ -71,7 +77,16 @@ class _HomePageState extends State<HomePage> {
   @override
   void didUpdateWidget(covariant HomePage old) {
     super.didUpdateWidget(old);
-    if (old.market != widget.market) _load();
+    if (old.market != widget.market) {
+      // Reset market-scoped panels so a stale index/condition from the prior
+      // market never lingers while the new one loads.
+      setState(() {
+        _index = null;
+        _overview = null;
+        _condition = MarketCondition.unknown;
+      });
+      _load();
+    }
   }
 
   Future<void> _load() async {
@@ -105,6 +120,28 @@ class _HomePageState extends State<HomePage> {
         });
       }
     } catch (_) {/* keep what we have */}
+
+    // 4) Index movement + market activity + Fear/Greed (all best-effort and
+    //    independent: any failure leaves the rest of Home intact).
+    _loadMarketSnapshot();
+  }
+
+  Future<void> _loadMarketSnapshot() async {
+    final repo = _repo;
+    if (repo == null) return;
+    final market = widget.market;
+    try {
+      final idx = await repo.marketIndex(market);
+      if (mounted && idx != null) setState(() => _index = idx);
+    } catch (_) {/* index card shows unavailable */}
+    try {
+      final ov = await repo.marketOverview(market);
+      if (mounted) setState(() => _overview = ov);
+    } catch (_) {/* value traded falls back to Today's Ideas aggregate */}
+    try {
+      final cond = await repo.marketCondition(market);
+      if (mounted) setState(() => _condition = cond);
+    } catch (_) {/* condition stays Unknown */}
   }
 
   UserPrefs get _prefs =>
@@ -134,6 +171,14 @@ class _HomePageState extends State<HomePage> {
           ),
           const SizedBox(height: 16),
           _BriefCard(brief: brief),
+          const SizedBox(height: 16),
+          _IndexCard(
+            market: widget.market,
+            index: _index,
+            overview: _overview,
+            condition: _condition,
+            ideas: ideas,
+          ),
           const SizedBox(height: 16),
           _PortfolioCard(account: _account, positions: _positions),
           const SizedBox(height: 16),
@@ -383,6 +428,231 @@ class _BriefCard extends StatelessWidget {
       out.add(n);
     }
     return out.take(3).toList();
+  }
+}
+
+// =========================================================================
+// 2b) Index movement + market activity + Fear/Greed (Phase C/D/E)
+// =========================================================================
+String _currencySymbol(Market m) => switch (m.currency) {
+      'USD' => '\$',
+      'IDR' => 'Rp',
+      'JPY' => '¥',
+      'INR' => '₹',
+      'VND' => '₫',
+      'SGD' => 'S\$',
+      'HKD' => 'HK\$',
+      'KRW' => '₩',
+      _ => '',
+    };
+
+String _compactMoney(Market m, double? v) {
+  if (v == null) return 'n/a';
+  final cur = _currencySymbol(m);
+  final a = v.abs();
+  String body;
+  if (a >= 1e12) {
+    body = '${(v / 1e12).toStringAsFixed(1)}T';
+  } else if (a >= 1e9) {
+    body = '${(v / 1e9).toStringAsFixed(1)}B';
+  } else if (a >= 1e6) {
+    body = '${(v / 1e6).toStringAsFixed(1)}M';
+  } else if (a >= 1e3) {
+    body = '${(v / 1e3).toStringAsFixed(1)}K';
+  } else {
+    body = v.toStringAsFixed(0);
+  }
+  return '$cur$body';
+}
+
+Color _conditionColor(String condition) => switch (condition) {
+      'EXTREME_FEAR' => AppColors.down,
+      'FEAR' => Colors.orange,
+      'GREED' => AppColors.up,
+      'EXTREME_GREED' => const Color(0xFF1B8E3D),
+      _ => Colors.grey,
+    };
+
+class _IndexCard extends StatelessWidget {
+  const _IndexCard({
+    required this.market,
+    required this.index,
+    required this.overview,
+    required this.condition,
+    required this.ideas,
+  });
+
+  final Market market;
+  final MarketIndex? index;
+  final MarketOverview? overview;
+  final MarketCondition condition;
+  final TodaysIdeas ideas;
+
+  @override
+  Widget build(BuildContext context) {
+    final idx = index;
+    // Value traded: prefer the exchange total; otherwise fall back to the
+    // aggregate of Today's Ideas (clearly labelled) so we never fabricate an
+    // exchange-wide number.
+    final exchangeValue = overview?.totalValueTraded;
+    final valueLabel =
+        exchangeValue != null ? 'Value Traded Today' : 'Top Ideas Value Traded';
+    final valueText = exchangeValue != null
+        ? _compactMoney(market, exchangeValue)
+        : (ideas.ideas.isEmpty
+            ? 'n/a'
+            : '${ideas.ideas.length} ideas');
+
+    return Card(
+      key: const Key('home_index_card'),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        idx?.name ?? '${market.code} Index',
+                        key: const Key('home_index_name'),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 16),
+                      ),
+                      Text(
+                        idx?.symbol ?? '',
+                        style: const TextStyle(
+                            color: Colors.grey, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                _ConditionBadge(condition: condition),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (idx != null && idx.hasData)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    idx.price!.toStringAsFixed(2),
+                    key: const Key('home_index_price'),
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w900, fontSize: 24),
+                  ),
+                  const SizedBox(width: 10),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 3),
+                    child: Text(
+                      '${idx.isUp ? '+' : ''}'
+                      '${(idx.change ?? 0).toStringAsFixed(2)} '
+                      '(${idx.isUp ? '+' : ''}'
+                      '${(idx.changePercent ?? 0).toStringAsFixed(2)}%)',
+                      key: const Key('home_index_change'),
+                      style: TextStyle(
+                        color: idx.isUp ? AppColors.up : AppColors.down,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            else
+              Text(
+                idx == null
+                    ? 'Index data loading…'
+                    : 'Index data unavailable',
+                key: const Key('home_index_unavailable'),
+                style: const TextStyle(color: Colors.grey, fontSize: 13),
+              ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                _MiniStat(
+                  label: valueLabel,
+                  value: valueText,
+                  valueKey: const Key('home_value_traded'),
+                ),
+                const SizedBox(width: 24),
+                _MiniStat(
+                  label: 'Status',
+                  value: idx?.status ?? '—',
+                ),
+              ],
+            ),
+            if (condition.isKnown && condition.reason.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(
+                condition.reason,
+                key: const Key('home_condition_reason'),
+                style: const TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ConditionBadge extends StatelessWidget {
+  const _ConditionBadge({required this.condition});
+  final MarketCondition condition;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _conditionColor(condition.condition);
+    return Container(
+      key: const Key('home_condition_badge'),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(
+            condition.label,
+            style: TextStyle(
+                color: color, fontWeight: FontWeight.w800, fontSize: 12),
+          ),
+          if (condition.isKnown)
+            Text(
+              '${condition.score}/100',
+              style: TextStyle(color: color, fontSize: 10),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniStat extends StatelessWidget {
+  const _MiniStat({required this.label, required this.value, this.valueKey});
+  final String label;
+  final String value;
+  final Key? valueKey;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: const TextStyle(color: Colors.grey, fontSize: 11)),
+        const SizedBox(height: 2),
+        Text(value,
+            key: valueKey,
+            style: const TextStyle(
+                fontWeight: FontWeight.w800, fontSize: 14)),
+      ],
+    );
   }
 }
 

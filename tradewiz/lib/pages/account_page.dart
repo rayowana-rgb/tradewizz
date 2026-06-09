@@ -1,9 +1,14 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
 import '../models/broker.dart';
 import '../models/simulation.dart';
 import '../models/subscription.dart';
+import '../widgets/portfolio_manager.dart';
+import 'journal_page.dart';
+import 'portfolio_page.dart';
 import '../repositories/stock_repository.dart';
 import '../services/api_client.dart';
 import '../services/auth_scope.dart';
@@ -44,6 +49,9 @@ class _AccountPageState extends State<AccountPage> {
   List<SimTrade> _trades = const [];
   String? _loadedForToken;
   bool _joiningWaitlist = false;
+  // Portfolio Health (best-effort; never blocks the page).
+  PortfolioHealth? _health;
+  bool _healthLoading = false;
 
   StockRepository get _repo =>
       widget.repository ?? RepositoryScope.of(context);
@@ -85,6 +93,22 @@ class _AccountPageState extends State<AccountPage> {
       if (mounted) setState(() => _failed = true);
     } finally {
       if (mounted) setState(() => _loading = false);
+    }
+    // Portfolio Health is best-effort and independent: a failure here must
+    // never break the portfolio hub.
+    unawaited(_loadHealth(token));
+  }
+
+  Future<void> _loadHealth(String token) async {
+    if (!mounted) return;
+    setState(() => _healthLoading = true);
+    try {
+      final h = await _repo.portfolioHealth(token);
+      if (mounted) setState(() => _health = h);
+    } catch (_) {
+      // Swallowed: the card renders an unavailable state.
+    } finally {
+      if (mounted) setState(() => _healthLoading = false);
     }
   }
 
@@ -301,8 +325,75 @@ class _AccountPageState extends State<AccountPage> {
           _TradesCard(trades: _trades),
           const SizedBox(height: 24),
 
+          // --- Portfolio Health -----------------------------------------
+          const Padding(
+            padding: EdgeInsets.only(left: 4, bottom: 8),
+            child: Text('Portfolio Health',
+                key: Key('account_health_section'),
+                style:
+                    TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          ),
+          _PortfolioHealthCard(
+            health: _health,
+            loading: _healthLoading,
+          ),
+          const SizedBox(height: 24),
+
+          // --- Portfolio Manager (AI) -----------------------------------
+          const Padding(
+            padding: EdgeInsets.only(left: 4, bottom: 8),
+            child: Text('Portfolio Manager',
+                key: Key('account_manager_section'),
+                style:
+                    TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          ),
+          PortfolioManagerCard(repository: widget.repository),
+          const SizedBox(height: 24),
+
           // --- Portfolio Rebalancing AI ---------------------------------
           RebalanceCard(repository: widget.repository),
+          const SizedBox(height: 16),
+
+          // --- Journal --------------------------------------------------
+          Card(
+            key: const Key('account_journal_link'),
+            child: ListTile(
+              leading: const Icon(Icons.menu_book_outlined,
+                  color: AppColors.seed),
+              title: const Text('Trade Journal',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: const Text(
+                  'Your buy/sell decisions, scores & realized returns.'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) =>
+                      JournalPage(repository: widget.repository),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // --- Connected Brokers Portfolio ------------------------------
+          Card(
+            key: const Key('account_brokers_portfolio_link'),
+            child: ListTile(
+              leading: const Icon(Icons.account_balance_outlined,
+                  color: AppColors.seed),
+              title: const Text('Connected Brokers Portfolio',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: const Text(
+                  'Positions, orders & performance across your brokers.'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) =>
+                      PortfolioPage(repository: widget.repository),
+                ),
+              ),
+            ),
+          ),
           const SizedBox(height: 24),
 
           // --- Advanced (Phase F): power-user features off the main path -
@@ -664,6 +755,88 @@ class _TradesCard extends StatelessWidget {
       subtitle: Text('${t.market.code} @ ${t.price.toStringAsFixed(2)}'),
       trailing: Text(t.value.toStringAsFixed(2),
           style: const TextStyle(fontWeight: FontWeight.w600)),
+    );
+  }
+}
+
+class _PortfolioHealthCard extends StatelessWidget {
+  const _PortfolioHealthCard({required this.health, required this.loading});
+  final PortfolioHealth? health;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    final h = health;
+    if (h == null) {
+      return Card(
+        key: const Key('account_health_card'),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: loading
+              ? const Center(
+                  child: SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2)))
+              : const Text(
+                  'No portfolio health yet. Buy a stock to see your '
+                  'health score, strengths and warnings.',
+                  style: TextStyle(color: Colors.grey, fontSize: 13)),
+        ),
+      );
+    }
+    final score = h.healthScore;
+    final color = score >= 70
+        ? AppColors.up
+        : score >= 40
+            ? Colors.orange
+            : AppColors.down;
+    return Card(
+      key: const Key('account_health_card'),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Text(score.toStringAsFixed(0),
+                  key: const Key('account_health_score'),
+                  style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 28,
+                      color: color)),
+              const SizedBox(width: 8),
+              Text('/ 100  ${h.rating}',
+                  style: const TextStyle(
+                      color: Colors.grey, fontWeight: FontWeight.w600)),
+            ]),
+            if (h.strengths.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              for (final s in h.strengths.take(2))
+                Row(children: [
+                  const Icon(Icons.check_circle_outline,
+                      size: 16, color: AppColors.up),
+                  const SizedBox(width: 6),
+                  Expanded(
+                      child: Text(s,
+                          style: const TextStyle(fontSize: 12))),
+                ]),
+            ],
+            if (h.warnings.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              for (final w in h.warnings.take(2))
+                Row(children: [
+                  const Icon(Icons.warning_amber_outlined,
+                      size: 16, color: Colors.orange),
+                  const SizedBox(width: 6),
+                  Expanded(
+                      child: Text(w,
+                          style: const TextStyle(fontSize: 12))),
+                ]),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }

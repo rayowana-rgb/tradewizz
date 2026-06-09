@@ -67,6 +67,72 @@ LIQUIDITY_FLOOR = {
     Market.KOSDAQ: 500_000_000,     # ₩500M
 }
 
+# --------------------------------------------------------------------------- #
+# Liquidity cap tiers (Phase F). Per-market value-traded thresholds, expressed  #
+# in the market's own currency. A stock whose value traded falls in a tier is   #
+# *capped* at that tier's max score AFTER the full multi-factor + ML score is   #
+# computed. Technical indicators can never override this cap. value_traded that #
+# is 0 / null / missing is treated as fully illiquid -> max 50 + non-BUY.       #
+#                                                                               #
+# Each entry is an ordered list of (threshold, max_score): if value_traded is   #
+# *below* `threshold`, the score is capped at `max_score`. The first matching   #
+# (lowest) tier wins. Above the highest threshold there is NO cap.              #
+# --------------------------------------------------------------------------- #
+LIQUIDITY_CAP_TIERS = {
+    Market.IDX: [
+        (500_000_000, 50.0),     # < Rp500M
+        (1_000_000_000, 60.0),   # < Rp1B
+        (5_000_000_000, 75.0),   # < Rp5B
+        (10_000_000_000, None),  # < Rp10B -> no cap at/above Rp10B
+    ],
+    Market.US: [
+        (500_000, 50.0),     # < $500K
+        (1_000_000, 60.0),   # < $1M
+        (5_000_000, 75.0),   # < $5M
+        (10_000_000, None),  # >= $10M no cap
+    ],
+    Market.JAPAN: [
+        (50_000_000, 50.0),    # < ¥50M
+        (100_000_000, 60.0),   # < ¥100M
+        (500_000_000, 75.0),   # < ¥500M
+    ],
+    Market.INDIA: [
+        (50_000_000, 50.0),    # < ₹50M
+        (100_000_000, 60.0),   # < ₹100M
+        (500_000_000, 75.0),   # < ₹500M
+    ],
+    Market.VIETNAM: [
+        (5_000_000_000, 50.0),    # < ₫5B
+        (10_000_000_000, 60.0),   # < ₫10B
+        (50_000_000_000, 75.0),   # < ₫50B
+    ],
+    Market.SINGAPORE: [
+        (250_000, 50.0),     # < S$250K
+        (500_000, 60.0),     # < S$500K
+        (2_000_000, 75.0),   # < S$2M
+    ],
+    Market.HKEX: [
+        (1_000_000, 50.0),    # < HK$1M
+        (3_000_000, 60.0),    # < HK$3M
+        (10_000_000, 75.0),   # < HK$10M
+    ],
+    Market.KOSPI: [
+        (500_000_000, 50.0),     # < ₩500M
+        (1_000_000_000, 60.0),   # < ₩1B
+        (5_000_000_000, 75.0),   # < ₩5B
+    ],
+    Market.KOSDAQ: [
+        (500_000_000, 50.0),     # < ₩500M
+        (1_000_000_000, 60.0),   # < ₩1B
+        (5_000_000_000, 75.0),   # < ₩5B
+    ],
+}
+
+# A stock at or below this absolute value traded is treated as fully
+# illiquid / not investable regardless of market (hard floor).
+ILLIQUID_MAX_SCORE = 50.0
+
+
 # Minimum price (in the market's currency) below which a name is penalized as a
 # sub-dollar-equivalent micro stock (Phase 2). FX order-of-magnitude.
 MIN_PRICE_EQUIV = {
@@ -485,3 +551,86 @@ def signal_for_score(score: float) -> str:
     if score >= 50:
         return "HOLD"
     return "SELL"
+
+
+# --------------------------------------------------------------------------- #
+# Phase F: liquidity cap (applied AFTER the final calibrated/ML score).         #
+# --------------------------------------------------------------------------- #
+def _value_traded(ind: dict) -> Optional[float]:
+    """Best available daily value-traded measure for the liquidity cap.
+
+    Prefers the smoothed 20-day average turnover; falls back to the latest
+    day's turnover. Returns None when neither is available (treated as fully
+    illiquid by the cap).
+    """
+    adv = ind.get("avg_value_traded")
+    if adv is None:
+        adv = ind.get("value_traded")
+    try:
+        return float(adv) if adv is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def liquidity_cap_for(
+    value_traded: Optional[float], market: Optional[Market]
+) -> tuple[Optional[float], bool, Optional[str]]:
+    """Return ``(max_score, illiquid, reason)`` for a given value traded.
+
+    * ``max_score`` is ``None`` when the name is liquid enough to be uncapped.
+    * ``illiquid`` is True when value traded is 0 / null / tiny enough that the
+      stock is *not investable* (max score 50, never BUY).
+    * ``reason`` is a short human explanation when a cap applies, else None.
+
+    Pure: no I/O. Used both by the engine (to cap scores) and by the screener /
+    radar / hero filters (to exclude or warn).
+    """
+    # Missing, null, zero, or negative -> fully illiquid.
+    if value_traded is None or value_traded <= 0:
+        return (
+            ILLIQUID_MAX_SCORE,
+            True,
+            "Liquidity cap applied: no value traded — illiquid, not investable.",
+        )
+
+    tiers = LIQUIDITY_CAP_TIERS.get(market)
+    if tiers is None:
+        # Unknown market: be conservative using the IDX-equivalent tiers.
+        tiers = LIQUIDITY_CAP_TIERS[Market.IDX]
+
+    for threshold, max_score in tiers:
+        if value_traded < threshold:
+            if max_score is None:
+                return (None, False, None)
+            illiquid = max_score <= ILLIQUID_MAX_SCORE
+            reason = (
+                "Liquidity cap applied: value traded below investable "
+                f"threshold (capped at {max_score:.0f})."
+            )
+            return (max_score, illiquid, reason)
+    # At or above the top threshold: no cap.
+    return (None, False, None)
+
+
+def apply_liquidity_cap(
+    score: float, signal: str, ind: dict, market: Optional[Market]
+) -> tuple[float, str, bool, Optional[str]]:
+    """Cap a *final* score/signal by liquidity. Returns the adjusted tuple.
+
+    ``(capped_score, capped_signal, illiquid, reason)``. The technical /ML
+    score can NEVER push an illiquid name above its liquidity tier, and an
+    illiquid name can never carry a BUY signal. Liquid names pass through
+    unchanged.
+    """
+    vt = _value_traded(ind)
+    max_score, illiquid, reason = liquidity_cap_for(vt, market)
+    if max_score is None:
+        return score, signal, False, None
+    capped = min(score, max_score)
+    new_signal = signal
+    # Illiquid names must never be BUY; re-derive the signal from the capped
+    # score and additionally forbid BUY when flagged illiquid.
+    new_signal = signal_for_score(capped)
+    if illiquid and new_signal == "BUY":
+        new_signal = "HOLD"
+    return capped, new_signal, illiquid, reason

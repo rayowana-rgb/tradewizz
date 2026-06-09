@@ -29,6 +29,7 @@ OpportunitiesResult _radar() => const OpportunitiesResult(
           recommendation: 'BUY',
           opportunityReason: 'Momentum breakout.',
           marketRegime: 'BULL',
+          liquidity: 5e9,
         ),
         // Duplicate of BBCA from a lower-scoring engine: should be de-duped.
         Opportunity(
@@ -40,6 +41,7 @@ OpportunitiesResult _radar() => const OpportunitiesResult(
           recommendation: '',
           opportunityReason: 'Lower score.',
           marketRegime: 'NEUTRAL',
+          liquidity: 4e9,
         ),
       ],
       usTop10: [],
@@ -68,6 +70,7 @@ AutoWatchlistSuggestions _auto() => const AutoWatchlistSuggestions(suggestions: 
         signal: 'WATCH',
         origin: 'VALUE',
         reason: 'Undervalued.',
+        liquidity: 2e9,
       ),
     ]);
 
@@ -131,5 +134,45 @@ void main() {
   test('empty feed when no engines provide data', () {
     expect(TodaysIdeas.fromEngines().isEmpty, isTrue);
     expect(const TodaysIdeas.empty().isEmpty, isTrue);
+  });
+
+  // Phase H: an illiquid high-technical name (zero value traded) must never
+  // become the hero / Today's Best Idea, even with a stale elite score.
+  test('illiquid zero-value stock is filtered out of the feed', () {
+    final radar = const OpportunitiesResult(
+      globalTop10: [
+        Opportunity(
+          symbol: 'PUMP',
+          market: Market.idx,
+          name: 'Illiquid Pump',
+          score: 95, // stale/corrupt elite score
+          signal: 'BUY',
+          recommendation: 'BUY',
+          opportunityReason: 'Technical spike.',
+          marketRegime: 'BULL',
+          liquidity: 0, // zero value traded -> illiquid
+        ),
+        Opportunity(
+          symbol: 'GOOD',
+          market: Market.idx,
+          name: 'Liquid Leader',
+          score: 80,
+          signal: 'BUY',
+          recommendation: 'BUY',
+          opportunityReason: 'Healthy uptrend.',
+          marketRegime: 'BULL',
+          liquidity: 5e9,
+        ),
+      ],
+      usTop10: [],
+      idxTop10: [],
+      multibaggerCandidates: [],
+    );
+    final ideas = TodaysIdeas.fromEngines(radar: radar);
+    final symbols = ideas.ideas.map((i) => i.symbol).toList();
+    expect(symbols, contains('GOOD'));
+    expect(symbols, isNot(contains('PUMP')));
+    // The hero (first idea) is the liquid name, not the illiquid pump.
+    expect(ideas.ideas.first.symbol, 'GOOD');
   });
 }

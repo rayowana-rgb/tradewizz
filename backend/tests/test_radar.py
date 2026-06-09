@@ -11,7 +11,8 @@ from app.models import Market, ScreenerCategory, ScreenerMatch, ScreenerResult
 from app.radar.service import RadarService
 
 
-def _match(symbol, score, change, value, cats=None, signal="BUY"):
+def _match(symbol, score, change, value, cats=None, signal="BUY",
+           illiquid=False):
     return ScreenerMatch(
         symbol=symbol,
         name=symbol,
@@ -21,6 +22,8 @@ def _match(symbol, score, change, value, cats=None, signal="BUY"):
         change_percent=change,
         categories=cats or [],
         value_traded=value,
+        illiquid=illiquid,
+        liquidity_note="Illiquid — not investable" if illiquid else None,
     )
 
 
@@ -116,6 +119,47 @@ def test_multibagger_excludes_low_score_or_weak_rs():
     symbols = {c.symbol for c in resp.candidates}
     # TPIA (score 63, negative change) must never qualify.
     assert "TPIA" not in symbols
+
+
+def test_illiquid_high_technical_stock_is_excluded_from_radar():
+    # A microcap with a great (capped) score but flagged illiquid must never
+    # appear in radar / hero / daily picks even though a liquid alternative
+    # exists. Phase H.
+    matches = [
+        _match("GOOD", 80, 2.0, 5e9, [ScreenerCategory.bullish]),
+        _match("PUMP", 50, 9.0, 0.0, [ScreenerCategory.bullish],
+               signal="HOLD", illiquid=True),
+    ]
+    svc = RadarService(
+        screen_provider=_fake_provider({Market.US: matches}),
+        markets=[Market.US],
+        cache=_CacheManager(),
+    )
+    resp = svc.opportunities()
+    symbols = {o.symbol for o in resp.us_top10}
+    assert "PUMP" not in symbols
+    assert "GOOD" in symbols
+    # Daily picks (the hero source) also exclude the illiquid name.
+    picks = {p.symbol for p in svc.daily().picks}
+    assert "PUMP" not in picks
+
+
+def test_morning_brief_prefers_liquid_lower_score_over_illiquid():
+    # A liquid lower-score name beats an illiquid (capped) higher-technical
+    # name as the top opportunity. Phase H.
+    matches = [
+        _match("LIQUID", 72, 1.0, 5e9, [ScreenerCategory.bullish]),
+        _match("ILLIQ", 50, 8.0, 0.0, [ScreenerCategory.bullish],
+               signal="HOLD", illiquid=True),
+    ]
+    svc = RadarService(
+        screen_provider=_fake_provider({Market.US: matches}),
+        markets=[Market.US],
+        cache=_CacheManager(),
+    )
+    top = svc.opportunities().us_top10
+    assert top, "expected at least one opportunity"
+    assert top[0].symbol == "LIQUID"
 
 
 def test_one_bad_market_does_not_break_radar():

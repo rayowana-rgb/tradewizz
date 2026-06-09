@@ -32,6 +32,7 @@ class TradeIdea {
     required this.signal,
     required this.reason,
     required this.source,
+    this.liquidity,
   });
 
   final String symbol;
@@ -41,6 +42,21 @@ class TradeIdea {
   final String signal; // BUY / HOLD / SELL / WATCH
   final String reason;
   final IdeaSource source;
+
+  /// Daily value traded when the source engine reports it (Opportunity Radar /
+  /// Auto Watchlist). ``null`` when the source doesn't carry liquidity.
+  ///
+  /// Phase H defense-in-depth: a name that *claims* an investable-tier score
+  /// (>= [_illiquidScoreFloor]) while reporting zero value traded is a stale /
+  /// corrupt artifact (the fixed backend caps illiquid names at 50). Such a
+  /// name is filtered so it can never become the hero / Today's Best Idea. A
+  /// genuinely illiquid name simply scores low and ranks itself out.
+  final double? liquidity;
+
+  static const double _illiquidScoreFloor = 55;
+
+  bool get isIlliquid =>
+      liquidity != null && liquidity! <= 0 && score >= _illiquidScoreFloor;
 
   /// De-dupe key: same symbol+market is the same idea regardless of engine.
   String get key => '${market.code}:$symbol';
@@ -93,6 +109,9 @@ class TodaysIdeas {
     final byKey = <String, _Ranked>{};
 
     void consider(TradeIdea idea) {
+      // Phase H: an illiquid name (zero value traded reported by the engine) is
+      // never an investable idea and must never surface as the hero.
+      if (idea.isIlliquid) return;
       final boosted = _personalize(idea, prefs);
       final existing = byKey[idea.key];
       // Keep the highest-scoring representation of a symbol across engines.
@@ -128,6 +147,7 @@ class TodaysIdeas {
             ? o.opportunityReason
             : 'Strong opportunity signal detected.',
         source: _sourceForSignal(o.signal, o.marketRegime),
+        liquidity: o.liquidity,
       ));
     }
     for (final o in radar?.multibaggerCandidates ?? const []) {
@@ -154,6 +174,7 @@ class TodaysIdeas {
         signal: s.signal,
         reason: s.reason.isNotEmpty ? s.reason : 'AI watchlist pick.',
         source: _sourceForOrigin(s.origin),
+        liquidity: s.liquidity,
       ));
     }
 

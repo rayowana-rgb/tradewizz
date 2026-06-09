@@ -54,6 +54,44 @@ class MarketIndex {
       );
 }
 
+/// Rule-based Fear/Greed market condition from `GET /v1/market/condition`
+/// (Phase E). Derived purely from the index's recent price action; no LLM.
+class MarketCondition {
+  const MarketCondition({
+    required this.condition,
+    required this.score,
+    required this.reason,
+  });
+
+  /// One of EXTREME_FEAR / FEAR / NEUTRAL / GREED / EXTREME_GREED / UNKNOWN.
+  final String condition;
+
+  /// 0..100 (50 when UNKNOWN).
+  final int score;
+  final String reason;
+
+  /// Human-friendly label, e.g. "Extreme Greed".
+  String get label => switch (condition) {
+        'EXTREME_FEAR' => 'Extreme Fear',
+        'FEAR' => 'Fear',
+        'NEUTRAL' => 'Neutral',
+        'GREED' => 'Greed',
+        'EXTREME_GREED' => 'Extreme Greed',
+        _ => 'Unknown',
+      };
+
+  bool get isKnown => condition != 'UNKNOWN';
+
+  factory MarketCondition.fromJson(Map<String, dynamic> j) => MarketCondition(
+        condition: (j['condition'] ?? 'UNKNOWN').toString(),
+        score: ((j['condition_score'] ?? 50) as num).toInt(),
+        reason: (j['reason'] ?? '').toString(),
+      );
+
+  static const MarketCondition unknown =
+      MarketCondition(condition: 'UNKNOWN', score: 50, reason: '');
+}
+
 /// Parse the `{ "indices": [...] }` envelope.
 List<MarketIndex> parseMarketIndices(Map<String, dynamic> j) {
   final raw = j['indices'];

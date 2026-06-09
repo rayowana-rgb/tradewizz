@@ -408,17 +408,25 @@ screener_snapshot_store = SqliteScreenerSnapshotStore(_SCREENER_CACHE_DB)
 # a short in-memory cache (5 min). Independent of the screener snapshot cache
 # and of the scoring/analysis engine.
 from .market import (  # noqa: E402
+    MarketConditionService,
     MarketIndicesService,
     MarketOverviewService,
 )
 
 market_indices_service = MarketIndicesService()
+market_condition_service = MarketConditionService()
 
 
 def set_market_indices_service(service) -> None:
     """Test hook: swap the indices service (e.g. with a fake fetcher)."""
     global market_indices_service
     market_indices_service = service
+
+
+def set_market_condition_service(service) -> None:
+    """Test hook: swap the market-condition service."""
+    global market_condition_service
+    market_condition_service = service
 
 
 # Dashboard Market Overview (breadth / top mover / value traded / foreign flow).
@@ -504,6 +512,21 @@ def market_indices() -> dict:
     """
     quotes = market_indices_service.get_indices()
     return {"indices": [q.to_dict() for q in quotes]}
+
+
+@app.get(f"{API_PREFIX}/market/condition")
+def market_condition(market: Market) -> dict:
+    """Phase E: rule-based Fear/Greed condition for one market's index.
+
+    Returns ``{condition, condition_score, reason}`` derived purely from the
+    index's recent price action (trend vs moving averages, 20-day return,
+    distance from high/low, volatility, RSI). No LLM. Missing data -> a neutral
+    ``UNKNOWN`` condition (never crashes).
+    """
+    cond = market_condition_service.get(market)
+    out = cond.to_dict()
+    out["market"] = market.value
+    return out
 
 
 @app.get(f"{API_PREFIX}/market/config")

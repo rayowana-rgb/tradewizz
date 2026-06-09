@@ -9,9 +9,22 @@ import '../models/market.dart';
 class SnapshotKeys {
   SnapshotKeys._();
 
-  static String dashboard(Market m) => 'dashboard_snapshot_${m.code}';
-  static const String portfolio = 'portfolio_snapshot';
-  static String watchlist(Market m) => 'watchlist_snapshot_${m.code}';
+  /// Scoring/schema version baked into every cache key (Phase I).
+  ///
+  /// Bump this whenever the scoring engine changes in a way that makes
+  /// previously cached snapshots untrustworthy (e.g. the liquidity-safe
+  /// scoring fix). Because the version is part of the Hive key, old snapshots
+  /// written under a previous version become unreachable and a fresh fetch
+  /// repopulates — stale "illiquid 90+" snapshots can never resurface on Home.
+  ///
+  /// v2 = liquidity-safe scoring (value_traded cap, illiquid never BUY/elite).
+  static const String scoringSchemaVersion = 'v2';
+
+  static String dashboard(Market m) =>
+      'dashboard_snapshot_${scoringSchemaVersion}_${m.code}';
+  static const String portfolio = 'portfolio_snapshot_$scoringSchemaVersion';
+  static String watchlist(Market m) =>
+      'watchlist_snapshot_${scoringSchemaVersion}_${m.code}';
 
   /// How long a stored snapshot is treated as fresh before a background
   /// refresh is attempted. (The backend caches with its own, longer TTLs;
@@ -33,6 +46,6 @@ class SnapshotKeys {
   /// resolved dynamically from the cache).
   static bool isSnapshotKey(String key) =>
       key.startsWith('dashboard_snapshot') ||
-      key == portfolio ||
+      key.startsWith('portfolio_snapshot') ||
       key.startsWith('watchlist_snapshot');
 }

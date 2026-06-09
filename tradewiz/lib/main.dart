@@ -8,9 +8,9 @@ import 'home/activation_metrics.dart';
 import 'home/activation_scope.dart';
 import 'models/market.dart';
 import 'pages/account_page.dart';
+import 'pages/ai_analysis_page.dart';
 import 'pages/home_page.dart';
 import 'pages/onboarding_page.dart';
-import 'pages/portfolio_page.dart';
 import 'pages/screener_page.dart';
 import 'pages/watchlist_page.dart';
 import 'repositories/stock_repository.dart';
@@ -174,18 +174,19 @@ class _HomeShellState extends State<HomeShell> {
     }
   }
 
-  // Phase H: final navigation — Home / Watchlist / Explore / Portfolio / Account.
+  // Final navigation — Home / Watchlist / Explore / AI Analysis / Account.
+  // (Portfolio moved into Account, which is now the portfolio hub.)
   @override
   Widget build(BuildContext context) {
     final pages = [
       HomePage(market: _market),
       WatchlistPage(market: _market),
       ScreenerPage(market: _market),
-      const PortfolioPage(),
+      AiAnalysisPage(market: _market),
       const AccountPage(),
     ];
 
-    const titles = ['Home', 'Watchlist', 'Explore', 'Portfolio', 'Account'];
+    const titles = ['Home', 'Watchlist', 'Explore', 'AI Analysis', 'Account'];
     // Market selector only on market-scoped tabs (Home, Watchlist, Explore).
     const marketScoped = {0, 1, 2};
 
@@ -229,9 +230,9 @@ class _HomeShellState extends State<HomeShell> {
             label: 'Explore',
           ),
           NavigationDestination(
-            icon: Icon(Icons.account_balance_wallet_outlined),
-            selectedIcon: Icon(Icons.account_balance_wallet),
-            label: 'Portfolio',
+            icon: Icon(Icons.auto_awesome_outlined),
+            selectedIcon: Icon(Icons.auto_awesome),
+            label: 'AI Analysis',
           ),
           NavigationDestination(
             icon: Icon(Icons.person_outline),

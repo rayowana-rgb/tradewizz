@@ -157,7 +157,9 @@ def test_multifactor_score_is_deterministic_and_bounded():
     close = 100 + np.arange(n) * 1.0
     df = pd.DataFrame({
         "Open": close, "High": close + 1, "Low": close - 1, "Close": close,
-        "Volume": np.full(n, 1000.0),
+        # Liquid volume so the Phase F liquidity cap does not apply here; this
+        # test pins the multi-factor composite, not the liquidity floor.
+        "Volume": np.full(n, 50_000_000.0),
     })
     from app import indicators
     ind = indicators.compute_all(df)
@@ -167,7 +169,7 @@ def test_multifactor_score_is_deterministic_and_bounded():
     # incomplete -> HOLD band (not BUY) without RS/regime context.
     assert 0.0 <= score <= 100.0
     assert signal in ("HOLD", "BUY")
-    assert score == 63.5  # stable composite for this fixture
+    assert score == 66.0  # stable composite for this (liquid) fixture
     # Re-running yields the identical score (pure function, no randomness).
     assert eng._signal_and_score(ind, cats)[1] == score
 

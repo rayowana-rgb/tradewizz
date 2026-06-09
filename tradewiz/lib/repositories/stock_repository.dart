@@ -143,6 +143,28 @@ class StockRepository {
     return parseMarketIndices(j);
   }
 
+  /// Index quote for a single market (filtered from /market/indices).
+  Future<MarketIndex?> marketIndex(Market market) async {
+    final list = await marketIndices();
+    for (final q in list) {
+      if (q.market == market.code) return q;
+    }
+    return null;
+  }
+
+  /// Rule-based Fear/Greed condition for one market. Backs
+  /// `/v1/market/condition` (Phase E). Returns [MarketCondition.unknown] on a
+  /// data-source failure rather than throwing, so Home degrades gracefully.
+  Future<MarketCondition> marketCondition(Market market) async {
+    try {
+      final j =
+          await _client.authGet('/market/condition?market=${market.code}');
+      return MarketCondition.fromJson(j);
+    } catch (_) {
+      return MarketCondition.unknown;
+    }
+  }
+
   /// Dashboard Market Overview. Backs `/v1/market/overview/{market}`.
   ///
   /// Never falls back to mock data: a failure throws [ApiException] so the

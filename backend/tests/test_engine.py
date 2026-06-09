@@ -35,14 +35,18 @@ def uptrend(n=300, start=100.0, step=1.0):
     """
     rng = np.random.default_rng(7)
     close = start + np.arange(n) * step + rng.normal(0.0, step * 1.5, n)
-    vol = np.linspace(1000.0, 3000.0, n) * rng.uniform(0.85, 1.3, n)
+    # Realistic liquidity: a healthy IDX large-cap trades well above the
+    # investable value-traded floor (Phase F). close ~400 * vol ~30M ->
+    # value traded ~Rp12B, clearing the Rp10B liquidity cap so the BUY path is
+    # exercised on a genuinely liquid name.
+    vol = np.linspace(10_000_000.0, 30_000_000.0, n) * rng.uniform(0.85, 1.3, n)
     return make_ohlcv(close, volume=vol, n=n)
 
 
 def downtrend(n=300, start=400.0, step=1.0):
     rng = np.random.default_rng(13)
     close = start - np.arange(n) * step + rng.normal(0.0, step * 1.5, n)
-    vol = np.linspace(3000.0, 1000.0, n) * rng.uniform(0.85, 1.3, n)
+    vol = np.linspace(30_000_000.0, 10_000_000.0, n) * rng.uniform(0.85, 1.3, n)
     return make_ohlcv(close, volume=vol, n=n)
 
 

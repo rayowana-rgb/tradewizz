@@ -314,6 +314,10 @@ class AnalysisEngine:
         # Lazy per-market index context (regime + 3m index return) cache. Keyed
         # by market; refreshed when the cached index fetch returns new data.
         self._index_ctx_cache: dict = {}
+        # Phase F: last liquidity-cap outcome from _signal_and_score (so the
+        # immediate caller — analyze()/screener — can surface it).
+        self._last_liquidity_illiquid: bool = False
+        self._last_liquidity_reason: Optional[str] = None
 
     # -- market context (relative strength + regime) ----------------------
 
@@ -597,7 +601,15 @@ class AnalysisEngine:
         technical = scoring.technical_score(ind, ctx, market)
         final = scoring.blend_with_ml(technical, win_probability)
         signal = scoring.signal_for_score(final)
-        return signal, round(final, 1)
+        # Phase F: liquidity cap is the LAST step — technical/ML can never push
+        # an illiquid name above its value-traded tier, and an illiquid name
+        # can never be BUY. Stash the reason so analyze() can surface it.
+        capped, signal, illiquid, reason = scoring.apply_liquidity_cap(
+            final, signal, ind, market
+        )
+        self._last_liquidity_illiquid = illiquid
+        self._last_liquidity_reason = reason
+        return signal, round(capped, 1)
 
     def _highlights(
         self,
@@ -785,6 +797,8 @@ class AnalysisEngine:
                 trailing_stop_percent=ts_pct,
                 trailing_stop_price=ts_price,
                 profit_probability=profit_prob,
+                illiquid=self._last_liquidity_illiquid,
+                liquidity_note=self._last_liquidity_reason,
             )
         except Exception as exc:  # noqa: BLE001 - intentional safe fallback
             logger.warning("analyze fell back to mock for %s: %s", ticker, exc)
@@ -966,6 +980,7 @@ class AnalysisEngine:
                 ind, cats, ctx=ctx, market=market
             )
             change_pct = _daily_change_pct(df)
+            illiquid = self._last_liquidity_illiquid
             return ScreenerMatch(
                 symbol=sym.upper(),
                 name=names.get(sym.upper(), sym.upper()),
@@ -975,6 +990,10 @@ class AnalysisEngine:
                 change_percent=round(change_pct, 2),
                 categories=cats,
                 value_traded=round(ind.get("value_traded") or 0.0, 2),
+                illiquid=illiquid,
+                liquidity_note=(
+                    "Illiquid — not investable" if illiquid else None
+                ),
             )
         except Exception as exc:  # noqa: BLE001
             # Keep the universe fully populated; response stays 200 "live".

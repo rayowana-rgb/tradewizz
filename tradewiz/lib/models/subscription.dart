@@ -259,6 +259,7 @@ class Opportunity {
     required this.recommendation,
     required this.opportunityReason,
     required this.marketRegime,
+    this.liquidity = 0,
   });
 
   final String symbol;
@@ -269,6 +270,9 @@ class Opportunity {
   final String recommendation;
   final String opportunityReason;
   final String marketRegime;
+  /// Daily value traded (liquidity). Used to keep illiquid names out of the
+  /// hero / Today's Ideas feed (Phase H).
+  final double liquidity;
 
   factory Opportunity.fromJson(Map<String, dynamic> j) => Opportunity(
         symbol: j['symbol'] as String,
@@ -279,6 +283,7 @@ class Opportunity {
         recommendation: (j['recommendation'] ?? '') as String,
         opportunityReason: (j['opportunity_reason'] ?? '') as String,
         marketRegime: (j['market_regime'] ?? 'NEUTRAL') as String,
+        liquidity: ((j['liquidity'] ?? 0) as num).toDouble(),
       );
 }
 
