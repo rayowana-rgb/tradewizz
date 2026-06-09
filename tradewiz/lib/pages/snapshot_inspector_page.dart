@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../cache/cache_entry.dart';
 import '../cache/cache_service.dart';
+import '../cdn/cdn_repository.dart';
 import '../models/market.dart';
 import '../snapshot/snapshot_keys.dart';
 import '../snapshot/snapshot_metrics.dart';
@@ -20,11 +21,13 @@ class SnapshotInspectorPage extends StatefulWidget {
     super.key,
     this.service,
     this.repository,
+    this.cdn,
     this.market = Market.us,
   });
 
   final CacheService? service;
   final SnapshotRepository? repository;
+  final CdnRepository? cdn;
   final Market market;
 
   @override
@@ -35,6 +38,8 @@ class _SnapshotInspectorPageState extends State<SnapshotInspectorPage> {
   CacheService get _cache => widget.service ?? CacheService.instance;
   SnapshotRepository get _repo =>
       widget.repository ?? RepositoryScope.snapshotOf(context);
+  CdnRepository get _cdn => widget.cdn ?? RepositoryScope.cdnOf(context);
+  SnapshotSource _lastSource = SnapshotSource.hive;
 
   bool _busy = false;
   String? _message;
@@ -134,6 +139,8 @@ class _SnapshotInspectorPageState extends State<SnapshotInspectorPage> {
               ),
             for (final r in rows) _snapshotTile(r),
             const SizedBox(height: 16),
+            _cdnCard(),
+            const SizedBox(height: 16),
             _metricsCard(m),
             const SizedBox(height: 16),
             SizedBox(
@@ -206,8 +213,116 @@ class _SnapshotInspectorPageState extends State<SnapshotInspectorPage> {
     );
   }
 
+  /// Phase J: CDN status — source, manifest/snapshot version, last sync, size.
+  Widget _cdnCard() {
+    final dashKey = SnapshotKeys.dashboard(widget.market);
+    final entry = _cache.readEntry(dashKey);
+    final manifest = _cdn.localManifest;
+    final lastSync = _cdn.lastCdnSync;
+    final size = entry == null ? 0 : entry.toString().length;
+    final snapshotVersion = manifest?.markets[widget.market.code] ??
+        manifest?.hashes['markets/${widget.market.code}/dashboard.json'] ??
+        '—';
+    return Card(
+      key: const Key('snapshot_cdn_card'),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.cloud_outlined, color: AppColors.seed),
+                const SizedBox(width: 8),
+                const Text('Snapshot CDN',
+                    style: TextStyle(fontWeight: FontWeight.w700)),
+                const Spacer(),
+                Container(
+                  key: const Key('snapshot_source_badge'),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.seed.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text('Source: ${_lastSource.label}',
+                      style: const TextStyle(
+                          fontSize: 11, fontWeight: FontWeight.w700)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            _kv('CDN enabled', _cdn.enabled ? 'yes' : 'no'),
+            _kv('Manifest version', manifest?.version ?? '—'),
+            _kv('Snapshot version',
+                snapshotVersion.length > 12
+                    ? '${snapshotVersion.substring(0, 12)}…'
+                    : snapshotVersion),
+            _kv('Last CDN sync',
+                lastSync == null ? 'never' : lastSync.toIso8601String()),
+            _kv('Download size', '${size}B'),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.tonal(
+                key: const Key('snapshot_cdn_sync'),
+                onPressed: _busy ? null : _syncCdn,
+                child: const Text('Sync from CDN'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _kv(String k, String v) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 1),
+        child: Row(
+          children: [
+            Text('$k: ',
+                style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            Expanded(
+              child: Text(v,
+                  style: const TextStyle(fontSize: 12),
+                  overflow: TextOverflow.ellipsis),
+            ),
+          ],
+        ),
+      );
+
+  Future<void> _syncCdn() async {
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      final res = await _cdn.sync(widget.market);
+      setState(() {
+        _lastSource = res.source;
+        _message = res.changed
+            ? 'Downloaded ${res.bytes}B from CDN (v${res.manifestVersion}).'
+            : 'CDN unchanged — using ${res.source.label}.';
+      });
+    } catch (_) {
+      setState(() => _message = 'CDN sync failed (kept Hive snapshot).');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   Widget _metricsCard(SnapshotMetrics metrics) {
-    final map = metrics.toMap();
+    // Merge snapshot-repo metrics with the CDN repo metrics so the inspector
+    // shows the full Phase I counter set.
+    final map = <String, Object>{...metrics.toMap()};
+    _cdn.metrics.toMap().forEach((k, v) {
+      if (k.startsWith('cdn_') ||
+          k == 'snapshot_update' ||
+          k == 'snapshot_bytes' ||
+          k == 'offline_snapshot_load') {
+        map[k] = v;
+      }
+    });
     return Card(
       key: const Key('snapshot_metrics'),
       child: Padding(

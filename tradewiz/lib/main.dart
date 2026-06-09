@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'cache/cache_service.dart';
 import 'cache/cached_repository.dart';
+import 'cdn/cdn_repository.dart';
+import 'cdn/manifest_service.dart';
 import 'models/market.dart';
 import 'pages/account_page.dart';
 import 'pages/ai_analysis_page.dart';
@@ -74,6 +76,9 @@ class _TradeWizAppState extends State<TradeWizApp> {
       // Offline-first snapshot repository on the shared persistent cache.
       snapshot:
           SnapshotRepository(_repository, cache: CacheService.instance),
+      // Global Snapshot CDN (Phase 7): manifest-driven, delta downloads, served
+      // to all users from the edge. Uses the shared Hive cache.
+      cdn: CdnRepository(ManifestService(), cache: CacheService.instance),
       child: AuthScope(
         store: _auth,
         child: EntitlementsScope(

@@ -44,9 +44,19 @@ class SnapshotScheduler:
         markets: Optional[List[Market]] = None,
         clock: Callable[[], float] = time.monotonic,
         tick_seconds: float = 5.0,
+        publisher=None,
+        publish_on_refresh: bool = True,
+        invalidate_cdn: bool = False,
     ) -> None:
         self._svc = service
         self._markets = markets or [Market.US]
+        # Phase D: when a publisher is wired, every tick that refreshed any
+        # section publishes the new snapshots to the CDN. Publishing NEVER
+        # happens on a user request — only here in the scheduler.
+        self._publisher = publisher
+        self._publish_on_refresh = publish_on_refresh
+        self._invalidate_cdn = invalidate_cdn
+        self.last_publish = None
         self._clock = clock
         self._tick_seconds = tick_seconds
         self._thread: Optional[threading.Thread] = None
@@ -98,6 +108,14 @@ class SnapshotScheduler:
                     ran.append(name)
                 except Exception:  # noqa: BLE001 — best effort
                     pass
+        # Phase D: publish to CDN after refreshing (scheduler-only).
+        if ran and self._publisher is not None and self._publish_on_refresh:
+            try:
+                self.last_publish = self._publisher.publish(
+                    invalidate=self._invalidate_cdn
+                )
+            except Exception:  # noqa: BLE001 — best effort
+                pass
         return ran
 
     def _run_task(self, name: str) -> None:

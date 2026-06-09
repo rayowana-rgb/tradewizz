@@ -2,6 +2,8 @@ import 'package:flutter/widgets.dart';
 
 import '../cache/cache_service.dart';
 import '../cache/cached_repository.dart';
+import '../cdn/cdn_repository.dart';
+import '../cdn/manifest_service.dart';
 import '../repositories/stock_repository.dart';
 import '../snapshot/snapshot_repository.dart';
 
@@ -14,6 +16,7 @@ class RepositoryScope extends InheritedWidget {
     required this.repository,
     CachedRepository? cached,
     SnapshotRepository? snapshot,
+    CdnRepository? cdn,
     required super.child,
   })  : cached = cached ??
             // Default to an ISOLATED in-memory cache so each scope (e.g. a
@@ -21,7 +24,9 @@ class RepositoryScope extends InheritedWidget {
             // Hive-backed [CacheService.instance] explicitly in main().
             CachedRepository(repository, cache: CacheService.inMemory()),
         snapshot = snapshot ??
-            SnapshotRepository(repository, cache: CacheService.inMemory());
+            SnapshotRepository(repository, cache: CacheService.inMemory()),
+        cdn = cdn ??
+            CdnRepository(ManifestService(), cache: CacheService.inMemory());
 
   final StockRepository repository;
 
@@ -31,6 +36,9 @@ class RepositoryScope extends InheritedWidget {
 
   /// Offline-first snapshot repository (Phase 6).
   final SnapshotRepository snapshot;
+
+  /// Global Snapshot CDN repository (Phase 7).
+  final CdnRepository cdn;
 
   /// Returns the provided repository, or a default one if no scope exists
   /// (keeps widgets usable in isolation).
@@ -54,9 +62,17 @@ class RepositoryScope extends InheritedWidget {
     return scope?.snapshot ?? SnapshotRepository(StockRepository());
   }
 
+  /// Returns the CDN repository, or a default one if no scope exists.
+  static CdnRepository cdnOf(BuildContext context) {
+    final scope =
+        context.dependOnInheritedWidgetOfExactType<RepositoryScope>();
+    return scope?.cdn ?? CdnRepository(ManifestService());
+  }
+
   @override
   bool updateShouldNotify(RepositoryScope oldWidget) =>
       oldWidget.repository != repository ||
       oldWidget.cached != cached ||
-      oldWidget.snapshot != snapshot;
+      oldWidget.snapshot != snapshot ||
+      oldWidget.cdn != cdn;
 }

@@ -6,6 +6,7 @@ import '../models/market.dart';
 import '../models/market_index.dart';
 import '../models/market_overview.dart';
 import '../models/screener_result.dart';
+import '../cdn/cdn_repository.dart';
 import '../repositories/stock_repository.dart';
 import '../snapshot/snapshot_repository.dart';
 import '../services/api_client.dart';
@@ -35,6 +36,7 @@ class _DashboardPageState extends State<DashboardPage> {
   StockRepository? _repo;
   CachedRepository? _cached;
   SnapshotRepository? _snapshot;
+  CdnRepository? _cdn;
   bool _loading = false;
   bool _snapshotOffline = false;
   DataSource? _source;
@@ -60,6 +62,7 @@ class _DashboardPageState extends State<DashboardPage> {
     _snapshot ??= widget.repository != null
         ? SnapshotRepository(widget.repository!, cache: CacheService.inMemory())
         : RepositoryScope.snapshotOf(context);
+    _cdn ??= RepositoryScope.cdnOf(context);
     _load();
     // Phase K: warm Morning Brief + Rotation + Indices in parallel on first
     // open so the next launch is near-instant.
@@ -72,13 +75,36 @@ class _DashboardPageState extends State<DashboardPage> {
         // next launch can render straight from Hive.
         _snapshot!.preload(token, widget.market);
       }
+      // Phase 7 Phase F: render from Hive now (above), then in the background
+      // check the CDN manifest and download ONLY changed objects. Never blocks
+      // the UI; offline keeps the Hive snapshot.
+      _syncCdn();
+    }
+  }
+
+  /// Phase F/G/H: background CDN sync. On a real change it updates Hive; we
+  /// then nudge the SWR widgets to re-read by reloading the page state.
+  Future<void> _syncCdn() async {
+    final cdn = _cdn;
+    if (cdn == null || !cdn.enabled) return;
+    try {
+      final res = await cdn.sync(widget.market);
+      if (!mounted) return;
+      if (res.changed) {
+        setState(() {}); // re-read updated Hive snapshot
+      }
+    } catch (_) {
+      // offline-first: ignore, Hive already rendered.
     }
   }
 
   @override
   void didUpdateWidget(covariant DashboardPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.market != widget.market) _load();
+    if (oldWidget.market != widget.market) {
+      _load();
+      _syncCdn();
+    }
   }
 
   Future<void> _load({bool forceSnapshot = false}) async {
@@ -90,6 +116,8 @@ class _DashboardPageState extends State<DashboardPage> {
       _loadIndex(),
       _loadOverview(),
       _refreshSnapshot(force: forceSnapshot),
+      // Phase K: pull-to-refresh also re-checks the CDN manifest.
+      if (forceSnapshot) _syncCdn(),
     ]);
     if (mounted) setState(() => _loading = false);
   }

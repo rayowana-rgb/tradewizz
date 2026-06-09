@@ -11,6 +11,14 @@ class SnapshotMetrics {
   int refreshSuccessCount = 0;
   int refreshFailureCount = 0;
 
+  // --- CDN counters (Phase 7 / Phase I) ---------------------------------
+  int cdnManifestFetchCount = 0;
+  int cdnSnapshotDownloadCount = 0;
+  int cdnCacheHitCount = 0; // manifest unchanged -> served from Hive
+  int cdnCacheMissCount = 0; // manifest changed -> downloaded
+  int snapshotUpdateCount = 0;
+  int snapshotBytes = 0;
+
   /// Rolling sum + count of successful refresh times (ms) -> average.
   int _loadTimeSumMs = 0;
   int _loadTimeSamples = 0;
@@ -38,6 +46,16 @@ class SnapshotMetrics {
 
   void refreshFailure() => refreshFailureCount++;
 
+  void cdnManifestFetch() => cdnManifestFetchCount++;
+  void cdnCacheHit() => cdnCacheHitCount++;
+  void cdnCacheMiss() => cdnCacheMissCount++;
+  void cdnSnapshotDownload(int bytes) {
+    cdnSnapshotDownloadCount++;
+    snapshotBytes += bytes;
+  }
+
+  void snapshotUpdate() => snapshotUpdateCount++;
+
   Map<String, Object> toMap() => {
         'snapshot_load_time': averageLoadTimeMs,
         'snapshot_load_count': snapshotLoadCount,
@@ -46,6 +64,13 @@ class SnapshotMetrics {
         'offline_load': offlineLoadCount,
         'snapshot_refresh_success': refreshSuccessCount,
         'snapshot_refresh_failure': refreshFailureCount,
+        'cdn_manifest_fetch': cdnManifestFetchCount,
+        'cdn_snapshot_download': cdnSnapshotDownloadCount,
+        'cdn_cache_hit': cdnCacheHitCount,
+        'cdn_cache_miss': cdnCacheMissCount,
+        'snapshot_update': snapshotUpdateCount,
+        'snapshot_bytes': snapshotBytes,
+        'offline_snapshot_load': offlineLoadCount,
       };
 
   void reset() {
@@ -55,6 +80,12 @@ class SnapshotMetrics {
     offlineLoadCount = 0;
     refreshSuccessCount = 0;
     refreshFailureCount = 0;
+    cdnManifestFetchCount = 0;
+    cdnSnapshotDownloadCount = 0;
+    cdnCacheHitCount = 0;
+    cdnCacheMissCount = 0;
+    snapshotUpdateCount = 0;
+    snapshotBytes = 0;
     _loadTimeSumMs = 0;
     _loadTimeSamples = 0;
   }

@@ -855,9 +855,33 @@ def set_snapshot_service(service) -> None:
     _set_snapshot_service(service)
 
 
+# Phase 7 (Global Snapshot CDN): publish generated snapshots to object storage
+# (Cloudflare R2 by default, AWS S3 supported) so every user consumes the SAME
+# snapshot from the edge. Publishing happens ONLY in the scheduler below —
+# never on a user request. No scoring/ranking/accounting lives here.
+from .cdn import SnapshotPublisher, build_storage_from_env  # noqa: E402
+from .cdn.models import MARKETS as _CDN_MARKETS  # noqa: E402
+
+_cdn_storage = build_storage_from_env()
+_snapshot_publisher = SnapshotPublisher(
+    _snapshot_service, _cdn_storage, markets=list(_CDN_MARKETS)
+)
+
+
+def set_snapshot_publisher(publisher) -> None:
+    """Test hook: swap the CDN publisher."""
+    global _snapshot_publisher
+    _snapshot_publisher = publisher
+    _snapshot_scheduler._publisher = publisher  # noqa: SLF001
+
+
 # Background snapshot scheduler (Phase E). Disabled under pytest / when
 # TRADEWIZZ_DISABLE_SCHEDULER is set so tests stay deterministic.
-_snapshot_scheduler = SnapshotScheduler(_snapshot_service)
+_snapshot_scheduler = SnapshotScheduler(
+    _snapshot_service,
+    publisher=_snapshot_publisher,
+    invalidate_cdn=bool(os.environ.get("TRADEWIZZ_CDN_INVALIDATE")),
+)
 
 if not os.environ.get("TRADEWIZZ_DISABLE_SCHEDULER") and \
         not os.environ.get("PYTEST_CURRENT_TEST"):
