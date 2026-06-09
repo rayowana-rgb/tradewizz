@@ -12,9 +12,9 @@ import '../services/repository_scope.dart';
 import '../services/social_sign_in.dart';
 import '../theme.dart';
 import '../widgets/rebalance.dart';
+import 'advanced_page.dart';
 import 'cache_inspector_page.dart';
 import 'snapshot_inspector_page.dart';
-import 'journal_page.dart';
 import '../widgets/premium.dart';
 import 'ai_analysis_page.dart';
 import 'auth_pages.dart';
@@ -305,29 +305,18 @@ class _AccountPageState extends State<AccountPage> {
           RebalanceCard(repository: widget.repository),
           const SizedBox(height: 24),
 
-          // --- Portfolio Journal & AI Manager ---------------------------
+          // --- Advanced (Phase F): power-user features off the main path -
           Card(
-            key: const Key('account_journal_link'),
+            key: const Key('account_advanced_link'),
             child: ListTile(
-              leading: const Icon(Icons.smart_toy_outlined,
-                  color: AppColors.seed),
-              title: const Text('AI Portfolio Manager & Journal',
+              leading: const Icon(Icons.tune, color: AppColors.seed),
+              title: const Text('Advanced',
                   style: TextStyle(fontWeight: FontWeight.w700)),
               subtitle: const Text(
-                  'Rule-based guidance + your simulated trade diary.'),
+                  'Global Rotation, Journal, Analytics & Cache.'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => Scaffold(
-                    appBar: AppBar(
-                      title: const Text('Portfolio Insights',
-                          style: TextStyle(fontWeight: FontWeight.w700)),
-                    ),
-                    body: SafeArea(
-                      child: JournalPage(repository: widget.repository),
-                    ),
-                  ),
-                ),
+                MaterialPageRoute(builder: (_) => const AdvancedPage()),
               ),
             ),
           ),

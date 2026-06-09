@@ -4,10 +4,13 @@ import 'cache/cache_service.dart';
 import 'cache/cached_repository.dart';
 import 'cdn/cdn_repository.dart';
 import 'cdn/manifest_service.dart';
+import 'home/activation_metrics.dart';
+import 'home/activation_scope.dart';
 import 'models/market.dart';
 import 'pages/account_page.dart';
-import 'pages/ai_analysis_page.dart';
-import 'pages/dashboard_page.dart';
+import 'pages/home_page.dart';
+import 'pages/onboarding_page.dart';
+import 'pages/portfolio_page.dart';
 import 'pages/screener_page.dart';
 import 'pages/watchlist_page.dart';
 import 'repositories/stock_repository.dart';
@@ -16,6 +19,8 @@ import 'services/auth_scope.dart';
 import 'services/auth_store.dart';
 import 'services/entitlements_scope.dart';
 import 'services/repository_scope.dart';
+import 'services/user_prefs_scope.dart';
+import 'services/user_prefs_store.dart';
 import 'services/watchlist_scope.dart';
 import 'services/watchlist_store.dart';
 import 'theme.dart';
@@ -45,6 +50,19 @@ class _TradeWizAppState extends State<TradeWizApp> {
   final StockRepository _repository = StockRepository();
   late final EntitlementsStore _entitlements =
       EntitlementsStore(repository: _repository);
+  // Phase A: personalization profile (local + best-effort backend sync).
+  late final UserPrefsStore _prefs = UserPrefsStore(
+    persistence: SharedPrefsUserPrefsPersistence(),
+  );
+  // Phase I: activation/retention funnel instrumentation.
+  late final ActivationMetrics _metrics = ActivationMetrics(
+    sink: (event, {meta = ''}) async {
+      final token = _auth.token;
+      if (token != null) {
+        await _repository.recordPreviewEvent(token, event, meta: meta);
+      }
+    },
+  );
 
   void _syncEntitlements() => _entitlements.syncToken(_auth.token);
 
@@ -52,6 +70,7 @@ class _TradeWizAppState extends State<TradeWizApp> {
   void initState() {
     super.initState();
     _watchlist.load();
+    _prefs.load();
     // Reload entitlements whenever the session token changes (login/logout).
     _auth.addListener(_syncEntitlements);
     _auth.load();
@@ -63,6 +82,8 @@ class _TradeWizAppState extends State<TradeWizApp> {
     _watchlist.dispose();
     _auth.dispose();
     _entitlements.dispose();
+    _prefs.dispose();
+    _metrics.dispose();
     super.dispose();
   }
 
@@ -85,16 +106,45 @@ class _TradeWizAppState extends State<TradeWizApp> {
           store: _entitlements,
           child: WatchlistScope(
             store: _watchlist,
-            child: MaterialApp(
-            title: 'TradeWiz',
-            debugShowCheckedModeBanner: false,
-              theme: buildTradeWizTheme(),
-              home: const HomeShell(),
+            child: UserPrefsScope(
+              store: _prefs,
+              child: ActivationScope(
+                metrics: _metrics,
+                child: MaterialApp(
+                  title: 'TradeWizz',
+                  debugShowCheckedModeBanner: false,
+                  theme: buildTradeWizTheme(),
+                  home: const RootGate(),
+                ),
+              ),
             ),
           ),
         ),
       ),
     );
+  }
+}
+
+/// Decides between onboarding (first launch) and the main shell (Phase A/H).
+class RootGate extends StatelessWidget {
+  const RootGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final prefs = UserPrefsScope.of(context);
+    if (!prefs.isLoaded) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (!prefs.onboarded) {
+      return OnboardingPage(
+        // Completing onboarding updates prefs.onboarded, which rebuilds this
+        // gate via UserPrefsScope and swaps to the main shell.
+        onDone: () {},
+      );
+    }
+    return const HomeShell();
   }
 }
 
@@ -115,18 +165,29 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Lead with the user's primary onboarding market the first time.
+    final prefs = UserPrefsScope.maybeOf(context)?.prefs;
+    if (prefs != null && prefs.markets.isNotEmpty) {
+      _market = prefs.primaryMarket;
+    }
+  }
+
+  // Phase H: final navigation — Home / Watchlist / Explore / Portfolio / Account.
+  @override
   Widget build(BuildContext context) {
     final pages = [
-      DashboardPage(market: _market),
-      ScreenerPage(market: _market),
+      HomePage(market: _market),
       WatchlistPage(market: _market),
-      AiAnalysisPage(market: _market),
+      ScreenerPage(market: _market),
+      const PortfolioPage(),
       const AccountPage(),
     ];
 
-    final titles = [
-      'Dashboard', 'Screener', 'Watchlist', 'AI Analysis', 'Account',
-    ];
+    const titles = ['Home', 'Watchlist', 'Explore', 'Portfolio', 'Account'];
+    // Market selector only on market-scoped tabs (Home, Watchlist, Explore).
+    const marketScoped = {0, 1, 2};
 
     return Scaffold(
       appBar: AppBar(
@@ -135,8 +196,7 @@ class _HomeShellState extends State<HomeShell> {
           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 22),
         ),
         actions: [
-          // Market selector only on market-scoped tabs (Dashboard, Watchlist).
-          if (_index == 0 || _index == 2)
+          if (marketScoped.contains(_index))
             Padding(
               padding: const EdgeInsets.only(right: 4),
               child: MarketSelector(
@@ -154,14 +214,9 @@ class _HomeShellState extends State<HomeShell> {
         onDestinationSelected: (i) => setState(() => _index = i),
         destinations: const [
           NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard),
-            label: 'Dashboard',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.radar_outlined),
-            selectedIcon: Icon(Icons.radar),
-            label: 'Screener',
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: 'Home',
           ),
           NavigationDestination(
             icon: Icon(Icons.star_outline),
@@ -169,9 +224,14 @@ class _HomeShellState extends State<HomeShell> {
             label: 'Watchlist',
           ),
           NavigationDestination(
-            icon: Icon(Icons.auto_awesome_outlined),
-            selectedIcon: Icon(Icons.auto_awesome),
-            label: 'AI Analysis',
+            icon: Icon(Icons.explore_outlined),
+            selectedIcon: Icon(Icons.explore),
+            label: 'Explore',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.account_balance_wallet_outlined),
+            selectedIcon: Icon(Icons.account_balance_wallet),
+            label: 'Portfolio',
           ),
           NavigationDestination(
             icon: Icon(Icons.person_outline),

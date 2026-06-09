@@ -18,6 +18,11 @@ class WatchlistScope extends InheritedNotifier<WatchlistStore> {
     return scope!.notifier!;
   }
 
+  /// Like [of] but returns null when no scope is present (e.g. onboarding
+  /// rendered in isolation in tests).
+  static WatchlistStore? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<WatchlistScope>()?.notifier;
+
   /// Read without subscribing to rebuilds (for one-off actions like add).
   static WatchlistStore read(BuildContext context) {
     final scope = context
