@@ -17,6 +17,7 @@ import '../services/watchlist_scope.dart';
 import '../snapshot/snapshot_models.dart';
 import '../snapshot/snapshot_repository.dart';
 import '../theme.dart';
+import 'account_page.dart';
 import 'ai_analysis_page.dart';
 
 /// Phase B/D/E — the redesigned, personalized AI Home screen.
@@ -180,7 +181,11 @@ class _HomePageState extends State<HomePage> {
             ideas: ideas,
           ),
           const SizedBox(height: 16),
-          _PortfolioCard(account: _account, positions: _positions),
+          _PortfolioCard(
+            account: _account,
+            positions: _positions,
+            onOpenPortfolio: _openPortfolio,
+          ),
           const SizedBox(height: 16),
           _WatchlistCard(market: widget.market),
           const SizedBox(height: 16),
@@ -207,6 +212,12 @@ class _HomePageState extends State<HomePage> {
         market: idea.market,
         repository: _repo,
       ),
+    ));
+  }
+
+  void _openPortfolio() {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => AccountPage(repository: _repo),
     ));
   }
 
@@ -736,48 +747,190 @@ class _MiniStat extends StatelessWidget {
 // 3) Portfolio (value + P&L + best/worst)
 // =========================================================================
 class _PortfolioCard extends StatelessWidget {
-  const _PortfolioCard({required this.account, required this.positions});
+  const _PortfolioCard({
+    required this.account,
+    required this.positions,
+    required this.onOpenPortfolio,
+  });
   final SimAccount? account;
   final List<SimPosition> positions;
+  final VoidCallback onOpenPortfolio;
 
   @override
   Widget build(BuildContext context) {
     final a = account;
-    final best = _extreme(highest: true);
-    final worst = _extreme(highest: false);
+    // Phase 11: premium "wealth dashboard" hero. Presentation only — every
+    // number below comes straight from the existing SimAccount / SimPosition
+    // data (no new API, no recalculation of the portfolio engine).
+    if (a == null) {
+      return Card(
+        key: const Key('home_portfolio'),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: const [
+              Text('My Portfolio',
+                  style: TextStyle(fontWeight: FontWeight.w800)),
+              SizedBox(height: 8),
+              Text('Start a simulated portfolio to track P&L here.',
+                  style: TextStyle(color: Colors.grey)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final totalPnl = a.realizedPnl + a.unrealizedPnl;
+    final basis = a.equity - totalPnl;
+    final totalPct = basis.abs() > 0 ? totalPnl / basis * 100 : 0.0;
+    final todayPnl = a.unrealizedPnl;
+    final todayPct = a.marketValue.abs() > 0
+        ? todayPnl / (a.marketValue - todayPnl).clamp(1, double.infinity) * 100
+        : 0.0;
+    final totalUp = totalPnl >= 0;
+
+    final winner = _extreme(highest: true);
+    final largest = _largest();
+
     return Card(
       key: const Key('home_portfolio'),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+      elevation: 0,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF0D47A1), Color(0xFF1565C0), Color(0xFF1E88E5)],
+          ),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Portfolio',
-                style: TextStyle(fontWeight: FontWeight.w800)),
+            Row(
+              children: [
+                const Text('💼  MY PORTFOLIO',
+                    style: TextStyle(
+                        color: Colors.white70,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                        letterSpacing: 0.8)),
+                const Spacer(),
+                _Pill(text: '${positions.length} '
+                    '${positions.length == 1 ? 'Position' : 'Positions'}'),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // 1) Total value — the loudest element.
+            Text(_money(a.equity, a.currency),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 34,
+                  fontWeight: FontWeight.w900,
+                  height: 1.0,
+                  fontFeatures: [FontFeature.tabularFigures()],
+                )),
             const SizedBox(height: 8),
-            if (a == null)
-              const Text('Start a simulated portfolio to track P&L here.',
-                  style: TextStyle(color: Colors.grey))
-            else ...[
-              Text(_money(a.equity, a.currency),
+            // 2) Total return.
+            Row(
+              children: [
+                Icon(totalUp ? Icons.arrow_upward : Icons.arrow_downward,
+                    color: Colors.white, size: 16),
+                const SizedBox(width: 2),
+                Text(
+                  '${totalUp ? '+' : '-'}${_money(totalPnl.abs(), a.currency)}'
+                  '  (${totalUp ? '+' : ''}${totalPct.toStringAsFixed(2)}%)',
                   style: const TextStyle(
-                      fontSize: 26, fontWeight: FontWeight.w800)),
-              const SizedBox(height: 4),
-              _pnlRow('Today', a.unrealizedPnl, a.currency),
-              _pnlRow('Total', a.realizedPnl + a.unrealizedPnl, a.currency),
-              const SizedBox(height: 8),
-              if (best != null)
-                Text('Best: ${best.symbol} ${_pct(best)}',
-                    style: const TextStyle(
-                        color: AppColors.up, fontWeight: FontWeight.w600)),
-              if (worst != null && worst != best)
-                Text('Worst: ${worst.symbol} ${_pct(worst)}',
-                    style: const TextStyle(
-                        color: AppColors.down, fontWeight: FontWeight.w600)),
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            // 3) Today's P/L.
+            _todayRow(todayPnl, todayPct, a.currency),
+            if (winner != null || largest != null) ...[
+              const SizedBox(height: 14),
+              const Divider(color: Colors.white24, height: 1),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  if (winner != null)
+                    Expanded(
+                      child: _PortfolioMiniStat(
+                        label: 'Top Winner',
+                        symbol: winner.symbol,
+                        value: _pct(winner),
+                        up: _ret(winner) >= 0,
+                      ),
+                    ),
+                  if (winner != null && largest != null)
+                    Container(
+                        width: 1,
+                        height: 34,
+                        color: Colors.white24,
+                        margin:
+                            const EdgeInsets.symmetric(horizontal: 12)),
+                  if (largest != null)
+                    Expanded(
+                      child: _PortfolioMiniStat(
+                        label: 'Largest Position',
+                        symbol: largest.symbol,
+                        value: '${_weight(largest, a).toStringAsFixed(0)}%',
+                        up: null,
+                      ),
+                    ),
+                ],
+              ),
             ],
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                key: const Key('home_portfolio_cta'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: const Color(0xFF0D47A1),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                ),
+                onPressed: onOpenPortfolio,
+                child: const Text('Open Portfolio',
+                    style: TextStyle(fontWeight: FontWeight.w800)),
+              ),
+            ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _todayRow(double v, double pct, String currency) {
+    final up = v >= 0;
+    return Row(
+      children: [
+        const Text('Today  ',
+            style: TextStyle(color: Colors.white70, fontSize: 13)),
+        Icon(up ? Icons.arrow_upward : Icons.arrow_downward,
+            color: Colors.white70, size: 13),
+        Text(
+          '${up ? '+' : '-'}${_money(v.abs(), currency)} '
+          '(${up ? '+' : ''}${pct.toStringAsFixed(2)}%)',
+          style: const TextStyle(
+            color: Colors.white70,
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+            fontFeatures: [FontFeature.tabularFigures()],
+          ),
+        ),
+      ],
     );
   }
 
@@ -786,6 +939,19 @@ class _PortfolioCard extends StatelessWidget {
     final sorted = [...positions]
       ..sort((x, y) => _ret(x).compareTo(_ret(y)));
     return highest ? sorted.last : sorted.first;
+  }
+
+  SimPosition? _largest() {
+    if (positions.isEmpty) return null;
+    final sorted = [...positions]
+      ..sort((x, y) => x.marketValue.compareTo(y.marketValue));
+    return sorted.last;
+  }
+
+  double _weight(SimPosition p, SimAccount a) {
+    final denom = a.marketValue.abs() > 0 ? a.marketValue : a.equity;
+    if (denom.abs() == 0) return 0;
+    return (p.marketValue / denom * 100).clamp(0, 100).toDouble();
   }
 
   double _ret(SimPosition p) {
@@ -798,30 +964,91 @@ class _PortfolioCard extends StatelessWidget {
     return '${r >= 0 ? '+' : ''}${r.toStringAsFixed(1)}%';
   }
 
-  Widget _pnlRow(String label, double v, String currency) {
-    final up = v >= 0;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1),
-      child: Row(
-        children: [
-          SizedBox(
-              width: 56,
-              child: Text(label,
-                  style: const TextStyle(color: Colors.grey, fontSize: 13))),
-          Text('${up ? '+' : ''}${_money(v, currency)}',
-              style: TextStyle(
-                  color: up ? AppColors.up : AppColors.down,
-                  fontWeight: FontWeight.w700)),
-        ],
-      ),
-    );
+  // Grouped, tabular-friendly money string: "Rp 157,250,000".
+  String _money(double v, String currency) {
+    final neg = v < 0;
+    final abs = v.abs();
+    final whole = abs >= 1000 ? abs.round().toString() : null;
+    final body = whole != null
+        ? _group(whole)
+        : abs.toStringAsFixed(2);
+    return '${neg ? '-' : ''}$currency $body';
   }
 
-  String _money(double v, String currency) {
-    final n = v.abs() >= 1000
-        ? v.toStringAsFixed(0)
-        : v.toStringAsFixed(2);
-    return '$currency $n';
+  String _group(String digits) {
+    final buf = StringBuffer();
+    for (var i = 0; i < digits.length; i++) {
+      if (i > 0 && (digits.length - i) % 3 == 0) buf.write(',');
+      buf.write(digits[i]);
+    }
+    return buf.toString();
+  }
+}
+
+class _Pill extends StatelessWidget {
+  const _Pill({required this.text});
+  final String text;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(text,
+          style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+              fontSize: 12)),
+    );
+  }
+}
+
+class _PortfolioMiniStat extends StatelessWidget {
+  const _PortfolioMiniStat({
+    required this.label,
+    required this.symbol,
+    required this.value,
+    required this.up,
+  });
+  final String label;
+  final String symbol;
+  final String value;
+  final bool? up; // null = neutral (no arrow / white text)
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: const TextStyle(
+                color: Colors.white60,
+                fontSize: 11,
+                fontWeight: FontWeight.w600)),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Text(symbol,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15)),
+            const SizedBox(width: 6),
+            if (up != null)
+              Icon(up! ? Icons.arrow_upward : Icons.arrow_downward,
+                  color: Colors.white, size: 12),
+            Text(value,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    fontFeatures: [FontFeature.tabularFigures()])),
+          ],
+        ),
+      ],
+    );
   }
 }
 
