@@ -16,6 +16,14 @@ class ScreenerMatch {
     this.convictionScore = 0,
     this.finalScore,
     this.exploreTags = const [],
+    this.liquidityScore,
+    this.participationScore,
+    this.valueTradedToday,
+    this.avgValueTraded20d,
+    this.volumeToday,
+    this.avgVolume20d,
+    this.volumeRatio20d,
+    this.valueTradedRatio20d,
   });
 
   final String symbol;
@@ -49,6 +57,25 @@ class ScreenerMatch {
   /// Human-readable Explore tags (Bullish, Silent Accumulation, Strong CMF...).
   final List<String> exploreTags;
 
+  // --- Phase 11B liquidity-first participation (backward compatible) -------
+  /// Liquidity & participation score (0..100): the dominant scoring factor.
+  /// Null on older servers/snapshots that predate Phase 11B.
+  final double? liquidityScore;
+
+  /// Mirror of [liquidityScore] for the breakdown label.
+  final double? participationScore;
+
+  /// Raw turnover/volume figures backing the liquidity breakdown.
+  final double? valueTradedToday;
+  final double? avgValueTraded20d;
+  final double? volumeToday;
+  final double? avgVolume20d;
+  final double? volumeRatio20d;
+  final double? valueTradedRatio20d;
+
+  /// True when the server sent the Phase 11B liquidity fields.
+  bool get hasLiquidityBreakdown => liquidityScore != null;
+
   bool get isUp => changePercent >= 0;
 
   bool hasCategory(ScreenerCategory c) => categories.contains(c);
@@ -78,6 +105,15 @@ class ScreenerMatch {
       exploreTags: (json['explore_tags'] as List<dynamic>? ?? [])
           .map((e) => e.toString())
           .toList(),
+      liquidityScore: (json['liquidity_score'] as num?)?.toDouble(),
+      participationScore: (json['participation_score'] as num?)?.toDouble(),
+      valueTradedToday: (json['value_traded_today'] as num?)?.toDouble(),
+      avgValueTraded20d: (json['avg_value_traded_20d'] as num?)?.toDouble(),
+      volumeToday: (json['volume_today'] as num?)?.toDouble(),
+      avgVolume20d: (json['avg_volume_20d'] as num?)?.toDouble(),
+      volumeRatio20d: (json['volume_ratio_20d'] as num?)?.toDouble(),
+      valueTradedRatio20d:
+          (json['value_traded_ratio_20d'] as num?)?.toDouble(),
     );
   }
 }

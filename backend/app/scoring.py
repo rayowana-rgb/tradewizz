@@ -37,19 +37,58 @@ from typing import Optional
 from .models import Market
 
 # --------------------------------------------------------------------------- #
-# Factor weights (sum = 1.0). Phase 1 spec.                                    #
+# Factor weights (sum = 1.0).                                                  #
+#                                                                             #
+# Phase 11B — LIQUIDITY-FIRST. Market participation (liquidity) is now the     #
+# single largest contributor, and a dedicated volume-expansion factor rewards  #
+# rising participation. A stock is only investable if there is real two-sided  #
+# market activity, so price pattern alone can no longer dominate the score.     #
+#                                                                             #
+#   Liquidity & Participation : 35%   (the "liquidity" factor)                  #
+#   Trend                     : 20%                                            #
+#   Momentum                  : 15%                                            #
+#   Volume Expansion          : 15%   (the "volume_expansion" factor)           #
+#   Relative Strength         :  5%                                            #
+#   Market Regime             :  5%                                            #
+#   Volatility / Risk         :  5%                                            #
 # --------------------------------------------------------------------------- #
 WEIGHTS = {
-    "trend": 0.25,
-    "momentum": 0.20,
-    "volume": 0.15,
-    "relative_strength": 0.15,
-    "volatility": 0.10,
-    "market_regime": 0.10,
-    "liquidity": 0.05,
+    "liquidity": 0.35,
+    "trend": 0.20,
+    "momentum": 0.15,
+    "volume_expansion": 0.15,
+    "relative_strength": 0.05,
+    "market_regime": 0.05,
+    "volatility": 0.05,
 }
 
 NEUTRAL = 50.0
+
+
+# --------------------------------------------------------------------------- #
+# Phase 11B: per-market participation thresholds (value traded, market         #
+# currency). The dedicated liquidity participation score (0..100) is built     #
+# from absolute value traded today, the smoothed 20-day average value traded,  #
+# absolute volume, average 20-day volume, and the expansion ratios. These      #
+# tiers express "very strong / strong / acceptable / weak / poor" turnover.    #
+# --------------------------------------------------------------------------- #
+# (very_strong, strong, acceptable, weak) in market currency. Below `weak`
+# is "poor". Ordered high -> low.
+PARTICIPATION_VALUE_TIERS = {
+    Market.IDX: (50_000_000_000, 10_000_000_000, 5_000_000_000, 1_000_000_000),
+    Market.US: (50_000_000, 10_000_000, 5_000_000, 1_000_000),
+    Market.JAPAN: (5_000_000_000, 1_000_000_000, 500_000_000, 100_000_000),
+    Market.INDIA: (5_000_000_000, 1_000_000_000, 500_000_000, 100_000_000),
+    Market.VIETNAM: (
+        100_000_000_000, 20_000_000_000, 10_000_000_000, 5_000_000_000,
+    ),
+    Market.SINGAPORE: (20_000_000, 5_000_000, 2_000_000, 500_000),
+    Market.HKEX: (100_000_000, 20_000_000, 10_000_000, 3_000_000),
+    Market.KOSPI: (50_000_000_000, 10_000_000_000, 5_000_000_000, 1_000_000_000),
+    Market.KOSDAQ: (
+        20_000_000_000, 5_000_000_000, 2_000_000_000, 500_000_000,
+    ),
+}
 
 
 # Per-market minimum Average Daily Value Traded for a full liquidity score,
@@ -387,8 +426,12 @@ def market_regime_score(ctx: Optional[MarketContext]) -> float:
     return 50.0  # neutral / unknown
 
 
-def liquidity_score(ind: dict, market: Optional[Market]) -> float:
-    """Average daily value traded vs the per-market floor (0..100)."""
+def liquidity_floor_score(ind: dict, market: Optional[Market]) -> float:
+    """Legacy: average daily value traded vs the per-market floor (0..100).
+
+    Retained for backward compatibility / reference. The composite now uses
+    :func:`participation_score`, a richer 0..100 gauge.
+    """
     adv = ind.get("avg_value_traded")
     if adv is None:
         adv = ind.get("value_traded")  # fall back to latest day's turnover
@@ -409,6 +452,132 @@ def liquidity_score(ind: dict, market: Optional[Market]) -> float:
     if ratio >= 0.2:
         return 25.0
     return 10.0
+
+
+# --------------------------------------------------------------------------- #
+# Phase 11B: dedicated liquidity participation score (0..100).                 #
+# --------------------------------------------------------------------------- #
+def _value_tier_points(value: Optional[float], tiers: tuple) -> float:
+    """Map an absolute value-traded figure onto a 0..100 participation band.
+
+    ``tiers`` is ``(very_strong, strong, acceptable, weak)``. Below ``weak`` is
+    "poor" (heavily downgraded). Missing/zero -> 0 (no participation).
+    """
+    if value is None or value <= 0:
+        return 0.0
+    very_strong, strong, acceptable, weak = tiers
+    if value >= very_strong:
+        return 100.0
+    if value >= strong:
+        return 85.0
+    if value >= acceptable:
+        return 70.0
+    if value >= weak:
+        # Linear within the acceptable..weak band (45..70) so consistent,
+        # decent turnover is rewarded over barely-investable names.
+        span = acceptable - weak
+        frac = (value - weak) / span if span > 0 else 0.0
+        return 45.0 + max(0.0, min(1.0, frac)) * 25.0
+    # Poor but non-zero turnover: graduate 0..45 by how close it is to the
+    # weak threshold, so two illiquid names still rank by relative liquidity.
+    frac = value / weak if weak > 0 else 0.0
+    return max(5.0, min(1.0, frac) * 45.0)
+
+
+def _expansion_points(ratio: Optional[float]) -> float:
+    """Map a volume/value expansion ratio (today vs 20d avg) to 0..100."""
+    if ratio is None or ratio <= 0:
+        return NEUTRAL
+    if ratio >= 3.0:
+        return 100.0   # very strong participation spike
+    if ratio >= 2.0:
+        return 85.0    # strong
+    if ratio >= 1.2:
+        return 70.0    # healthy
+    if ratio >= 0.8:
+        return 50.0    # in line
+    return 25.0        # weakening participation
+
+
+def participation_score(ind: dict, market: Optional[Market]) -> float:
+    """Liquidity & participation gauge (0..100) — the dominant scoring factor.
+
+    Blends, with per-market thresholds:
+      * today's value traded            (40%)
+      * 20-day average value traded     (40%) — consistency of liquidity
+      * today's volume vs 20-day average volume (10%)
+      * 20-day average volume presence  (10%)
+
+    Uses the *stricter* of today vs average value traded as the anchor so a
+    single-day pump cannot fake durable liquidity. Missing turnover -> 0.
+    """
+    tiers = PARTICIPATION_VALUE_TIERS.get(
+        market, PARTICIPATION_VALUE_TIERS[Market.IDX]
+    )
+    vt_today = ind.get("value_traded")
+    avt_20d = ind.get("avg_value_traded_20d")
+    if avt_20d is None:
+        avt_20d = ind.get("avg_value_traded")
+
+    # No turnover data at all -> no participation, lowest band.
+    if (vt_today is None or vt_today <= 0) and (
+        avt_20d is None or avt_20d <= 0
+    ):
+        return 0.0
+
+    today_pts = _value_tier_points(vt_today, tiers)
+    avg_pts = _value_tier_points(avt_20d, tiers)
+
+    # Volume presence: today's volume relative to its 20-day average. A name
+    # trading near/above its average volume earns the full volume slice.
+    vol_ratio = ind.get("volume_ratio_20d")
+    if vol_ratio is None:
+        vol_ratio = ind.get("volume_ratio")
+    vol_pts = _expansion_points(vol_ratio)
+
+    # Average-volume presence: reward a meaningful, consistent share count.
+    avg_vol = ind.get("avg_volume_20d")
+    if avg_vol is None:
+        avg_vol = ind.get("vol_mean_20")
+    avgvol_pts = 100.0 if (avg_vol is not None and avg_vol > 0) else 0.0
+
+    score = (
+        0.40 * today_pts
+        + 0.40 * avg_pts
+        + 0.10 * vol_pts
+        + 0.10 * avgvol_pts
+    )
+    return _clamp(score)
+
+
+def volume_expansion_score(ind: dict) -> float:
+    """Rising participation: volume_ratio_20d + value_traded_ratio_20d (0..100).
+
+    Expanding volume AND turnover versus their 20-day averages signals fresh
+    money entering the name. Falls back to neutral when ratios are absent so
+    the factor never destabilises data-light rows.
+    """
+    vol_ratio = ind.get("volume_ratio_20d")
+    if vol_ratio is None:
+        vol_ratio = ind.get("volume_ratio")
+    val_ratio = ind.get("value_traded_ratio_20d")
+
+    if vol_ratio is None and val_ratio is None:
+        return NEUTRAL
+
+    pts = []
+    if vol_ratio is not None:
+        pts.append(_expansion_points(vol_ratio))
+    if val_ratio is not None:
+        pts.append(_expansion_points(val_ratio))
+    return _clamp(sum(pts) / len(pts))
+
+
+# Backward-compatible alias: the composite's "liquidity" factor now maps to the
+# richer participation score. Older imports of ``liquidity_score`` keep working.
+def liquidity_score(ind: dict, market: Optional[Market]) -> float:
+    """Liquidity & participation factor (0..100). See participation_score."""
+    return participation_score(ind, market)
 
 
 # --------------------------------------------------------------------------- #
@@ -460,6 +629,22 @@ def quality_penalty(ind: dict, market: Optional[Market]) -> float:
     if close is not None and close < min_price:
         penalty += 15.0
 
+    # Phase 11B: a fully bearish EMA stack (ema20 < ema50 < ema200) means the
+    # name is in a confirmed downtrend. Liquidity now carries 35% of the
+    # composite, so without this guard a high-turnover stock could be floated
+    # out of SELL purely on participation. The penalty re-asserts trend so a
+    # liquid downtrend stays bearish, while a liquid *uptrend* is unaffected.
+    ema200 = ind.get("ema200")
+    if ema200 is None:
+        ema200 = ind.get("sma200")
+    if (
+        ema20 is not None
+        and ema50 is not None
+        and ema200 is not None
+        and ema20 < ema50 < ema200
+    ):
+        penalty += 18.0
+
     return penalty
 
 
@@ -469,15 +654,19 @@ def quality_penalty(ind: dict, market: Optional[Market]) -> float:
 def factor_breakdown(
     ind: dict, ctx: Optional[MarketContext], market: Optional[Market]
 ) -> dict:
-    """All seven factor scores (0..100) keyed by name. Useful for tests/debug."""
+    """All weighted factor scores (0..100) keyed by name (tests/debug).
+
+    Phase 11B: ``liquidity`` is the participation score (dominant 35%) and a
+    new ``volume_expansion`` factor (15%) rewards rising participation.
+    """
     return {
+        "liquidity": participation_score(ind, market),
         "trend": trend_score(ind),
         "momentum": momentum_score(ind),
-        "volume": volume_score(ind),
+        "volume_expansion": volume_expansion_score(ind),
         "relative_strength": relative_strength_score(ctx),
-        "volatility": volatility_score(ind),
         "market_regime": market_regime_score(ctx),
-        "liquidity": liquidity_score(ind, market),
+        "volatility": volatility_score(ind),
     }
 
 
@@ -557,19 +746,29 @@ def signal_for_score(score: float) -> str:
 # Phase F: liquidity cap (applied AFTER the final calibrated/ML score).         #
 # --------------------------------------------------------------------------- #
 def _value_traded(ind: dict) -> Optional[float]:
-    """Best available daily value-traded measure for the liquidity cap.
+    """Liquidity-cap anchor: the STRICTER of today vs 20-day-avg value traded.
 
-    Prefers the smoothed 20-day average turnover; falls back to the latest
-    day's turnover. Returns None when neither is available (treated as fully
-    illiquid by the cap).
+    Phase 11B (Phase E): ``liquidity_metric = min(value_traded_today,
+    avg_value_traded_20d)`` so a single-day pump can never bypass the cap by
+    lifting today's turnover while the durable 20-day average stays low. When
+    only one of the two is available it is used directly; when neither is
+    available the name is treated as fully illiquid (None -> cap).
     """
-    adv = ind.get("avg_value_traded")
-    if adv is None:
-        adv = ind.get("value_traded")
-    try:
-        return float(adv) if adv is not None else None
-    except (TypeError, ValueError):
+    def _f(v) -> Optional[float]:
+        try:
+            return float(v) if v is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    today = _f(ind.get("value_traded"))
+    avg = _f(ind.get("avg_value_traded_20d"))
+    if avg is None:
+        avg = _f(ind.get("avg_value_traded"))
+
+    candidates = [v for v in (today, avg) if v is not None]
+    if not candidates:
         return None
+    return min(candidates)
 
 
 def liquidity_cap_for(

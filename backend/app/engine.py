@@ -1001,6 +1001,17 @@ class AnalysisEngine:
             overlay = explore.compute_overlay(
                 score, cats, ind, allow_bonus=not illiquid
             )
+            # Phase 11B: surface the liquidity participation score + the raw
+            # turnover/volume figures so Explore can show the liquidity
+            # contribution. Pure read-out of already-computed indicators.
+            part = scoring.participation_score(ind, market)
+
+            def _num(v):
+                try:
+                    return round(float(v), 2) if v is not None else None
+                except (TypeError, ValueError):
+                    return None
+
             return ScreenerMatch(
                 symbol=sym.upper(),
                 name=names.get(sym.upper(), sym.upper()),
@@ -1019,6 +1030,23 @@ class AnalysisEngine:
                 conviction_score=overlay["conviction_score"],
                 final_score=overlay["final_score"],
                 explore_tags=overlay["explore_tags"],
+                liquidity_score=round(part, 1),
+                participation_score=round(part, 1),
+                value_traded_today=_num(ind.get("value_traded")),
+                avg_value_traded_20d=_num(
+                    ind.get("avg_value_traded_20d")
+                    or ind.get("avg_value_traded")
+                ),
+                volume_today=_num(ind.get("volume")),
+                avg_volume_20d=_num(
+                    ind.get("avg_volume_20d") or ind.get("vol_mean_20")
+                ),
+                volume_ratio_20d=_num(
+                    ind.get("volume_ratio_20d") or ind.get("volume_ratio")
+                ),
+                value_traded_ratio_20d=_num(
+                    ind.get("value_traded_ratio_20d")
+                ),
             )
         except Exception as exc:  # noqa: BLE001
             # Keep the universe fully populated; response stays 200 "live".

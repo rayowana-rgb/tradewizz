@@ -169,7 +169,9 @@ def test_multifactor_score_is_deterministic_and_bounded():
     # incomplete -> HOLD band (not BUY) without RS/regime context.
     assert 0.0 <= score <= 100.0
     assert signal in ("HOLD", "BUY")
-    assert score == 66.0  # stable composite for this (liquid) fixture
+    # Phase 11B liquidity-first: a strong-trend, highly-liquid name scores
+    # higher than under the old technical-heavy weights.
+    assert score == 72.4  # stable composite for this (liquid) fixture
     # Re-running yields the identical score (pure function, no randomness).
     assert eng._signal_and_score(ind, cats)[1] == score
 

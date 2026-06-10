@@ -108,6 +108,19 @@ class ScreenerMatch(BaseModel):
     conviction_score: int = 0
     final_score: Optional[float] = None
     explore_tags: List[str] = []
+    # --- Phase 11B liquidity-first participation (additive, optional) ------
+    # liquidity_score == participation_score (0..100): the dominant scoring
+    # factor (market participation). The raw turnover/volume figures back the
+    # Explore liquidity breakdown. All optional so older clients/snapshots that
+    # lack them simply render the existing card unchanged.
+    liquidity_score: Optional[float] = None
+    participation_score: Optional[float] = None
+    value_traded_today: Optional[float] = None
+    avg_value_traded_20d: Optional[float] = None
+    volume_today: Optional[float] = None
+    avg_volume_20d: Optional[float] = None
+    volume_ratio_20d: Optional[float] = None
+    value_traded_ratio_20d: Optional[float] = None
 
 
 class ScreenerResult(BaseModel):

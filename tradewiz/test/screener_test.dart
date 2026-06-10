@@ -333,4 +333,67 @@ void main() {
     expect(ticket.side, OrderSide.sell);
     expect(find.byKey(const Key('sim_warning_banner')), findsOneWidget);
   });
+
+  // --- Phase 11B: liquidity-first breakdown on the Explore card --------
+  testWidgets('Explore card shows the liquidity contribution',
+      (tester) async {
+    final live = MockClient((req) async {
+      return http.Response(
+        jsonEncode({
+          'market': 'IDX',
+          'matches': [
+            {
+              'symbol': 'BBCA',
+              'name': 'Bank Central Asia',
+              'score': 74.0,
+              'signal': 'BUY',
+              'price': 9850.0,
+              'change_percent': 1.2,
+              'categories': ['bullish'],
+              'base_score': 74.0,
+              'category_bonus': 5,
+              'conviction_score': 10,
+              'final_score': 92.0,
+              'liquidity_score': 88.0,
+              'participation_score': 88.0,
+              'value_traded_today': 82000000000.0,
+              'avg_value_traded_20d': 55000000000.0,
+              'volume_today': 9000000.0,
+              'avg_volume_20d': 3700000.0,
+              'volume_ratio_20d': 2.4,
+              'value_traded_ratio_20d': 1.5,
+            },
+          ],
+          'generated_at': '2026-06-10T00:00:00Z',
+          'total_count': 1,
+          'returned_count': 1,
+          'limit': 50,
+          'min_score': 0,
+          'categories': <String>[],
+        }),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    });
+    final repo = StockRepository(
+      client: ApiClient(
+        config: const AppConfig(baseUrl: 'https://test.tradewiz.app/v1'),
+        httpClient: live,
+      ),
+    );
+    await tester.pumpWidget(
+      wrapApp(ScreenerPage(market: Market.idx, repository: repo)),
+    );
+    await tester.pumpAndSettle();
+
+    // Final Score remains the hero metric (the pill shows 92).
+    expect(find.text('92'), findsWidgets);
+    // Liquidity is a first-class breakdown entry.
+    expect(find.textContaining('Liquidity'), findsWidgets);
+    // Secondary participation read-out is rendered.
+    expect(
+        find.byKey(const Key('screener_liquidity_line')), findsOneWidget);
+    expect(find.textContaining('avg 20D'), findsOneWidget);
+    expect(find.textContaining('2.4x vol'), findsOneWidget);
+  });
 }

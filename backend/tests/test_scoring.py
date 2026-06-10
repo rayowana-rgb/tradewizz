@@ -31,12 +31,17 @@ ALL_MARKETS = [
 # Weights                                                                     #
 # --------------------------------------------------------------------------- #
 def test_factor_weights_match_spec_and_sum_to_one():
+    # Phase 11B liquidity-first reweight: participation dominates (35%) and a
+    # dedicated volume-expansion factor (15%) rewards rising participation.
     assert scoring.WEIGHTS == {
-        "trend": 0.25, "momentum": 0.20, "volume": 0.15,
-        "relative_strength": 0.15, "volatility": 0.10,
-        "market_regime": 0.10, "liquidity": 0.05,
+        "liquidity": 0.35, "trend": 0.20, "momentum": 0.15,
+        "volume_expansion": 0.15, "relative_strength": 0.05,
+        "market_regime": 0.05, "volatility": 0.05,
     }
     assert abs(sum(scoring.WEIGHTS.values()) - 1.0) < 1e-9
+    # Liquidity & participation is the single largest contributor.
+    assert scoring.WEIGHTS["liquidity"] == max(scoring.WEIGHTS.values())
+    assert scoring.WEIGHTS["liquidity"] > scoring.WEIGHTS["trend"]
 
 
 # --------------------------------------------------------------------------- #
@@ -148,12 +153,59 @@ def test_market_regime_bands():
 # Liquidity (per-market floors)                                               #
 # --------------------------------------------------------------------------- #
 def test_liquidity_uses_per_market_floor():
+    # The legacy floor-based gauge is retained as liquidity_floor_score.
     # $2M floor for US: exactly at floor -> 70; 5x -> 100; far below -> low.
-    assert scoring.liquidity_score({"avg_value_traded": 2_000_000}, Market.US) == 70.0
-    assert scoring.liquidity_score({"avg_value_traded": 12_000_000}, Market.US) == 100.0
-    assert scoring.liquidity_score({"avg_value_traded": 100_000}, Market.US) <= 25.0
+    assert scoring.liquidity_floor_score(
+        {"avg_value_traded": 2_000_000}, Market.US) == 70.0
+    assert scoring.liquidity_floor_score(
+        {"avg_value_traded": 12_000_000}, Market.US) == 100.0
+    assert scoring.liquidity_floor_score(
+        {"avg_value_traded": 100_000}, Market.US) <= 25.0
     # IDX floor is Rp10B (much larger) -> the same $2M would be tiny.
-    assert scoring.liquidity_score({"avg_value_traded": 2_000_000}, Market.IDX) <= 25.0
+    assert scoring.liquidity_floor_score(
+        {"avg_value_traded": 2_000_000}, Market.IDX) <= 25.0
+
+
+def test_participation_score_rewards_real_value_traded():
+    """Phase 11B: the dominant participation factor (0..100)."""
+    # Strong, consistent US turnover (today + 20d avg) with healthy volume.
+    strong = scoring.participation_score(
+        {"value_traded": 60_000_000, "avg_value_traded_20d": 55_000_000,
+         "volume_ratio_20d": 2.5, "avg_volume_20d": 1_000_000}, Market.US)
+    assert strong >= 90
+    # Weak turnover -> low participation regardless of volume ratio.
+    weak = scoring.participation_score(
+        {"value_traded": 300_000, "avg_value_traded_20d": 400_000,
+         "volume_ratio_20d": 1.0, "avg_volume_20d": 5_000}, Market.US)
+    assert weak <= 40
+    assert strong > weak
+    # Zero / missing value traded -> zero participation (not investable).
+    assert scoring.participation_score(
+        {"value_traded": 0, "avg_value_traded_20d": 0}, Market.US) == 0.0
+    assert scoring.participation_score({}, Market.US) == 0.0
+
+
+def test_participation_uses_stricter_of_today_and_avg():
+    """A one-day pump cannot fake durable liquidity."""
+    pump = scoring.participation_score(
+        {"value_traded": 80_000_000, "avg_value_traded_20d": 400_000,
+         "volume_ratio_20d": 5.0, "avg_volume_20d": 50_000}, Market.US)
+    durable = scoring.participation_score(
+        {"value_traded": 60_000_000, "avg_value_traded_20d": 55_000_000,
+         "volume_ratio_20d": 1.5, "avg_volume_20d": 1_000_000}, Market.US)
+    assert durable > pump
+
+
+def test_volume_expansion_rewards_rising_participation():
+    hot = scoring.volume_expansion_score(
+        {"volume_ratio_20d": 3.0, "value_traded_ratio_20d": 2.5})
+    flat = scoring.volume_expansion_score(
+        {"volume_ratio_20d": 1.0, "value_traded_ratio_20d": 1.0})
+    cold = scoring.volume_expansion_score(
+        {"volume_ratio_20d": 0.5, "value_traded_ratio_20d": 0.6})
+    assert hot > flat > cold
+    # Absent ratios -> neutral, never destabilising.
+    assert scoring.volume_expansion_score({}) == scoring.NEUTRAL
 
 
 # --------------------------------------------------------------------------- #
@@ -192,11 +244,21 @@ def test_micro_price_penalty():
 # Composite + calibration                                                     #
 # --------------------------------------------------------------------------- #
 def test_composite_uses_exact_weights():
-    ind = {}  # all factors neutral=50 (missing inputs)
+    ind = {}  # all factors neutral=50 EXCEPT participation (no turnover -> 0).
     ctx = None
     raw = scoring.composite_raw(ind, ctx, Market.US)
-    # All seven factors == 50, weights sum to 1 -> composite 50, no penalties.
-    assert raw == pytest.approx(50.0, abs=1e-6)
+    # Phase 11B: with empty inputs participation=0 (not investable) and the
+    # remaining 0.65 of weight is neutral 50 -> 0.35*0 + 0.65*50 = 32.5.
+    assert raw == pytest.approx(32.5, abs=1e-6)
+
+
+def test_composite_neutral_when_participation_present():
+    # Provide just enough turnover for a neutral-ish participation band so the
+    # whole composite lands at ~50 when every other factor is neutral.
+    ind = {"value_traded": 5_000_000, "avg_value_traded_20d": 5_000_000,
+           "volume_ratio_20d": 1.0, "avg_volume_20d": 100_000}
+    raw = scoring.composite_raw(ind, None, Market.US)
+    assert 40.0 <= raw <= 75.0
 
 
 def test_calibration_is_monotonic_and_gates_elite():

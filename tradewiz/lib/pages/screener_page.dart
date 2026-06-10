@@ -1008,17 +1008,72 @@ class _ScoreBreakdown extends StatelessWidget {
       );
     }
 
-    // Secondary to the hero Final Score pill: show only the components.
-    return Row(
+    final liq = match.liquidityScore;
+    // Secondary to the hero Final Score pill: components + (Phase 11B) the
+    // dominant liquidity contribution and a compact participation read-out.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        part('Base', match.effectiveBaseScore.toStringAsFixed(0)),
-        const SizedBox(width: 20),
-        part('Bonus', '+${match.categoryBonus}',
-            color: match.categoryBonus > 0 ? AppColors.up : Colors.grey),
-        const SizedBox(width: 20),
-        part('Conviction', '${match.convictionScore}/20',
-            color: match.convictionScore > 0 ? AppColors.up : Colors.grey),
+        Wrap(
+          spacing: 18,
+          runSpacing: 4,
+          children: [
+            part('Base', match.effectiveBaseScore.toStringAsFixed(0)),
+            if (liq != null)
+              part('Liquidity', liq.toStringAsFixed(0),
+                  color: liq >= 70
+                      ? AppColors.up
+                      : (liq < 40 ? AppColors.down : Colors.black54)),
+            part('Bonus', '+${match.categoryBonus}',
+                color: match.categoryBonus > 0 ? AppColors.up : Colors.grey),
+            part('Conviction', '${match.convictionScore}/20',
+                color:
+                    match.convictionScore > 0 ? AppColors.up : Colors.grey),
+          ],
+        ),
+        if (match.hasLiquidityBreakdown) ...[
+          const SizedBox(height: 4),
+          _LiquidityLine(match: match),
+        ],
       ],
+    );
+  }
+}
+
+/// Phase 11B: compact, secondary liquidity read-out under the breakdown.
+/// "Rp 82B today · Rp 55B avg 20D · 2.4x vol". Money is abbreviated; missing
+/// fields are simply skipped so old snapshots never crash or clutter the card.
+class _LiquidityLine extends StatelessWidget {
+  const _LiquidityLine({required this.match});
+  final ScreenerMatch match;
+
+  String _abbr(double v) {
+    final a = v.abs();
+    if (a >= 1e12) return '${(v / 1e12).toStringAsFixed(1)}T';
+    if (a >= 1e9) return '${(v / 1e9).toStringAsFixed(1)}B';
+    if (a >= 1e6) return '${(v / 1e6).toStringAsFixed(1)}M';
+    if (a >= 1e3) return '${(v / 1e3).toStringAsFixed(1)}K';
+    return v.toStringAsFixed(0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final parts = <String>[];
+    if (match.valueTradedToday != null) {
+      parts.add('${_abbr(match.valueTradedToday!)} today');
+    }
+    if (match.avgValueTraded20d != null) {
+      parts.add('${_abbr(match.avgValueTraded20d!)} avg 20D');
+    }
+    final vr = match.volumeRatio20d;
+    if (vr != null && vr > 0) {
+      parts.add('${vr.toStringAsFixed(1)}x vol');
+    }
+    if (parts.isEmpty) return const SizedBox.shrink();
+    return Text(
+      parts.join('  ·  '),
+      key: const Key('screener_liquidity_line'),
+      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
     );
   }
 }

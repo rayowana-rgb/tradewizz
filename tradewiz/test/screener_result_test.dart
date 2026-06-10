@@ -89,4 +89,46 @@ void main() {
     expect(m.effectiveFinalScore, m.score);
     expect(m.effectiveBaseScore, m.score);
   });
+
+  // --- Phase 11B: liquidity-first participation fields ------------------
+  test('parses Phase 11B liquidity participation fields', () {
+    final json = baseJson();
+    (json['matches'] as List).first.addAll({
+      'base_score': 74,
+      'category_bonus': 5,
+      'conviction_score': 10,
+      'final_score': 92,
+      'liquidity_score': 88.0,
+      'participation_score': 88.0,
+      'value_traded_today': 82000000000.0,
+      'avg_value_traded_20d': 55000000000.0,
+      'volume_today': 9000000.0,
+      'avg_volume_20d': 3700000.0,
+      'volume_ratio_20d': 2.4,
+      'value_traded_ratio_20d': 1.5,
+    });
+    final m = ScreenerResult.fromJson(json).matches.first;
+    expect(m.liquidityScore, 88.0);
+    expect(m.participationScore, 88.0);
+    expect(m.valueTradedToday, 82000000000.0);
+    expect(m.avgValueTraded20d, 55000000000.0);
+    expect(m.volumeToday, 9000000.0);
+    expect(m.avgVolume20d, 3700000.0);
+    expect(m.volumeRatio20d, 2.4);
+    expect(m.valueTradedRatio20d, 1.5);
+    expect(m.hasLiquidityBreakdown, isTrue);
+    // Final Score remains the hero metric.
+    expect(m.effectiveFinalScore, 92.0);
+  });
+
+  test('liquidity fields are backward compatible (old snapshot)', () {
+    // baseJson() omits the Phase 11B fields -> null, no breakdown, no throw.
+    final m = ScreenerResult.fromJson(baseJson()).matches.first;
+    expect(m.liquidityScore, isNull);
+    expect(m.participationScore, isNull);
+    expect(m.valueTradedToday, isNull);
+    expect(m.avgValueTraded20d, isNull);
+    expect(m.volumeRatio20d, isNull);
+    expect(m.hasLiquidityBreakdown, isFalse);
+  });
 }

@@ -224,6 +224,27 @@ def compute_all(df: pd.DataFrame) -> dict:
         if (vol_mean_5 is not None and vol_mean_20_avt not in (None, 0))
         else None
     )
+    # Phase 11B liquidity-first inputs (additive aliases; nothing renamed).
+    last_close_lf = last(close)
+    last_volume_lf = last(volume)
+    value_traded_today = (
+        last_close_lf * last_volume_lf
+        if (last_close_lf is not None and last_volume_lf is not None)
+        else None
+    )
+    # today volume vs 20d average volume.
+    volume_ratio_20d = (
+        last_volume_lf / vol_mean_20_avt
+        if (last_volume_lf is not None and vol_mean_20_avt not in (None, 0))
+        else None
+    )
+    # today turnover vs 20d average turnover.
+    value_traded_ratio_20d = (
+        value_traded_today / avg_value_traded
+        if (value_traded_today is not None
+            and avg_value_traded not in (None, 0))
+        else None
+    )
 
     # Phase 1 additions (new keys only; existing keys unchanged).
     sma20_s = sma(close, 20)
@@ -295,6 +316,12 @@ def compute_all(df: pd.DataFrame) -> dict:
         "high_52w": last(high_52w_s),
         "avg_value_traded": avg_value_traded,
         "vol_ratio_5_20": vol_ratio_5_20,
+        # Phase 11B aliases (additive). avg_value_traded_20d == avg_value_traded;
+        # avg_volume_20d == vol_mean_20. New ratio keys for participation.
+        "avg_value_traded_20d": avg_value_traded,
+        "avg_volume_20d": vol_mean_20_avt,
+        "volume_ratio_20d": volume_ratio_20d,
+        "value_traded_ratio_20d": value_traded_ratio_20d,
         "macd": last(macd_df["macd"]),
         "macd_signal": last(macd_df["signal"]),
         "macd_hist": last(macd_df["hist"]),
