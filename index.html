@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TradeWizz — AI-powered educational stock analysis</title>
+<meta name="description" content="TradeWizz is an educational stock analysis platform with AI stock analysis, an explore screener, and a simulation portfolio. Not a broker. Not financial advice." />
+<meta name="theme-color" content="#0a1124" />
+<style>
+  :root{
+    --bg:#0a1124;--bg-2:#0e1730;--card:#111c38;--card-2:#0f1a33;
+    --line:rgba(255,255,255,.08);--text:#e7ecf6;--muted:#9aa7c2;
+    --blue:#3b82f6;--green:#22c55e;--accent:#34d399;--radius:18px;--max:1080px;
+  }
+  *{box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:radial-gradient(1200px 700px at 50% -10%,#13224a 0%,var(--bg) 55%) no-repeat,var(--bg);
+    color:var(--text);line-height:1.6;-webkit-font-smoothing:antialiased;}
+  a{color:inherit;text-decoration:none;}
+  .wrap{max-width:var(--max);margin:0 auto;padding:0 22px;}
+  header.nav{position:sticky;top:0;z-index:50;backdrop-filter:saturate(160%) blur(12px);
+    background:rgba(10,17,36,.72);border-bottom:1px solid var(--line);}
+  .nav-inner{display:flex;align-items:center;justify-content:space-between;height:64px;}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:.3px;font-size:18px;}
+  .logo{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--blue),var(--green));
+    display:grid;place-items:center;font-weight:900;color:#04122a;font-size:16px;box-shadow:0 6px 18px rgba(34,197,94,.35);}
+  .nav-links{display:flex;gap:24px;font-size:14px;color:var(--muted);}
+  .nav-links a:hover{color:var(--text);}
+  @media(max-width:560px){.nav-links{display:none;}}
+  .hero{padding:88px 0 56px;text-align:center;}
+  .pill{display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border:1px solid var(--line);
+    border-radius:999px;color:var(--muted);font-size:13px;margin-bottom:26px;background:rgba(255,255,255,.02);}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 12px var(--green);}
+  .hero h1{font-size:clamp(40px,7vw,68px);line-height:1.05;margin:0 0 10px;font-weight:850;letter-spacing:-1.5px;
+    background:linear-gradient(180deg,#ffffff,#bcd0ff 70%);-webkit-background-clip:text;background-clip:text;color:transparent;}
+  .hero h2{font-size:clamp(20px,3.2vw,28px);margin:0 0 22px;font-weight:600;color:#cfe0ff;letter-spacing:-.3px;}
+  .hero p{max-width:680px;margin:0 auto 34px;color:var(--muted);font-size:17px;}
+  .cta{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;}
+  .btn{padding:13px 26px;border-radius:12px;font-weight:700;font-size:15px;border:1px solid transparent;
+    transition:transform .15s ease,box-shadow .15s ease,background .15s ease;}
+  .btn-primary{background:linear-gradient(135deg,var(--blue),var(--green));color:#04122a;box-shadow:0 10px 30px rgba(34,197,94,.3);}
+  .btn-primary:hover{transform:translateY(-2px);box-shadow:0 14px 38px rgba(34,197,94,.42);}
+  .btn-ghost{border-color:var(--line);color:var(--text);background:rgba(255,255,255,.03);}
+  .btn-ghost:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.22);}
+  section{padding:34px 0;}
+  .sec-head{text-align:center;max-width:640px;margin:0 auto 34px;}
+  .sec-head h3{font-size:clamp(26px,4vw,36px);margin:0 0 10px;letter-spacing:-.6px;}
+  .sec-head p{color:var(--muted);margin:0;}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
+  @media(max-width:860px){.grid{grid-template-columns:1fr;}}
+  .card{background:linear-gradient(180deg,var(--card),var(--card-2));border:1px solid var(--line);
+    border-radius:var(--radius);padding:26px;transition:transform .18s ease,border-color .18s ease;}
+  .card:hover{transform:translateY(-4px);border-color:rgba(59,130,246,.4);}
+  .icon{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;margin-bottom:16px;
+    background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.25);font-size:22px;}
+  .card h4{margin:0 0 8px;font-size:19px;letter-spacing:-.3px;}
+  .card p{margin:0;color:var(--muted);font-size:15px;}
+  .band{background:linear-gradient(180deg,rgba(34,197,94,.06),rgba(59,130,246,.05));
+    border:1px solid var(--line);border-radius:22px;padding:30px;margin-top:8px;}
+  .band .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+  @media(max-width:860px){.band .grid2{grid-template-columns:1fr;}}
+  .note h4{margin:0 0 8px;display:flex;align-items:center;gap:10px;font-size:18px;}
+  .badge{font-size:11px;font-weight:800;letter-spacing:.6px;padding:4px 9px;border-radius:999px;text-transform:uppercase;}
+  .badge.edu{background:rgba(52,211,153,.16);color:var(--accent);border:1px solid rgba(52,211,153,.3);}
+  .badge.nobroker{background:rgba(59,130,246,.16);color:#7db1ff;border:1px solid rgba(59,130,246,.3);}
+  .note p{margin:0;color:var(--muted);font-size:15px;}
+  footer{border-top:1px solid var(--line);margin-top:48px;padding:34px 0 56px;color:var(--muted);font-size:14px;}
+  .foot-inner{display:flex;justify-content:space-between;gap:18px;flex-wrap:wrap;align-items:center;}
+  .foot-links{display:flex;gap:20px;flex-wrap:wrap;}
+  .foot-links a:hover{color:var(--text);}
+  .disc{max-width:720px;margin:22px auto 0;text-align:center;font-size:12.5px;color:#7a87a3;}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="index.html"><span class="logo">T</span> TradeWizz</a>
+    <nav class="nav-links">
+      <a href="index.html">Home</a>
+      <a href="support.html">Support</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="terms.html">Terms</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="wrap">
+      <span class="pill"><span class="dot"></span> AI-powered educational stock analysis</span>
+      <h1>TradeWizz</h1>
+      <h2>Smarter stock research, faster.</h2>
+      <p>TradeWizz is an educational stock analysis platform. Discover stock ideas, analyze market signals, manage watchlists, and track a simulated portfolio with AI-powered insights — no brokerage account required.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="privacy.html">Privacy Policy</a>
+        <a class="btn btn-ghost" href="support.html">Support</a>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="sec-head">
+        <h3>What TradeWizz does</h3>
+        <p>A simplified research workspace for curious investors and learners.</p>
+      </div>
+      <div class="grid">
+        <div class="card">
+          <div class="icon">📊</div>
+          <h4>AI Stock Analysis</h4>
+          <p>Review technical, liquidity, momentum, and market signals in one simplified, AI-assisted research view.</p>
+        </div>
+        <div class="card">
+          <div class="icon">🔎</div>
+          <h4>Explore Screener</h4>
+          <p>Discover ideas using scoring, categories, watchlists, and market participation filters.</p>
+        </div>
+        <div class="card">
+          <div class="icon">💼</div>
+          <h4>Simulation Portfolio</h4>
+          <p>Practice tracking positions, trade history, and portfolio health without connecting a broker.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="band">
+        <div class="grid2">
+          <div class="note">
+            <h4><span class="badge edu">Important</span> Not Financial Advice</h4>
+            <p>TradeWizz is for educational and research purposes only. It does not provide investment, tax, legal, or financial advice. All analysis is informational and should not be treated as a recommendation to buy or sell securities.</p>
+          </div>
+          <div class="note">
+            <h4><span class="badge nobroker">Important</span> Not a Broker</h4>
+            <p>TradeWizz does not execute trades, custody assets, connect to real-money trading systems, or process financial transactions.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-inner">
+      <div class="brand"><span class="logo">T</span> TradeWizz</div>
+      <nav class="foot-links">
+        <a href="index.html">Home</a>
+        <a href="privacy.html">Privacy Policy</a>
+        <a href="terms.html">Terms of Service</a>
+        <a href="support.html">Support</a>
+        <a href="mailto:rayowana@gmail.com">rayowana@gmail.com</a>
+      </nav>
+    </div>
+    <p class="disc">TradeWizz is for educational and research purposes only. TradeWizz does not provide financial advice, does not execute real-money trades, and is not a broker. &copy; 2026 TradeWizz.</p>
+  </div>
+</footer>
+
+</body>
+</html>
