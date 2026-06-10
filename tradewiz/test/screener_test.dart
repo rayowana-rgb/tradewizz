@@ -12,6 +12,7 @@ import 'package:tradewiz/pages/order_ticket_page.dart';
 import 'package:tradewiz/pages/screener_page.dart';
 import 'package:tradewiz/repositories/stock_repository.dart';
 import 'package:tradewiz/services/api_client.dart';
+import 'package:tradewiz/state/explore_filter_store.dart';
 import 'package:tradewiz/widgets/category_badge.dart';
 
 import 'helpers.dart';
@@ -115,6 +116,10 @@ Future<void> _loadScreener(WidgetTester tester) async {
 }
 
 void main() {
+  // The Explore filter store is a process-wide singleton (so selections survive
+  // tab switches in the real app). Reset it before each test for isolation.
+  setUp(ExploreFilterStore.instance.reset);
+
   testWidgets('Screener loads matches and shows category badges',
       (tester) async {
     await tester.pumpWidget(

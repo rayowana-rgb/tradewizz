@@ -8,6 +8,7 @@ import '../repositories/stock_repository.dart';
 import '../services/api_client.dart';
 import '../services/data_source.dart';
 import '../services/repository_scope.dart';
+import '../state/explore_filter_store.dart';
 import '../theme.dart';
 import '../widgets/category_badge.dart';
 import '../widgets/connection_pill.dart';
@@ -17,11 +18,20 @@ import 'order_ticket_page.dart';
 /// Screener page: runs `/screen/{market}` and lists tagged matches with
 /// market + category filters. iOS-first UX (pull-to-refresh, clean cards).
 class ScreenerPage extends StatefulWidget {
-  const ScreenerPage({super.key, this.market, this.repository});
+  const ScreenerPage({
+    super.key,
+    this.market,
+    this.repository,
+    this.filterStore,
+  });
 
   /// Market preselected from the app shell.
   final Market? market;
   final StockRepository? repository;
+
+  /// In-memory filter persistence. Defaults to the process-wide singleton so
+  /// selections survive tab switches; tests can inject a fresh store.
+  final ExploreFilterStore? filterStore;
 
   @override
   State<ScreenerPage> createState() => _ScreenerPageState();
@@ -29,6 +39,8 @@ class ScreenerPage extends StatefulWidget {
 
 class _ScreenerPageState extends State<ScreenerPage> {
   late final StockRepository _repo = widget.repository ?? StockRepository();
+  ExploreFilterStore get _store =>
+      widget.filterStore ?? ExploreFilterStore.instance;
 
   late Market _market = widget.market ?? Market.idx;
   ScreenerCategory? _categoryFilter;
@@ -38,6 +50,19 @@ class _ScreenerPageState extends State<ScreenerPage> {
   // Phase 10D extra filters (client-side, visual): signal + liquidity.
   String? _signalFilter; // BUY / HOLD / SELL
   bool _hideIlliquid = false;
+
+  /// Push the current filter selection into the in-memory store so it survives
+  /// tab switches / widget rebuilds. View-state only; nothing scoring-related.
+  void _persistFilters() {
+    _store.save(
+      market: _market,
+      categoryFilter: _categoryFilter,
+      minScore: _minScore,
+      signalFilter: _signalFilter,
+      hideIlliquid: _hideIlliquid,
+      query: _query,
+    );
+  }
 
   // Pagination: requested top-N grows by _pageSize up to _maxLimit.
   static const int _pageSize = 50;
@@ -53,6 +78,20 @@ class _ScreenerPageState extends State<ScreenerPage> {
   @override
   void initState() {
     super.initState();
+    // Restore previously selected filters (Home -> Explore round-trip).
+    if (_store.hydrated) {
+      _categoryFilter = _store.categoryFilter;
+      _minScore = _store.minScore;
+      _signalFilter = _store.signalFilter;
+      _hideIlliquid = _store.hideIlliquid;
+      _query = _store.query;
+      _searchCtrl.text = _store.query;
+      // The shell still owns the market; only fall back to the stored market
+      // when the shell didn't pass one.
+      if (widget.market == null && _store.market != null) {
+        _market = _store.market!;
+      }
+    }
     _run();
   }
 
@@ -114,6 +153,7 @@ class _ScreenerPageState extends State<ScreenerPage> {
       _market = m;
       _limit = _pageSize; // reset pagination on context change
     });
+    _persistFilters();
     _run();
   }
 
@@ -122,6 +162,7 @@ class _ScreenerPageState extends State<ScreenerPage> {
       _categoryFilter = c;
       _limit = _pageSize;
     });
+    _persistFilters();
     _run(); // re-query server-side with the category filter
   }
 
@@ -265,6 +306,7 @@ class _ScreenerPageState extends State<ScreenerPage> {
             _hideIlliquid = hide;
             _limit = _pageSize;
           });
+          _persistFilters();
           // Market / category / min-score are server-side params; re-query.
           // Signal + liquidity are applied client-side in _filtered.
           _run();
@@ -286,7 +328,10 @@ class _ScreenerPageState extends State<ScreenerPage> {
                 child: TextField(
                   key: const Key('screener_search'),
                   controller: _searchCtrl,
-                  onChanged: (v) => setState(() => _query = v),
+                  onChanged: (v) {
+                    setState(() => _query = v);
+                    _persistFilters();
+                  },
                   textInputAction: TextInputAction.search,
                   decoration: InputDecoration(
                     hintText: 'Search symbol or company…',
@@ -298,6 +343,7 @@ class _ScreenerPageState extends State<ScreenerPage> {
                             onPressed: () {
                               _searchCtrl.clear();
                               setState(() => _query = '');
+                              _persistFilters();
                             },
                           ),
                     isDense: true,
@@ -372,7 +418,10 @@ class _ScreenerPageState extends State<ScreenerPage> {
     if (matches.isEmpty) {
       return _ScreenerEmpty(
         hasFilter: _categoryFilter != null,
-        onClearFilter: () => setState(() => _categoryFilter = null),
+        onClearFilter: () {
+          setState(() => _categoryFilter = null);
+          _persistFilters();
+        },
         onRefresh: _run,
       );
     }

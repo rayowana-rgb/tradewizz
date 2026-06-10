@@ -10,6 +10,7 @@ import 'package:tradewiz/models/market.dart';
 import 'package:tradewiz/pages/screener_page.dart';
 import 'package:tradewiz/repositories/stock_repository.dart';
 import 'package:tradewiz/services/api_client.dart';
+import 'package:tradewiz/state/explore_filter_store.dart';
 import 'package:tradewiz/widgets/connection_pill.dart';
 
 import 'helpers.dart';
@@ -44,6 +45,8 @@ StockRepository _liveRepo() {
 }
 
 void main() {
+  setUp(ExploreFilterStore.instance.reset);
+
   testWidgets('Screener shows Live pill when backend responds', (tester) async {
     await tester.pumpWidget(
       wrapApp(

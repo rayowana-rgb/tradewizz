@@ -209,7 +209,9 @@ class _HomeShellState extends State<HomeShell> {
           const SizedBox(width: 4),
         ],
       ),
-      body: SafeArea(child: pages[_index]),
+      // IndexedStack keeps every tab mounted, so Explore's filter state (and
+      // loaded results / scroll position) survive Home <-> Explore switches.
+      body: SafeArea(child: IndexedStack(index: _index, children: pages)),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
