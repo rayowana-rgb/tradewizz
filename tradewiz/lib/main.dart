@@ -188,8 +188,14 @@ class _HomeShellState extends State<HomeShell> {
         data: buildTradeWizzTheme(),
         child: HomePage(market: _market),
       ),
-      WatchlistPage(market: _market),
-      ScreenerPage(market: _market),
+      Theme(
+        data: buildTradeWizzTheme(),
+        child: WatchlistPage(market: _market),
+      ),
+      Theme(
+        data: buildTradeWizzTheme(),
+        child: ScreenerPage(market: _market),
+      ),
       AiAnalysisPage(market: _market),
       const AccountPage(),
     ];

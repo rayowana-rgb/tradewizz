@@ -9,9 +9,10 @@ import '../services/api_client.dart';
 import '../services/data_source.dart';
 import '../services/repository_scope.dart';
 import '../state/explore_filter_store.dart';
-import '../theme.dart';
+import '../theme_tradewizz.dart';
 import '../widgets/category_badge.dart';
 import '../widgets/connection_pill.dart';
+import '../widgets/ds/ds.dart';
 import 'ai_analysis_page.dart';
 import 'order_ticket_page.dart';
 
@@ -227,14 +228,14 @@ class _ScreenerPageState extends State<ScreenerPage> {
             ListTile(
               key: const Key('screener_action_buy'),
               leading: const Icon(Icons.add_circle_outline,
-                  color: AppColors.up),
+                  color: TWColors.up),
               title: const Text('Buy (simulated)'),
               onTap: () => Navigator.of(ctx).pop(OrderSide.buy),
             ),
             ListTile(
               key: const Key('screener_action_sell'),
               leading: const Icon(Icons.remove_circle_outline,
-                  color: AppColors.down),
+                  color: TWColors.down),
               title: const Text('Sell (simulated)'),
               onTap: () => Navigator.of(ctx).pop(OrderSide.sell),
             ),
@@ -317,7 +318,8 @@ class _ScreenerPageState extends State<ScreenerPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return TWScaffoldBackground(
+      child: Column(
       children: [
         // Phase 10D: Search + a single Filters entry point (bottom sheet).
         Padding(
@@ -348,18 +350,28 @@ class _ScreenerPageState extends State<ScreenerPage> {
                           ),
                     isDense: true,
                     filled: true,
-                    fillColor: Colors.white,
+                    fillColor: TWColors.surfaceCard,
+                    hintStyle: TWType.body.copyWith(color: TWColors.textTertiary),
+                    prefixIconColor: TWColors.textTertiary,
+                    suffixIconColor: TWColors.textTertiary,
                     contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 10),
+                        horizontal: TWSpace.lg, vertical: 12),
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide(color: Colors.grey.shade300),
+                      borderRadius: TWRadius.rButton,
+                      borderSide: const BorderSide(color: TWColors.hairline),
                     ),
                     enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide(color: Colors.grey.shade300),
+                      borderRadius: TWRadius.rButton,
+                      borderSide: const BorderSide(color: TWColors.hairline),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: TWRadius.rButton,
+                      borderSide:
+                          const BorderSide(color: TWColors.accent, width: 1.4),
                     ),
                   ),
+                  style: TWType.body.copyWith(color: TWColors.textPrimary),
+                  cursorColor: TWColors.accentBright,
                 ),
               ),
               const SizedBox(width: 8),
@@ -380,13 +392,7 @@ class _ScreenerPageState extends State<ScreenerPage> {
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: Row(
             children: [
-              Text(
-                'Data source',
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 12,
-                ),
-              ),
+              Text('Data source', style: TWType.caption),
               const Spacer(),
               ConnectionPill(source: _source),
             ],
@@ -401,15 +407,17 @@ class _ScreenerPageState extends State<ScreenerPage> {
           ),
         ),
         if (_result != null) _CacheBanner(result: _result!),
-        const Divider(height: 1),
+        const Divider(height: 1, color: TWColors.hairline),
         Expanded(child: _buildBody()),
       ],
+      ),
     );
   }
 
   Widget _buildBody() {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(
+          child: CircularProgressIndicator(color: TWColors.accentBright));
     }
     if (_error != null) {
       return _ScreenerError(message: _error!, onRetry: _run);
@@ -448,19 +456,18 @@ class _ScreenerPageState extends State<ScreenerPage> {
                 alignment: Alignment.centerRight,
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 decoration: BoxDecoration(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .primary
-                      .withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
+                  color: TWColors.accent.withValues(alpha: 0.18),
+                  borderRadius: TWRadius.rCard,
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.swap_horiz, size: 20),
-                    SizedBox(width: 6),
+                    const Icon(Icons.swap_horiz, size: 20,
+                        color: TWColors.accentBright),
+                    const SizedBox(width: 6),
                     Text('Buy / Sell',
-                        style: TextStyle(fontWeight: FontWeight.w700)),
+                        style: TWType.label
+                            .copyWith(color: TWColors.accentBright)),
                   ],
                 ),
               ),
@@ -514,7 +521,7 @@ class _CacheBanner extends StatelessWidget {
           Icon(
             result.cached ? Icons.history : Icons.bolt,
             size: 16,
-            color: AppColors.seed,
+            color: TWColors.accentBright,
           ),
           const SizedBox(width: 6),
           Expanded(
@@ -523,16 +530,13 @@ class _CacheBanner extends StatelessWidget {
                   ? 'Cached market-close result'
                   : 'Fresh market-close result',
               key: const Key('screener_cache_label'),
-              style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 12.5,
-              ),
+              style: TWType.label,
             ),
           ),
           Text(
             _formatGeneratedAt(),
             key: const Key('screener_generated_at'),
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 11.5),
+            style: TWType.tabular(TWType.caption),
           ),
         ],
       ),
@@ -544,15 +548,14 @@ class _CacheBanner extends StatelessWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.info_outline,
-                size: 14, color: Colors.amber.shade800),
+            const Icon(Icons.info_outline, size: 14, color: TWColors.warn),
             const SizedBox(width: 6),
-            const Expanded(
+            Expanded(
               child: Text(
                 'Screening uses latest saved result to avoid slow loading '
                 'during market hours.',
-                key: Key('screener_open_warning'),
-                style: TextStyle(fontSize: 11.5),
+                key: const Key('screener_open_warning'),
+                style: TWType.caption.copyWith(color: TWColors.textSecondary),
               ),
             ),
           ],
@@ -564,7 +567,7 @@ class _CacheBanner extends StatelessWidget {
         Text(
           result.nextRefreshRule!,
           key: const Key('screener_refresh_rule'),
-          style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+          style: TWType.caption,
         ),
       );
     }
@@ -575,7 +578,7 @@ class _CacheBanner extends StatelessWidget {
         Text(
           result.warning!,
           key: const Key('screener_cache_warning'),
-          style: TextStyle(color: Colors.amber.shade900, fontSize: 11),
+          style: TWType.caption.copyWith(color: TWColors.warn),
         ),
       );
     }
@@ -583,8 +586,8 @@ class _CacheBanner extends StatelessWidget {
     return Container(
       width: double.infinity,
       color: open
-          ? Colors.amber.withValues(alpha: 0.10)
-          : AppColors.seed.withValues(alpha: 0.06),
+          ? TWColors.warn.withValues(alpha: 0.10)
+          : TWColors.accent.withValues(alpha: 0.08),
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -620,7 +623,7 @@ class _ScreenerFooter extends StatelessWidget {
         children: [
           Text(
             'Showing $shown of $total',
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+            style: TWType.tabular(TWType.caption),
           ),
           const SizedBox(height: 10),
           if (canLoadMore)
@@ -646,7 +649,7 @@ class _ScreenerFooter extends StatelessWidget {
           else if (atMax && total > shown)
             Text(
               'Showing the top $shown (max).',
-              style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
+              style: TWType.caption,
             ),
         ],
       ),
@@ -730,10 +733,11 @@ class _FiltersButton extends StatelessWidget {
       key: const Key('screener_filters_button'),
       onPressed: onTap,
       style: OutlinedButton.styleFrom(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        side: BorderSide(color: Colors.grey.shade300),
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14)),
+        foregroundColor: TWColors.textPrimary,
+        backgroundColor: TWColors.surfaceCard,
+        padding: const EdgeInsets.symmetric(horizontal: TWSpace.lg, vertical: 12),
+        side: const BorderSide(color: TWColors.hairline),
+        shape: RoundedRectangleBorder(borderRadius: TWRadius.rButton),
       ),
       icon: const Icon(Icons.tune, size: 18),
       label: Text(count == 0 ? 'Filters' : 'Filters ($count)'),
@@ -915,15 +919,12 @@ class _MatchCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final changeColor = match.isUp ? AppColors.up : AppColors.down;
+    final changeColor = match.isUp ? TWColors.up : TWColors.down;
     final sign = match.isUp ? '+' : '';
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+    return TWFloatingCard(
+      onTap: onTap,
+      padding: const EdgeInsets.all(TWSpace.lg),
+      child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
@@ -932,16 +933,12 @@ class _MatchCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        match.symbol,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w800, fontSize: 16),
-                      ),
+                      Text(match.symbol, style: TWType.title3),
                       Text(
                         match.name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.grey, fontSize: 12),
+                        style: TWType.caption,
                       ),
                     ],
                   ),
@@ -951,19 +948,17 @@ class _MatchCard extends StatelessWidget {
                   children: [
                     Text(
                       match.price.toStringAsFixed(match.price >= 100 ? 0 : 2),
-                      style: const TextStyle(fontWeight: FontWeight.w700),
+                      style: TWType.tabular(TWType.label)
+                          .copyWith(color: TWColors.textPrimary),
                     ),
                     Text(
                       '$sign${match.changePercent.toStringAsFixed(2)}%',
-                      style: TextStyle(
-                        color: changeColor,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12,
-                      ),
+                      style: TWType.tabular(TWType.caption)
+                          .copyWith(color: changeColor),
                     ),
                   ],
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: TWSpace.md),
                 // Phase 9A: the pill shows the FINAL Explore Score (what the
                 // list is sorted by), not the Base Score.
                 _ScorePill(score: match.effectiveFinalScore),
@@ -997,8 +992,6 @@ class _MatchCard extends StatelessWidget {
             ],
           ],
         ),
-        ),
-      ),
     );
   }
 }
@@ -1011,22 +1004,30 @@ class _ScorePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final color = TWColors.confidence(score);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      padding: const EdgeInsets.symmetric(
+          horizontal: TWSpace.md, vertical: TWSpace.sm),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF1565C0), Color(0xFF1E88E5)],
+          colors: [TWColors.accentBright, TWColors.accent],
         ),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: TWRadius.rSm,
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.35),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Text(
         score.toStringAsFixed(0),
-        style: const TextStyle(
+        style: TWType.tabular(TWType.title2).copyWith(
           color: Colors.white,
           fontWeight: FontWeight.w900,
-          fontSize: 22,
           height: 1.0,
         ),
       ),
@@ -1046,13 +1047,11 @@ class _ScoreBreakdown extends StatelessWidget {
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('$label ',
-              style: const TextStyle(fontSize: 11, color: Colors.grey)),
+          Text('$label ', style: TWType.caption),
           Text(value,
-              style: TextStyle(
-                  fontSize: 11,
+              style: TWType.tabular(TWType.caption).copyWith(
                   fontWeight: FontWeight.w700,
-                  color: color ?? Colors.black54)),
+                  color: color ?? TWColors.textSecondary)),
         ],
       );
     }
@@ -1071,13 +1070,16 @@ class _ScoreBreakdown extends StatelessWidget {
             if (liq != null)
               part('Liquidity', liq.toStringAsFixed(0),
                   color: liq >= 70
-                      ? AppColors.up
-                      : (liq < 40 ? AppColors.down : Colors.black54)),
+                      ? TWColors.up
+                      : (liq < 40 ? TWColors.down : TWColors.textSecondary)),
             part('Bonus', '+${match.categoryBonus}',
-                color: match.categoryBonus > 0 ? AppColors.up : Colors.grey),
+                color: match.categoryBonus > 0
+                    ? TWColors.up
+                    : TWColors.textTertiary),
             part('Conviction', '${match.convictionScore}/20',
-                color:
-                    match.convictionScore > 0 ? AppColors.up : Colors.grey),
+                color: match.convictionScore > 0
+                    ? TWColors.up
+                    : TWColors.textTertiary),
           ],
         ),
         if (match.hasLiquidityBreakdown) ...[
@@ -1122,7 +1124,7 @@ class _LiquidityLine extends StatelessWidget {
     return Text(
       parts.join('  ·  '),
       key: const Key('screener_liquidity_line'),
-      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+      style: TWType.tabular(TWType.caption),
     );
   }
 }
@@ -1138,17 +1140,17 @@ class _ExploreTag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = _isConviction ? AppColors.up : AppColors.seed;
+    final color = _isConviction ? TWColors.up : TWColors.accentBright;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: TWSpace.sm, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
+        color: color.withValues(alpha: 0.16),
+        borderRadius: TWRadius.rChip,
+        border: Border.all(color: color.withValues(alpha: 0.28)),
       ),
       child: Text(
         label,
-        style: TextStyle(
-          fontSize: 11,
+        style: TWType.caption.copyWith(
           fontWeight: FontWeight.w600,
           color: color,
         ),
@@ -1170,9 +1172,11 @@ class _ScreenerError extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.error_outline, size: 48, color: AppColors.down),
+            const Icon(Icons.error_outline, size: 48, color: TWColors.down),
             const SizedBox(height: 12),
-            Text(message, textAlign: TextAlign.center),
+            Text(message,
+                textAlign: TextAlign.center,
+                style: TWType.body.copyWith(color: TWColors.textSecondary)),
             const SizedBox(height: 16),
             FilledButton.tonal(onPressed: onRetry, child: const Text('Retry')),
           ],
@@ -1201,14 +1205,14 @@ class _ScreenerEmpty extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.filter_alt_off_outlined,
-                size: 48, color: Colors.grey),
+                size: 48, color: TWColors.textTertiary),
             const SizedBox(height: 12),
             Text(
               hasFilter
                   ? 'No matches for this category.'
                   : 'No screener matches found.',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.grey),
+              style: TWType.bodySm.copyWith(color: TWColors.textTertiary),
             ),
             const SizedBox(height: 16),
             if (hasFilter)
