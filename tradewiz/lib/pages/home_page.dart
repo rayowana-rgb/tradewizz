@@ -293,8 +293,9 @@ class _HeroCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const TWAiOrb(size: 34),
+              const TWAiOrb(size: 36),
               const SizedBox(width: TWSpace.md),
               Expanded(
                 child: Column(
@@ -303,11 +304,14 @@ class _HeroCard extends StatelessWidget {
                     Text(greeting,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TWType.caption
-                            .copyWith(color: TWColors.textSecondary)),
+                        style: TWType.bodySm.copyWith(
+                            color: TWColors.textSecondary,
+                            fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 1),
                     Text("Today's Best Idea",
-                        style: TWType.overline
-                            .copyWith(color: TWColors.accentBright)),
+                        style: TWType.overline.copyWith(
+                            color: TWColors.accentBright,
+                            letterSpacing: 0.6)),
                   ],
                 ),
               ),
@@ -316,19 +320,33 @@ class _HeroCard extends StatelessWidget {
           ),
           if (hasIdea) ...[
             const SizedBox(height: TWSpace.lg),
-            // Identity line: ticker + signal on one row.
+            // Identity line: ticker + signal chip + compact score pill.
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Text(symbol,
-                    style: TWType.title1.copyWith(
-                        fontWeight: FontWeight.w800, fontSize: 30)),
+                Flexible(
+                  child: Text(symbol,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TWType.title1.copyWith(
+                          fontWeight: FontWeight.w800, fontSize: 30)),
+                ),
                 const SizedBox(width: TWSpace.md),
                 TWSignalPill(signal: signal),
                 const Spacer(),
-                Text('Score ${score.toStringAsFixed(0)}',
-                    style: TWType.tabular(TWType.label)
-                        .copyWith(color: TWColors.textSecondary)),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: TWSpace.sm, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: TWColors.bgElevated,
+                    borderRadius: TWRadius.rChip,
+                    border:
+                        Border.all(color: TWColors.hairlineTop, width: 1),
+                  ),
+                  child: Text('Score ${score.toStringAsFixed(0)}',
+                      style: TWType.tabular(TWType.label)
+                          .copyWith(color: TWColors.textSecondary)),
+                ),
               ],
             ),
             if (tags.isNotEmpty) ...[
@@ -345,7 +363,8 @@ class _HeroCard extends StatelessWidget {
                 key: const Key('home_hero_reason'),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: TWType.bodySm.copyWith(color: TWColors.textPrimary)),
+                style: TWType.bodySm.copyWith(
+                    color: TWColors.textPrimary, height: 1.35)),
             const SizedBox(height: TWSpace.lg),
             TWGradientButton(
               key: const Key('home_hero_cta'),
@@ -553,32 +572,34 @@ class _MarketPulseCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const TWEyebrow('Market Pulse'),
-                  const SizedBox(width: TWSpace.sm),
-                  Flexible(
-                    child: Text(
-                      idx?.name ?? '${market.code} Index',
-                      key: const Key('home_index_name'),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TWType.label
-                          .copyWith(color: TWColors.textSecondary),
-                    ),
+                  const SizedBox(height: 3),
+                  Text(
+                    idx?.name ?? '${market.code} Index',
+                    key: const Key('home_index_name'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TWType.title3.copyWith(fontSize: 17),
                   ),
                 ],
               ),
             ),
+            const SizedBox(width: TWSpace.sm),
             _ConditionBadge(condition: condition),
           ],
         ),
-        const SizedBox(height: TWSpace.md),
+        const SizedBox(height: TWSpace.lg),
+        // Price + change, grouped on a baseline-aligned line of their own.
         if (idx != null && idx.hasData)
           Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
             children: [
               Text(
                 idx.price!.toStringAsFixed(2),
@@ -587,57 +608,57 @@ class _MarketPulseCard extends StatelessWidget {
                     .copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(width: TWSpace.md),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Text(
-                  '${idx.isUp ? '+' : ''}'
-                  '${(idx.change ?? 0).toStringAsFixed(2)} '
-                  '(${idx.isUp ? '+' : ''}'
-                  '${(idx.changePercent ?? 0).toStringAsFixed(2)}%)',
-                  key: const Key('home_index_change'),
-                  style: TWType.tabular(TWType.label).copyWith(
-                    color: idx.isUp ? TWColors.up : TWColors.down,
-                  ),
+              Text(
+                '${idx.isUp ? '+' : ''}'
+                '${(idx.change ?? 0).toStringAsFixed(2)} '
+                '(${idx.isUp ? '+' : ''}'
+                '${(idx.changePercent ?? 0).toStringAsFixed(2)}%)',
+                key: const Key('home_index_change'),
+                style: TWType.tabular(TWType.label).copyWith(
+                  color: idx.isUp ? TWColors.up : TWColors.down,
+                  fontWeight: FontWeight.w700,
                 ),
-              ),
-              const Spacer(),
-              _MiniStat(
-                label: valueLabel,
-                value: valueText,
-                alignEnd: true,
-                valueKey: const Key('home_value_traded'),
               ),
             ],
           )
-        else ...[
+        else
           Text(
             idx == null ? 'Index data loading\u2026' : 'Index data unavailable',
             key: const Key('home_index_unavailable'),
             style: TWType.bodySm.copyWith(color: TWColors.textTertiary),
           ),
-          const SizedBox(height: TWSpace.sm),
-          Row(
-            children: [
-              Expanded(
-                child: _MiniStat(
-                  label: valueLabel,
-                  value: valueText,
-                  valueKey: const Key('home_value_traded'),
-                ),
+        const SizedBox(height: TWSpace.lg),
+        // Stats grid — same two-column rhythm in every state.
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: _MiniStat(
+                label: valueLabel,
+                value: valueText,
+                valueKey: const Key('home_value_traded'),
               ),
-              Expanded(
-                child: _MiniStat(
-                    label: 'Status', value: idx?.status ?? '\u2014'),
-              ),
-            ],
-          ),
-        ],
+            ),
+            Expanded(
+              child: _MiniStat(
+                  label: 'Status', value: idx?.status ?? '\u2014'),
+            ),
+          ],
+        ),
         if (condition.isKnown && condition.reason.isNotEmpty) ...[
           const SizedBox(height: TWSpace.md),
-          Text(
-            condition.reason,
-            key: const Key('home_condition_reason'),
-            style: TWType.caption,
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(TWSpace.sm),
+            decoration: BoxDecoration(
+              color: TWColors.bgElevated,
+              borderRadius: TWRadius.rChip,
+            ),
+            child: Text(
+              condition.reason,
+              key: const Key('home_condition_reason'),
+              style: TWType.caption.copyWith(height: 1.3),
+            ),
           ),
         ],
       ],
@@ -728,18 +749,15 @@ class _MiniStat extends StatelessWidget {
     required this.label,
     required this.value,
     this.valueKey,
-    this.alignEnd = false,
   });
   final String label;
   final String value;
   final Key? valueKey;
-  final bool alignEnd;
 
   @override
   Widget build(BuildContext context) {
     return Column(
-      crossAxisAlignment:
-          alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(label, style: TWType.caption),
         const SizedBox(height: 2),
