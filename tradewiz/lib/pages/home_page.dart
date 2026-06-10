@@ -178,10 +178,7 @@ class _HomePageState extends State<HomePage> {
               onView: _openAnalysis,
             ),
             const SizedBox(height: TWSpace.xl),
-            // Morning Brief — own card with a raised floating label.
-            _BriefCard(brief: brief),
-            const SizedBox(height: TWSpace.md),
-            // Market Pulse — separate card again.
+            // Market Pulse card first.
             _MarketPulseCard(
               market: widget.market,
               index: _index,
@@ -189,6 +186,9 @@ class _HomePageState extends State<HomePage> {
               condition: _condition,
               ideas: ideas,
             ),
+            const SizedBox(height: TWSpace.lg),
+            // Morning Brief — inline section (no card) below Market Pulse.
+            _BriefCard(brief: brief),
             const SizedBox(height: TWSpace.md),
             _PortfolioCard(
               account: _account,
@@ -429,8 +429,7 @@ class _Confidence extends StatelessWidget {
 //    fewer surfaces while keeping every test key intact.
 // =========================================================================
 // =========================================================================
-// 2a) Morning Brief — its own card again, with a "raised" floating label
-//     notched onto the top edge (the words live outside the card body).
+// 2a) Morning Brief — inline section (no card) shown below Market Pulse.
 // =========================================================================
 class _BriefCard extends StatelessWidget {
   const _BriefCard({required this.brief});
@@ -440,8 +439,9 @@ class _BriefCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bullets = _bullets();
-    return TWFloatingCard(
+    return Padding(
       key: const Key('home_brief'),
+      padding: const EdgeInsets.symmetric(horizontal: TWSpace.xs),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
