@@ -497,11 +497,14 @@ class _BriefCard extends StatelessWidget {
             ],
           ),
         ),
-        // Raised floating label — overhangs the top-left edge of the card.
+        // Raised floating label — overhangs the top-center edge of the card.
         Positioned(
-          left: TWSpace.lg,
+          left: 0,
+          right: 0,
           top: -13,
-          child: Container(
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: Container(
             padding: const EdgeInsets.symmetric(
                 horizontal: TWSpace.md, vertical: 6),
             decoration: BoxDecoration(
@@ -519,6 +522,7 @@ class _BriefCard extends StatelessWidget {
                     style: TWType.label
                         .copyWith(fontWeight: FontWeight.w700)),
               ],
+            ),
             ),
           ),
         ),
