@@ -18,19 +18,23 @@ class TWAiOrb extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
+        // Warm plum orb (icon squircle), lit from the upper-left.
         gradient: const RadialGradient(
           center: Alignment(-0.4, -0.5),
-          radius: 1.1,
-          colors: [TWColors.accentBright, TWColors.accent],
+          radius: 1.15,
+          colors: [Color(0xFF4A3F52), Color(0xFF2E2733)],
         ),
-        boxShadow: glow ? TWShadow.accentGlow : null,
-        border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+        boxShadow: glow ? TWShadow.wizardGlow : null,
+        // Dark-navy charcoal outline like the icon glyph edges.
+        border: Border.all(color: TWColors.outlineNavy.withValues(alpha: 0.6)),
       ),
       child: Center(
         child: Icon(
-          Icons.auto_awesome, // wizard "spark" stand-in (no external icon pkg)
+          // White wizard "spark" glyph (no external icon pkg); echoes the
+          // icon's white-on-plum wizard identity.
+          Icons.auto_awesome,
           size: size * 0.5,
-          color: Colors.white,
+          color: TWColors.wizardWhite,
         ),
       ),
     );

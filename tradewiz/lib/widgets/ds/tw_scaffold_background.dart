@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 
 import '../../theme_tradewizz.dart';
 
-/// Deep indigo "wizard terminal" backdrop.
+/// Muted plum "wizard terminal" backdrop.
 ///
-/// A dark violet base with a soft radial glow toward the top so hero content
-/// reads as floating in front of a lit stage (matches the app-icon lighting).
+/// A warm plum/grey-purple base with a soft radial glow toward the top so hero
+/// content reads as floating in front of a lit stage — mirrors the app icon's
+/// lighter-plum center fading to darker corners (subtle vignette).
 /// Presentation-only: wrap any screen body in this for a consistent dark scene.
 class TWScaffoldBackground extends StatelessWidget {
   const TWScaffoldBackground({
@@ -34,7 +35,7 @@ class TWScaffoldBackground extends StatelessWidget {
                   gradient: RadialGradient(
                     center: Alignment(0, -0.6),
                     radius: 1.1,
-                    colors: [Color(0x332B2350), Color(0x00221B3D)],
+                    colors: [Color(0x4D4A3F52), Color(0x00231E2C)],
                   ),
                 ),
               ),
