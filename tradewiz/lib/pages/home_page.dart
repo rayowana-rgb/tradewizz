@@ -785,7 +785,7 @@ class _PortfolioCard extends StatelessWidget {
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFF4A3F52), Color(0xFF534063), TWColors.accent],
+            colors: [Color(0xFF453B52), Color(0xFF3A2F6B), TWColors.accent],
           ),
         ),
         padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),

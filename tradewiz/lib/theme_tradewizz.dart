@@ -16,25 +16,26 @@ import 'package:flutter/material.dart';
 // Color system
 // ---------------------------------------------------------------------------
 class TWColors {
-  // Backgrounds — muted plum / grey-purple, derived from the icon squircle
-  // (icon plum ranges ~#3A3140 -> #4A3F52, corners darken ~#2E2733).
-  static const Color bgBase = Color(0xFF231E2C); // deepest plum, primary bg
-  static const Color bgRaised = Color(0xFF302839); // secondary surface
-  static const Color bgElevated = Color(0xFF3C3347); // elevated surface
+  // Backgrounds — indigo-plum hybrid: the original deep indigo (#1B1830)
+  // blended with the icon's warm plum (#3A3140 -> #4A3F52) so it keeps the
+  // premium indigo depth while picking up the icon's warmth.
+  static const Color bgBase = Color(0xFF1F1A2E); // indigo-plum, primary bg
+  static const Color bgRaised = Color(0xFF2A2440); // secondary surface
+  static const Color bgElevated = Color(0xFF362F4E); // elevated surface
 
-  // Surfaces — warm plum cards lifted off the base
-  static const Color surfaceCard = Color(0xFF453B52); // ~icon mid plum
-  static const Color surfaceCardGlass = Color(0x8C453B52); // 55% alpha
+  // Surfaces — lifted indigo-plum cards
+  static const Color surfaceCard = Color(0xFF3D3556); // indigo-plum mid
+  static const Color surfaceCardGlass = Color(0x8C3D3556); // 55% alpha
 
   // Identity accent — the icon's white / silver wizard + chart.
   static const Color wizardWhite = Color(0xFFFFFFFF);
   static const Color wizardSilver = Color(0xFFD0D0D5); // hat lowlight
   static const Color outlineNavy = Color(0xFF1E1B24); // icon charcoal outline
 
-  // Functional interactive accent — kept blue for legibility/affordance,
-  // but secondary to the white/silver identity.
-  static const Color accent = Color(0xFF6F7BFF);
-  static const Color accentBright = Color(0xFF9AA0FF);
+  // Functional interactive accent — vivid blue (original brand), pairs with
+  // the white/silver wizard identity from the icon.
+  static const Color accent = Color(0xFF4F7CFF);
+  static const Color accentBright = Color(0xFF6E8BFF);
 
   // Text
   static const Color textPrimary = Color(0xFFFFFFFF);
@@ -54,9 +55,9 @@ class TWColors {
   // Lines — soft white hairlines + dark-navy charcoal edges (icon outlines)
   static const Color hairline = Color(0x14FFFFFF); // rgba(255,255,255,0.08)
   static const Color hairlineTop = Color(0x22FFFFFF); // 13% top sheen
-  static const Color hairlineEdge = Color(0x661E1B24); // navy charcoal edge
+  static const Color hairlineEdge = Color(0x4D1E1B24); // navy charcoal edge
   static const Color ringTrack = Color(0x14FFFFFF); // 8%
-  static const Color sheetScrim = Color(0x8C17131D); // 55% plum scrim
+  static const Color sheetScrim = Color(0x8C120E1E); // 55% indigo-plum scrim
 
   // Gradients
   // Identity gradient: glossy white -> silver, like the wizard hat / chart.
@@ -73,12 +74,12 @@ class TWColors {
     colors: [accentBright, accent],
   );
 
-  // Hero wash: warm plum, brighter top-left fading to the deep base —
-  // mirrors the icon's subtle vignette.
+  // Hero wash: warm plum top-left fading through indigo-plum to the deep
+  // base — blends the icon's warmth with the original indigo depth.
   static const Gradient heroGradient = LinearGradient(
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
-    colors: [Color(0xFF4A3F52), bgElevated, bgBase],
+    colors: [Color(0xFF453B52), bgElevated, bgBase],
   );
 
   /// Confidence ramp (0..100): down -> warn -> up.
@@ -103,7 +104,7 @@ class TWShadow {
     BoxShadow(color: Color(0x47000000), blurRadius: 18, offset: Offset(0, 6)),
   ];
   static const List<BoxShadow> accentGlow = [
-    BoxShadow(color: Color(0x596F7BFF), blurRadius: 28, offset: Offset(0, 8)),
+    BoxShadow(color: Color(0x594F7CFF), blurRadius: 28, offset: Offset(0, 8)),
   ];
   // Soft white halo for the wizard identity (orb / hero mark).
   static const List<BoxShadow> wizardGlow = [

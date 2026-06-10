@@ -18,11 +18,12 @@ class TWAiOrb extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        // Warm plum orb (icon squircle), lit from the upper-left.
+        // Indigo-plum orb (icon squircle warmed over the original indigo),
+        // lit from the upper-left.
         gradient: const RadialGradient(
           center: Alignment(-0.4, -0.5),
           radius: 1.15,
-          colors: [Color(0xFF4A3F52), Color(0xFF2E2733)],
+          colors: [Color(0xFF534063), Color(0xFF2A2440)],
         ),
         boxShadow: glow ? TWShadow.wizardGlow : null,
         // Dark-navy charcoal outline like the icon glyph edges.
