@@ -25,6 +25,7 @@ import 'services/watchlist_scope.dart';
 import 'services/watchlist_store.dart';
 import 'theme.dart';
 import 'theme_tradewizz.dart';
+import 'widgets/ds/ds.dart';
 import 'widgets/market_selector.dart';
 import 'widgets/notification_bell.dart';
 
@@ -219,7 +220,7 @@ class _HomeShellState extends State<HomeShell> {
       // IndexedStack keeps every tab mounted, so Explore's filter state (and
       // loaded results / scroll position) survive Home <-> Explore switches.
       body: SafeArea(child: IndexedStack(index: _index, children: pages)),
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: TWGlassNavBar(
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
         destinations: const [
@@ -253,3 +254,4 @@ class _HomeShellState extends State<HomeShell> {
     );
   }
 }
+

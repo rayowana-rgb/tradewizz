@@ -13,10 +13,10 @@ import 'package:flutter/material.dart';
 // Color system
 // ---------------------------------------------------------------------------
 class TWColors {
-  // Backgrounds
-  static const Color bgBase = Color(0xFF1B1633);
-  static const Color bgRaised = Color(0xFF221B3D);
-  static const Color bgElevated = Color(0xFF2B2350);
+  // Backgrounds (icon-derived; aligned to brand spec)
+  static const Color bgBase = Color(0xFF1B1830); // primary background
+  static const Color bgRaised = Color(0xFF26213F); // secondary surface
+  static const Color bgElevated = Color(0xFF312B4D); // elevated surface
 
   // Surfaces
   static const Color surfaceCard = Color(0xFF2F2858);
@@ -42,6 +42,7 @@ class TWColors {
   static const Color downSoft = Color(0x24FF6B81);
 
   // Lines
+  static const Color hairline = Color(0x14FFFFFF); // rgba(255,255,255,0.08)
   static const Color hairlineTop = Color(0x1AFFFFFF); // 10%
   static const Color hairlineEdge = Color(0x0FFFFFFF); // 6%
   static const Color ringTrack = Color(0x14FFFFFF); // 8%
