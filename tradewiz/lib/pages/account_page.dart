@@ -260,7 +260,9 @@ class _AccountPageState extends State<AccountPage> {
                         softWrap: false,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                            fontWeight: FontWeight.w800, fontSize: 16),
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                            color: TWColors.textPrimary),
                       ),
                     ],
                   ),
@@ -299,8 +301,10 @@ class _AccountPageState extends State<AccountPage> {
             padding: EdgeInsets.only(left: 4, bottom: 8),
             child: Text('Simulation Portfolio',
                 key: Key('account_portfolio_section'),
-                style:
-                    TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                    color: TWColors.textPrimary)),
           ),
           _SummaryCard(
             loading: _loading,
@@ -314,8 +318,10 @@ class _AccountPageState extends State<AccountPage> {
           const Padding(
             padding: EdgeInsets.only(left: 4, bottom: 8),
             child: Text('Holdings',
-                style:
-                    TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                    color: TWColors.textPrimary)),
           ),
           _HoldingsCard(
             positions: port?.positions ?? const [],
@@ -329,11 +335,13 @@ class _AccountPageState extends State<AccountPage> {
           const Padding(
             padding: EdgeInsets.only(left: 4, bottom: 8),
             child: Text('Trade History',
-                style:
-                    TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                    color: TWColors.textPrimary)),
           ),
           _TradesCard(trades: _trades),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
 
           // ============================================================
           // SECTION: Insights (journal, health, AI manager)
@@ -365,8 +373,10 @@ class _AccountPageState extends State<AccountPage> {
                 padding: EdgeInsets.only(left: 4, bottom: 8),
                 child: Text('Portfolio Health',
                     key: Key('account_health_section'),
-                    style:
-                        TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                        color: TWColors.textPrimary)),
               ),
               _PortfolioHealthCard(
                 health: _health,
@@ -374,22 +384,24 @@ class _AccountPageState extends State<AccountPage> {
               ),
             ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
 
           // --- Portfolio Manager (AI) -----------------------------------
           const Padding(
             padding: EdgeInsets.only(left: 4, bottom: 8),
             child: Text('Portfolio Manager',
                 key: Key('account_manager_section'),
-                style:
-                    TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+                style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                    color: TWColors.textPrimary)),
           ),
           PortfolioManagerCard(repository: widget.repository),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
 
           // --- Portfolio Rebalancing AI ---------------------------------
           RebalanceCard(repository: widget.repository),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
 
           // ============================================================
           // SECTION: Connections (external broker portfolio)
@@ -409,7 +421,7 @@ class _AccountPageState extends State<AccountPage> {
               ),
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
 
           // ============================================================
           // SECTION: Account (subscription, advanced tools, reset/logout)
@@ -542,7 +554,9 @@ class _PortfolioValueHeader extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      fontSize: 24, fontWeight: FontWeight.w900)),
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                      color: TWColors.textPrimary)),
             ],
           ),
         ),
@@ -648,7 +662,9 @@ class _SummaryCard extends StatelessWidget {
             Text(value,
                 key: key,
                 style: TextStyle(
-                    fontWeight: FontWeight.w800, fontSize: 16, color: color)),
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                    color: color ?? TWColors.textPrimary)),
           ],
         );
 
@@ -779,17 +795,22 @@ class _HoldingsCard extends StatelessWidget {
           key: Key('holding_tile_${p.symbol}_${p.market.code}'),
           onTap: () => onOpen(p),
           title: Text('${p.symbol} · ${p.market.code}',
-              style: const TextStyle(fontWeight: FontWeight.w700)),
+              style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: TWColors.textPrimary)),
           subtitle: Text(
               '${p.quantity.toStringAsFixed(0)} @ '
               '${p.averageCost.toStringAsFixed(2)} '
-              '· last ${p.lastPrice.toStringAsFixed(2)}'),
+              '· last ${p.lastPrice.toStringAsFixed(2)}',
+              style: const TextStyle(color: TWColors.textTertiary)),
           trailing: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(p.marketValue.toStringAsFixed(2),
-                  style: const TextStyle(fontWeight: FontWeight.w700)),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: TWColors.textPrimary)),
               Text(
                 '${p.unrealizedPnl >= 0 ? '+' : ''}'
                 '${p.unrealizedPnl.toStringAsFixed(2)}',
@@ -869,10 +890,13 @@ class _TradesCard extends StatelessWidget {
       leading: Icon(isBuy ? Icons.arrow_downward : Icons.arrow_upward,
           color: color, size: 18),
       title: Text('${t.side} ${t.quantity.toStringAsFixed(0)} ${t.symbol}',
-          style: const TextStyle(fontWeight: FontWeight.w700)),
-      subtitle: Text('${t.market.code} @ ${t.price.toStringAsFixed(2)}'),
+          style: const TextStyle(
+              fontWeight: FontWeight.w700, color: TWColors.textPrimary)),
+      subtitle: Text('${t.market.code} @ ${t.price.toStringAsFixed(2)}',
+          style: const TextStyle(color: TWColors.textTertiary)),
       trailing: Text(t.value.toStringAsFixed(2),
-          style: const TextStyle(fontWeight: FontWeight.w600)),
+          style: const TextStyle(
+              fontWeight: FontWeight.w600, color: TWColors.textPrimary)),
     );
   }
 }
@@ -939,7 +963,9 @@ class _PortfolioHealthCard extends StatelessWidget {
                   const SizedBox(width: 6),
                   Expanded(
                       child: Text(s,
-                          style: const TextStyle(fontSize: 12))),
+                          style: const TextStyle(
+                              fontSize: 12,
+                              color: TWColors.textSecondary))),
                 ]),
             ],
             if (h.warnings.isNotEmpty) ...[
@@ -951,7 +977,9 @@ class _PortfolioHealthCard extends StatelessWidget {
                   const SizedBox(width: 6),
                   Expanded(
                       child: Text(w,
-                          style: const TextStyle(fontSize: 12))),
+                          style: const TextStyle(
+                              fontSize: 12,
+                              color: TWColors.textSecondary))),
                 ]),
             ],
           ],
@@ -1024,7 +1052,10 @@ class _LoggedOutViewState extends State<_LoggedOutView> {
             const SizedBox(height: 12),
             const Text(
               'Sign in to TradeWiz',
-              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+              style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18,
+                  color: TWColors.textPrimary),
             ),
             const SizedBox(height: 4),
             const Text(
