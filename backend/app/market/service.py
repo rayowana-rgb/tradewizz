@@ -87,6 +87,13 @@ class MarketIndexSpec:
     symbol: str
     name: str
     currency: str
+    # Some markets have no working public Yahoo index symbol (e.g. Vietnam's
+    # VN-Index: ^VNINDEX / VNINDEX.VN all 404). For those we skip the fetch
+    # entirely and report a clean ``available=false`` / ``UNKNOWN`` state
+    # instead of hammering Yahoo with guaranteed-404 requests every cache
+    # window (which produced thousands of error lines).
+    fetchable: bool = True
+    unavailable_reason: Optional[str] = None
 
 
 # Correct Yahoo Finance *index* symbols (verified format). Never use a stock
@@ -100,7 +107,11 @@ INDEX_SPECS: List[MarketIndexSpec] = [
     MarketIndexSpec(Market.US, "^GSPC", "S&P 500", "USD"),
     MarketIndexSpec(Market.JAPAN, "^N225", "Nikkei 225", "JPY"),
     MarketIndexSpec(Market.INDIA, "^NSEI", "Nifty 50", "INR"),
-    MarketIndexSpec(Market.VIETNAM, "^VNINDEX", "VN-Index", "VND"),
+    MarketIndexSpec(
+        Market.VIETNAM, "^VNINDEX", "VN-Index", "VND",
+        fetchable=False,
+        unavailable_reason="VN-Index has no public Yahoo Finance symbol.",
+    ),
     MarketIndexSpec(Market.SINGAPORE, "^STI", "Straits Times Index", "SGD"),
 ]
 
@@ -209,6 +220,10 @@ class MarketIndicesService:
 
     def _fetch_quote(self, spec: MarketIndexSpec) -> IndexQuote:
         status = self._status(spec)
+        # Markets with no working Yahoo index symbol: skip the fetch and report
+        # a clean unavailable state (no 404 spam, isolated to this index).
+        if not spec.fetchable:
+            return self._unavailable(spec, status)
         try:
             df = self._fetch(spec.symbol, "5d", "1d")
             price, change, change_pct = self._extract(df)
@@ -311,6 +326,15 @@ class MarketConditionService:
             return MarketCondition(
                 "UNKNOWN", 50, "No index available for this market."
             )
+        if not spec.fetchable:
+            # No working Yahoo symbol (e.g. Vietnam): clean unavailable state,
+            # no fetch attempt, isolated to this market.
+            result = MarketCondition.unavailable(
+                spec.unavailable_reason or "Index data unavailable"
+            )
+            with self._lock:
+                self._cache[market] = (self._clock(), result)
+            return result
         try:
             df = self._fetch(spec.symbol, "1y", "1d")
             closes, highs, lows = _ohlc_series(df)

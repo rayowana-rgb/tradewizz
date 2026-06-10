@@ -957,6 +957,20 @@ class AnalysisEngine:
                 min_value_traded,
             )
 
+        # Phase C: aggregate fallback logging. Instead of one ERROR/WARNING per
+        # failed ticker (thousands of lines), emit a single market-level summary
+        # when any symbol fell back to deterministic mock data.
+        total = len(matches)
+        fallback = sum(
+            1 for m in matches if getattr(m, "data_source", "live") == "mock"
+        )
+        if fallback:
+            logger.warning(
+                "%s screen fallback used for %d/%d symbols "
+                "(no live data; held out of BUY/elite ideas).",
+                market.value, fallback, total,
+            )
+
         result = ScreenerResult(
             market=market, matches=matches, generated_at=_now_iso()
         )
@@ -997,7 +1011,9 @@ class AnalysisEngine:
             )
         except Exception as exc:  # noqa: BLE001
             # Keep the universe fully populated; response stays 200 "live".
-            logger.warning("screen mock-fallback for %s: %s", ticker, exc)
+            # Per-symbol detail is DEBUG only; the caller (screen()) emits a
+            # single aggregated WARNING summary per run to avoid log spam.
+            logger.debug("screen mock-fallback for %s: %s", ticker, exc)
             return mock_data.mock_screener_match(
                 sym, market, names.get(sym.upper(), "")
             )

@@ -33,13 +33,24 @@ class MarketCondition:
     condition: str          # EXTREME_FEAR..EXTREME_GREED | UNKNOWN
     condition_score: int    # 0..100 (50 when UNKNOWN)
     reason: str
+    # When the index itself is unavailable (no Yahoo symbol / no data) we emit
+    # a null score so the client can distinguish "unknown because no data" from
+    # a genuine neutral reading. ``available`` defaults True for back-compat.
+    available: bool = True
 
     def to_dict(self) -> dict:
         return {
             "condition": self.condition,
-            "condition_score": self.condition_score,
+            "condition_score": self.condition_score if self.available else None,
             "reason": self.reason,
+            "available": self.available,
         }
+
+    @classmethod
+    def unavailable(
+        cls, reason: str = "Index data unavailable"
+    ) -> "MarketCondition":
+        return cls("UNKNOWN", 50, reason, available=False)
 
 
 def _label(score: float) -> str:

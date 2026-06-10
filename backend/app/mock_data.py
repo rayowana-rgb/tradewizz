@@ -107,18 +107,13 @@ def mock_screener_match(
     """
     sym = symbol.upper()
     s = _seed(sym)
-    score = float(s % 100)
     cats = _CATEGORY_ROTATION[s % len(_CATEGORY_ROTATION)]
-    bearish = (
-        ScreenerCategory.bearish in cats
-        or ScreenerCategory.short_candidate in cats
-    )
-    if bearish:
-        signal = "SELL"
-    elif score > 66:
-        signal = "BUY"
-    else:
-        signal = "HOLD"
+    # A graceful per-symbol fallback means we have NO real data for this name.
+    # It must never look like an actionable opportunity: hold it below the
+    # elite/BUY band, force a neutral HOLD signal, and mark it illiquid +
+    # mock so radar / best-idea / notifications structurally exclude it.
+    score = float(s % 40)  # 0..39: well under any BUY / elite threshold
+    signal = "HOLD"
     # Stable pseudo price/change derived from the seed.
     price = round(100 + (s % 9000) / 10.0, 2)
     change = round(((s % 21) - 10) * 0.3, 2)
@@ -132,6 +127,9 @@ def mock_screener_match(
         change_percent=change,
         categories=cats,
         value_traded=round(price * volume, 2),
+        illiquid=True,
+        liquidity_note="No live data — not investable",
+        data_source="mock",
     )
 
 
@@ -163,6 +161,9 @@ def mock_screen(market: Market) -> ScreenerResult:
                 # Descending turnover so the liquidity tiebreaker is stable/
                 # observable in mock output too.
                 value_traded=round(price * (50_000 - i * 1000), 2),
+                # Whole-universe fallback => not real data. Mark as mock so no
+                # consumer promotes these sample rows to an elite idea.
+                data_source="mock",
             )
         )
 

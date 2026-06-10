@@ -123,7 +123,12 @@ class RadarService:
         # are never opportunities — they can't be hero / radar / daily picks /
         # multibagger. They remain visible in the raw screener (with a warning)
         # but are excluded from every "best stock" selection here.
-        matches = [m for m in result.matches if not getattr(m, "illiquid", False)]
+        matches = [
+            m
+            for m in result.matches
+            if not getattr(m, "illiquid", False)
+            and getattr(m, "data_source", "live") != "mock"
+        ]
         if not matches:
             return []
         regime = _regime_from_breadth(matches)

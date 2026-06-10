@@ -222,9 +222,12 @@ def test_cache_avoids_repeated_fetches():
         clock=lambda: t["now"],
         now_provider=_closed_now,
     )
-    n_indices = len(_PRICES)  # one fetch per configured index
+    # One fetch per *fetchable* index. Markets with no working Yahoo symbol
+    # (e.g. Vietnam) skip the fetch entirely and report unavailable.
+    from app.market.service import INDEX_SPECS
+    n_indices = sum(1 for s in INDEX_SPECS if s.fetchable)
     svc.get_indices()
-    assert calls["n"] == n_indices  # one per index
+    assert calls["n"] == n_indices  # one per fetchable index
     # Within TTL: served from cache, no new fetches.
     svc.get_indices()
     assert calls["n"] == n_indices

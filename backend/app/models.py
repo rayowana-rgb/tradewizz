@@ -93,6 +93,10 @@ class ScreenerMatch(BaseModel):
     # --- Phase F liquidity safety (additive, optional) ---
     illiquid: bool = False  # True => value traded below investable threshold
     liquidity_note: Optional[str] = None  # "Illiquid — not investable" etc.
+    # Provenance: "live" for real fetches, "mock" for graceful fallback rows
+    # (no-data symbols). Consumers must never promote a "mock" row to an elite
+    # idea / BUY notification.
+    data_source: str = "live"
 
 
 class ScreenerResult(BaseModel):
