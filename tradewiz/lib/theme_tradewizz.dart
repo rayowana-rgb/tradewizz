@@ -131,10 +131,10 @@ class TWSpace {
 // Radius (brief: 20-28)
 // ---------------------------------------------------------------------------
 class TWRadius {
-  static const double card = 24;
-  static const double cardLg = 28;
-  static const double button = 16;
-  static const double sm = 12;
+  static const double card = 18;
+  static const double cardLg = 22;
+  static const double button = 14;
+  static const double sm = 10;
   static const double chip = 999;
 
   static BorderRadius get rCard => BorderRadius.circular(card);
@@ -152,13 +152,13 @@ class TWType {
   static const List<FontFeature> _tabular = [FontFeature.tabularFigures()];
 
   static const TextStyle display = TextStyle(
-      fontSize: 34, height: 40 / 34, fontWeight: FontWeight.w800, letterSpacing: -0.5, color: TWColors.textPrimary);
+      fontSize: 28, height: 34 / 28, fontWeight: FontWeight.w800, letterSpacing: -0.4, color: TWColors.textPrimary);
   static const TextStyle title1 = TextStyle(
-      fontSize: 28, height: 34 / 28, fontWeight: FontWeight.w700, letterSpacing: -0.4, color: TWColors.textPrimary);
+      fontSize: 24, height: 30 / 24, fontWeight: FontWeight.w700, letterSpacing: -0.3, color: TWColors.textPrimary);
   static const TextStyle title2 = TextStyle(
-      fontSize: 22, height: 28 / 22, fontWeight: FontWeight.w700, letterSpacing: -0.3, color: TWColors.textPrimary);
+      fontSize: 20, height: 26 / 20, fontWeight: FontWeight.w700, letterSpacing: -0.2, color: TWColors.textPrimary);
   static const TextStyle title3 = TextStyle(
-      fontSize: 18, height: 24 / 18, fontWeight: FontWeight.w600, letterSpacing: -0.2, color: TWColors.textPrimary);
+      fontSize: 17, height: 22 / 17, fontWeight: FontWeight.w600, letterSpacing: -0.2, color: TWColors.textPrimary);
   static const TextStyle body = TextStyle(
       fontSize: 16, height: 24 / 16, fontWeight: FontWeight.w500, color: TWColors.textSecondary);
   static const TextStyle bodySm = TextStyle(

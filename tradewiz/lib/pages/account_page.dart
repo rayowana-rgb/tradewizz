@@ -236,10 +236,10 @@ class _AccountPageState extends State<AccountPage> {
           TWFloatingCard(
             padding: EdgeInsets.zero,
             child: Padding(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(16),
               child: Row(children: [
                 CircleAvatar(
-                  radius: 26,
+                  radius: 24,
                   backgroundColor: TWColors.accent.withValues(alpha: 0.12),
                   child: const Icon(Icons.person, color: TWColors.accent),
                 ),

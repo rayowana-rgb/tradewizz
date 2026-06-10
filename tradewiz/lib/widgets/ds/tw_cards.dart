@@ -13,7 +13,7 @@ class TWFloatingCard extends StatefulWidget {
   const TWFloatingCard({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(TWSpace.xl),
+    this.padding = const EdgeInsets.all(TWSpace.lg),
     this.radius = TWRadius.card,
     this.onTap,
     this.glow = false,
@@ -80,7 +80,7 @@ class TWGlassCard extends StatelessWidget {
   const TWGlassCard({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(TWSpace.xl),
+    this.padding = const EdgeInsets.all(TWSpace.lg),
     this.radius = TWRadius.cardLg,
     this.glow = false,
     this.blur = 18,
