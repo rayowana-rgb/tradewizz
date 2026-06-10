@@ -7,8 +7,9 @@ import '../repositories/stock_repository.dart';
 import '../services/api_client.dart';
 import '../services/repository_scope.dart';
 import '../services/watchlist_scope.dart';
-import '../theme.dart';
+import '../theme_tradewizz.dart';
 import '../widgets/auto_watchlist.dart';
+import '../widgets/ds/ds.dart';
 import 'ai_analysis_page.dart';
 
 /// Phase 10A — Watchlist redesign.
@@ -111,10 +112,13 @@ class _WatchlistPageState extends State<WatchlistPage> {
             .take(12)
             .toList();
 
-    return ListView(
-      key: const Key('watchlist_list'),
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-      children: [
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    return TWScaffoldBackground(
+      child: ListView(
+        key: const Key('watchlist_list'),
+        padding: EdgeInsets.fromLTRB(
+            TWSpace.lg, TWSpace.sm, TWSpace.lg, bottomInset + TWSpace.xxxxl),
+        children: [
         // --- Search + manual add -------------------------------------------
         _SearchBar(
           controller: _searchCtrl,
@@ -151,64 +155,66 @@ class _WatchlistPageState extends State<WatchlistPage> {
         const _SectionHeader(
           icon: Icons.star_rounded,
           title: 'Your Watchlist',
-          color: AppColors.seed,
+          color: TWColors.accentBright,
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: TWSpace.md),
         if (items.isEmpty)
           _EmptyYourWatchlist(market: widget.market)
         else
-          Card(
-            child: Column(
-              children: [
-                for (var i = 0; i < items.length; i++) ...[
-                  Dismissible(
-                    key: ValueKey('${items[i].market.code}:${items[i].symbol}'),
-                    direction: DismissDirection.endToStart,
-                    background: Container(
-                      alignment: Alignment.centerRight,
-                      padding: const EdgeInsets.only(right: 24),
-                      decoration: BoxDecoration(
-                        color: AppColors.down.withValues(alpha: 0.10),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child:
-                          const Icon(Icons.delete_outline, color: AppColors.down),
+          Column(
+            children: [
+              for (var i = 0; i < items.length; i++) ...[
+                Dismissible(
+                  key: ValueKey('${items[i].market.code}:${items[i].symbol}'),
+                  direction: DismissDirection.endToStart,
+                  background: Container(
+                    alignment: Alignment.centerRight,
+                    padding: const EdgeInsets.only(right: TWSpace.xxl),
+                    decoration: BoxDecoration(
+                      color: TWColors.downSoft,
+                      borderRadius: TWRadius.rCard,
                     ),
-                    onDismissed: (_) =>
-                        store.remove(items[i].symbol, items[i].market),
+                    child: const Icon(Icons.delete_outline_rounded,
+                        color: TWColors.down),
+                  ),
+                  onDismissed: (_) =>
+                      store.remove(items[i].symbol, items[i].market),
+                  child: TWFloatingCard(
+                    padding: EdgeInsets.zero,
+                    onTap: () => _open(items[i]),
                     child: _WatchRow(
                       item: items[i],
                       match: _quotes[items[i].symbol],
-                      onTap: () => _open(items[i]),
                     ),
                   ),
-                  if (i != items.length - 1)
-                    const Divider(height: 1, indent: 16, endIndent: 16),
-                ],
+                ),
+                if (i != items.length - 1)
+                  const SizedBox(height: TWSpace.md),
               ],
-            ),
+            ],
           ),
         if (items.isNotEmpty) ...[
-          const SizedBox(height: 6),
+          const SizedBox(height: TWSpace.md),
           Center(
             child: Text(
-              'Swipe left to remove · ${items.length} in watchlist',
-              style: const TextStyle(color: Colors.grey, fontSize: 12),
+              'Swipe left to remove \u00b7 ${items.length} in watchlist',
+              style: TWType.caption,
             ),
           ),
         ],
-        const SizedBox(height: 20),
+        const SizedBox(height: TWSpace.xxl),
 
         // --- AI WATCHLIST --------------------------------------------------
         const _SectionHeader(
           icon: Icons.auto_awesome,
           title: 'AI Watchlist',
-          color: AppColors.seed,
+          color: TWColors.accentBright,
           trailing: 'AI PICK',
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: TWSpace.md),
         AutoWatchlistCard(repository: widget.repository),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -233,28 +239,37 @@ class _SearchBar extends StatelessWidget {
       controller: controller,
       onChanged: onChanged,
       textInputAction: TextInputAction.search,
+      style: TWType.body.copyWith(color: TWColors.textPrimary),
+      cursorColor: TWColors.accentBright,
       decoration: InputDecoration(
         hintText: 'Search symbol or company…',
-        prefixIcon: const Icon(Icons.search, size: 20),
+        hintStyle: TWType.body.copyWith(color: TWColors.textTertiary),
+        prefixIcon:
+            const Icon(Icons.search, size: 20, color: TWColors.textTertiary),
         suffixIcon: controller.text.isEmpty
             ? null
             : IconButton(
                 key: const Key('watchlist_search_clear'),
-                icon: const Icon(Icons.close, size: 18),
+                icon: const Icon(Icons.close, size: 18,
+                    color: TWColors.textTertiary),
                 onPressed: onClear,
               ),
         isDense: true,
         filled: true,
-        fillColor: Colors.white,
+        fillColor: TWColors.surfaceCard,
         contentPadding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            const EdgeInsets.symmetric(horizontal: TWSpace.lg, vertical: 14),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: Colors.grey.shade300),
+          borderRadius: TWRadius.rButton,
+          borderSide: const BorderSide(color: TWColors.hairline),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: Colors.grey.shade300),
+          borderRadius: TWRadius.rButton,
+          borderSide: const BorderSide(color: TWColors.hairline),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: TWRadius.rButton,
+          borderSide: const BorderSide(color: TWColors.accent, width: 1.4),
         ),
       ),
     );
@@ -276,54 +291,50 @@ class _SearchResults extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (loading) {
-      return const Card(
-        child: Padding(
-          padding: EdgeInsets.symmetric(vertical: 18),
-          child: Center(
-            child: SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2.2),
-            ),
+      return const TWFloatingCard(
+        padding: EdgeInsets.symmetric(vertical: 18),
+        child: Center(
+          child: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(
+                strokeWidth: 2.2, color: TWColors.accentBright),
           ),
         ),
       );
     }
     if (hits.isEmpty) {
-      return const Card(
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Text('No matches in this market.',
-              key: Key('watchlist_search_empty'),
-              style: TextStyle(color: Colors.grey)),
-        ),
+      return TWFloatingCard(
+        child: Text('No matches in this market.',
+            key: const Key('watchlist_search_empty'),
+            style: TWType.bodySm.copyWith(color: TWColors.textTertiary)),
       );
     }
-    return Card(
+    return TWFloatingCard(
       key: const Key('watchlist_search_results'),
+      padding: const EdgeInsets.symmetric(vertical: TWSpace.sm),
       child: Column(
         children: [
-          for (var i = 0; i < hits.length; i++) ...[
+          for (var i = 0; i < hits.length; i++)
             ListTile(
               key: Key('watchlist_search_add_${hits[i].symbol}'),
               dense: true,
               leading: _Avatar(symbol: hits[i].symbol),
-              title: Text(hits[i].symbol,
-                  style: const TextStyle(fontWeight: FontWeight.w700)),
+              title: Text(hits[i].symbol, style: TWType.label),
               subtitle: Text(
                 hits[i].name.isEmpty ? market.name : hits[i].name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
+                style: TWType.caption,
               ),
-              trailing: FilledButton.tonalIcon(
+              trailing: TWGhostButton(
+                label: 'Add',
+                icon: Icons.add_rounded,
+                expand: false,
+                height: 38,
                 onPressed: () => onAdd(hits[i]),
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Add'),
               ),
             ),
-            if (i != hits.length - 1)
-              const Divider(height: 1, indent: 16, endIndent: 16),
-          ],
         ],
       ),
     );
@@ -350,20 +361,19 @@ class _SectionHeader extends StatelessWidget {
     return Row(
       children: [
         Icon(icon, color: color, size: 20),
-        const SizedBox(width: 8),
-        Text(title,
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+        const SizedBox(width: TWSpace.sm),
+        Text(title, style: TWType.title3),
         if (trailing != null) ...[
-          const SizedBox(width: 8),
+          const SizedBox(width: TWSpace.sm),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+            padding:
+                const EdgeInsets.symmetric(horizontal: TWSpace.sm, vertical: 2),
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(8),
+              color: color.withValues(alpha: 0.16),
+              borderRadius: TWRadius.rChip,
             ),
             child: Text(trailing!,
-                style: TextStyle(
-                    color: color, fontWeight: FontWeight.w800, fontSize: 9)),
+                style: TWType.overline.copyWith(color: color)),
           ),
         ],
       ],
@@ -375,10 +385,9 @@ class _SectionHeader extends StatelessWidget {
 // Watchlist row (enriched)
 // =========================================================================
 class _WatchRow extends StatelessWidget {
-  const _WatchRow({required this.item, required this.match, this.onTap});
+  const _WatchRow({required this.item, required this.match});
   final WatchlistItem item;
   final ScreenerMatch? match;
-  final VoidCallback? onTap;
 
   /// Derive a short, human AI alert from the row's category tags.
   String? _aiAlert(ScreenerMatch m) {
@@ -398,96 +407,87 @@ class _WatchRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final m = match;
     final up = (m?.changePercent ?? 0) >= 0;
-    final changeColor = up ? AppColors.up : AppColors.down;
+    final changeColor = up ? TWColors.up : TWColors.down;
     final alert = m == null ? null : _aiAlert(m);
 
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            _Avatar(symbol: item.symbol),
-            const SizedBox(width: 12),
-            // Symbol + name + AI alert.
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(item.symbol,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w800, fontSize: 15)),
-                  Text(
-                    item.name.isEmpty ? item.market.name : item.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style:
-                        const TextStyle(color: Colors.grey, fontSize: 12),
-                  ),
-                  if (alert != null) ...[
-                    const SizedBox(height: 3),
-                    Row(
-                      children: [
-                        const Icon(Icons.bolt,
-                            size: 13, color: Colors.orange),
-                        const SizedBox(width: 2),
-                        Flexible(
-                          child: Text('AI Alert: $alert',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.orange)),
-                        ),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            // Optional sparkline (synthesized from price+%; no new API).
-            if (m != null) ...[
-              SizedBox(
-                width: 44,
-                height: 26,
-                child: CustomPaint(
-                  painter: _SparklinePainter(up: up, color: changeColor),
-                ),
-              ),
-              const SizedBox(width: 10),
-            ],
-            // Price / % / score / signal.
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisSize: MainAxisSize.min,
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+          horizontal: TWSpace.lg, vertical: TWSpace.lg),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          _Avatar(symbol: item.symbol),
+          const SizedBox(width: TWSpace.md),
+          // Symbol + name + AI alert.
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (m != null) ...[
-                  Text(_price(m.price),
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w800, fontSize: 14)),
-                  Text(
-                    '${up ? '+' : ''}${m.changePercent.toStringAsFixed(1)}%',
-                    style: TextStyle(
-                        color: changeColor,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12),
+                Text(item.symbol, style: TWType.label),
+                Text(
+                  item.name.isEmpty ? item.market.name : item.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TWType.caption,
+                ),
+                if (alert != null) ...[
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      const Icon(Icons.bolt_rounded,
+                          size: 13, color: TWColors.warn),
+                      const SizedBox(width: 3),
+                      Flexible(
+                        child: Text('AI Alert: $alert',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TWType.caption
+                                .copyWith(color: TWColors.warn)),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 2),
-                  _ScoreSignal(
-                    score: m.effectiveFinalScore,
-                    signal: m.signal,
-                  ),
-                ] else
-                  Text('${item.market.flag} ${item.market.code}',
-                      style:
-                          const TextStyle(color: Colors.grey, fontSize: 12)),
+                ],
               ],
             ),
+          ),
+          const SizedBox(width: TWSpace.sm),
+          // Trend sparkline (synthesized from trend direction; no new API).
+          if (m != null) ...[
+            TWSparkline(
+              points: up
+                  ? const [0.2, 0.35, 0.3, 0.5, 0.55, 0.72, 0.85]
+                  : const [0.85, 0.7, 0.74, 0.5, 0.45, 0.3, 0.18],
+              up: up,
+              width: 44,
+              height: 26,
+            ),
+            const SizedBox(width: TWSpace.md),
           ],
-        ),
+          // Price / % / score / signal.
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (m != null) ...[
+                Text(_price(m.price),
+                    style: TWType.tabular(TWType.label)
+                        .copyWith(color: TWColors.textPrimary)),
+                Text(
+                  '${up ? '+' : ''}${m.changePercent.toStringAsFixed(1)}%',
+                  style: TWType.tabular(TWType.caption)
+                      .copyWith(color: changeColor),
+                ),
+                const SizedBox(height: TWSpace.xs),
+                _ScoreSignal(
+                  score: m.effectiveFinalScore,
+                  signal: m.signal,
+                ),
+              ] else
+                Text('${item.market.flag} ${item.market.code}',
+                    style: TWType.caption),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -505,29 +505,14 @@ class _ScoreSignal extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final s = signal.toUpperCase();
-    final color = s.contains('BUY')
-        ? AppColors.up
-        : (s.contains('SELL') ? AppColors.down : Colors.orange);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Text('Score ${score.toStringAsFixed(0)}',
-            style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: AppColors.seed)),
-        const SizedBox(width: 6),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.14),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Text(s,
-              style: TextStyle(
-                  color: color, fontWeight: FontWeight.w800, fontSize: 10)),
-        ),
+            style: TWType.tabular(TWType.caption)
+                .copyWith(color: TWColors.accentBright)),
+        const SizedBox(width: TWSpace.sm),
+        TWSignalPill(signal: signal),
       ],
     );
   }
@@ -538,52 +523,21 @@ class _Avatar extends StatelessWidget {
   final String symbol;
   @override
   Widget build(BuildContext context) {
-    return CircleAvatar(
-      radius: 18,
-      backgroundColor: AppColors.seed.withValues(alpha: 0.10),
+    return Container(
+      width: 38,
+      height: 38,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: TWColors.accent.withValues(alpha: 0.16),
+        shape: BoxShape.circle,
+        border: Border.all(color: TWColors.hairlineTop),
+      ),
       child: Text(
         symbol.characters.take(2).toString().toUpperCase(),
-        style: const TextStyle(
-            fontWeight: FontWeight.w800, fontSize: 12, color: AppColors.seed),
+        style: TWType.label.copyWith(color: TWColors.accentBright),
       ),
     );
   }
-}
-
-/// A tiny deterministic sparkline. It conveys trend direction (up/down) using
-/// the row's daily change; it does not invent price history or call any API.
-class _SparklinePainter extends CustomPainter {
-  _SparklinePainter({required this.up, required this.color});
-  final bool up;
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = 1.8
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-    // A gentle, monotonic-ish curve in the trend direction.
-    final ys = up
-        ? const [0.75, 0.65, 0.7, 0.5, 0.45, 0.3, 0.2]
-        : const [0.25, 0.35, 0.3, 0.5, 0.55, 0.7, 0.8];
-    final path = Path();
-    for (var i = 0; i < ys.length; i++) {
-      final x = size.width * (i / (ys.length - 1));
-      final y = size.height * ys[i];
-      if (i == 0) {
-        path.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
-      }
-    }
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _SparklinePainter old) =>
-      old.up != up || old.color != color;
 }
 
 // =========================================================================
@@ -595,25 +549,11 @@ class _EmptyYourWatchlist extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return TWEmptyState(
       key: const Key('watchlist_empty_your'),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-        child: Column(
-          children: [
-            const Icon(Icons.search, size: 40, color: Colors.grey),
-            const SizedBox(height: 10),
-            Text('Your ${market.code} watchlist is empty',
-                style: const TextStyle(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 4),
-            const Text(
-              'Search above to add stocks you want to track.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey),
-            ),
-          ],
-        ),
-      ),
+      icon: Icons.search_rounded,
+      title: 'Your ${market.code} watchlist is empty',
+      body: 'Search above to add stocks you want to track.',
     );
   }
 }
