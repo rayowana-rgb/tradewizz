@@ -251,10 +251,11 @@ class _HeroCard extends StatelessWidget {
         'Your personalized idea will appear here after the next market open.';
     final hasIdea = symbol != null;
 
+    final tags = _heroTags(reason, signal);
     return Container(
       key: const Key('home_hero'),
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
         gradient: const LinearGradient(
@@ -266,39 +267,76 @@ class _HeroCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(greeting,
-              style: const TextStyle(
-                  color: Colors.white70, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 4),
-          const Text("Today's Best Idea",
-              style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  letterSpacing: 0.5,
-                  fontWeight: FontWeight.w700)),
-          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(greeting,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600)),
+                    const Text("Today's Best Idea",
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            letterSpacing: 0.4,
+                            fontWeight: FontWeight.w700)),
+                  ],
+                ),
+              ),
+              if (hasIdea) _Confidence(score: score),
+            ],
+          ),
           if (hasIdea) ...[
+            const SizedBox(height: 8),
+            // Compact identity line: ticker + signal + score on one row.
             Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                const Text('🔥', style: TextStyle(fontSize: 20)),
+                const SizedBox(width: 6),
                 Text(symbol,
                     style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 30,
+                        fontSize: 26,
                         fontWeight: FontWeight.w800)),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 _SignalPill(signal: signal),
-                const Spacer(),
-                _Confidence(score: score),
+                const SizedBox(width: 8),
+                Text('Score ${score.toStringAsFixed(0)}',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700)),
               ],
             ),
-            const SizedBox(height: 12),
+            if (tags.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(tags.join('  •  '),
+                  key: const Key('home_hero_tags'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600)),
+            ],
+            const SizedBox(height: 8),
             Text(reason,
                 key: const Key('home_hero_reason'),
-                style: const TextStyle(color: Colors.white, height: 1.35)),
-            const SizedBox(height: 16),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    color: Colors.white, fontSize: 13, height: 1.3)),
+            const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
+              height: 40,
               child: FilledButton(
                 key: const Key('home_hero_cta'),
                 style: FilledButton.styleFrom(
@@ -309,12 +347,37 @@ class _HeroCard extends StatelessWidget {
                     style: TextStyle(fontWeight: FontWeight.w700)),
               ),
             ),
-          ] else
+          ] else ...[
+            const SizedBox(height: 12),
             Text(reason,
                 style: const TextStyle(color: Colors.white, height: 1.35)),
+          ],
         ],
       ),
     );
+  }
+
+  /// Derive up to two short, signal-aware tags from the idea's reason text so
+  /// the compact hero conveys conviction without any engine change.
+  List<String> _heroTags(String reason, String signal) {
+    final r = reason.toLowerCase();
+    final out = <String>[];
+    void add(String t) {
+      if (out.length < 2 && !out.contains(t)) out.add(t);
+    }
+    if (r.contains('cmf') || r.contains('money flow')) add('Strong CMF');
+    if (r.contains('obv') || r.contains('volume')) add('Strong OBV');
+    if (r.contains('accumulation')) add('Accumulation');
+    if (r.contains('momentum') || r.contains('relative strength')) {
+      add('Momentum');
+    }
+    if (r.contains('liquid')) add('Strong Liquidity');
+    if (r.contains('breakout')) add('Breakout');
+    if (out.isEmpty) {
+      final s = signal.toUpperCase();
+      if (s.contains('BUY')) add('Bullish setup');
+    }
+    return out;
   }
 }
 
@@ -350,11 +413,24 @@ class _Confidence extends StatelessWidget {
       children: [
         const Text('Confidence',
             style: TextStyle(color: Colors.white70, fontSize: 11)),
-        Text(score.toStringAsFixed(0),
-            style: const TextStyle(
-                color: Colors.white,
-                fontSize: 24,
-                fontWeight: FontWeight.w800)),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Bare number kept as its own Text so tests can assert on it.
+            Text(score.toStringAsFixed(0),
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800)),
+            const Text('%',
+                style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700)),
+          ],
+        ),
       ],
     );
   }

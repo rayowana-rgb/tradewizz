@@ -253,8 +253,11 @@ class _AccountPageState extends State<AccountPage> {
                       const SizedBox(height: 2),
                       Text(
                         user.email,
-                        // ignore: prefer_const_constructors
                         key: const Key('account_email'),
+                        // Phase 10C: never wrap the email to a second line.
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                             fontWeight: FontWeight.w800, fontSize: 16),
                       ),
@@ -521,6 +524,71 @@ class _AccountPageState extends State<AccountPage> {
       );
 }
 
+/// Phase 10C — a prominent "Portfolio Value" header rendered at the top of the
+/// existing summary card, so the total value + return are the first thing the
+/// user reads. Uses the existing [SimAccount]; no new data source.
+class _PortfolioValueHeader extends StatelessWidget {
+  const _PortfolioValueHeader({required this.account});
+  final SimAccount account;
+
+  String _money(double v, String currency) {
+    final neg = v < 0;
+    final a = v.abs();
+    final s = a >= 1000 ? a.toStringAsFixed(0) : a.toStringAsFixed(2);
+    final parts = s.split('.');
+    final intPart = parts[0];
+    final buf = StringBuffer();
+    for (var i = 0; i < intPart.length; i++) {
+      if (i > 0 && (intPart.length - i) % 3 == 0) buf.write(',');
+      buf.write(intPart[i]);
+    }
+    final grouped = parts.length > 1 ? '$buf.${parts[1]}' : buf.toString();
+    return '${neg ? '-' : ''}$currency $grouped';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final a = account;
+    final totalPnl = a.realizedPnl + a.unrealizedPnl;
+    final basis = a.equity - totalPnl;
+    final pct = basis.abs() < 0.0001 ? 0.0 : (totalPnl / basis) * 100;
+    final up = totalPnl >= 0;
+    final color = up ? AppColors.up : AppColors.down;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Portfolio Value',
+                  style: TextStyle(color: Colors.grey, fontSize: 11)),
+              Text(_money(a.equity, a.currency),
+                  key: const Key('account_hero_value'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 24, fontWeight: FontWeight.w900)),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(up ? Icons.arrow_upward : Icons.arrow_downward,
+                size: 14, color: color),
+            Text('${up ? '+' : ''}${pct.toStringAsFixed(1)}%',
+                key: const Key('account_hero_return'),
+                style: TextStyle(
+                    color: color, fontWeight: FontWeight.w800, fontSize: 13)),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 class _SummaryCard extends StatelessWidget {
   const _SummaryCard({
     required this.loading,
@@ -581,6 +649,10 @@ class _SummaryCard extends StatelessWidget {
                 TextButton(onPressed: onRetry, child: const Text('Retry')),
               ])
             else if (a != null) ...[
+              // Phase 10C: lead with the total Portfolio Value + return so the
+              // hub reads as an investor home, not a settings page.
+              _PortfolioValueHeader(account: a),
+              const SizedBox(height: 10),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -1057,66 +1129,99 @@ class _EarlyAccessCard extends StatelessWidget {
     final status = ent.preview && ent.tier == Tier.free
         ? 'Preview User'
         : ent.tier.label;
-    return Card(
+    return Container(
       key: const Key('account_early_access_card'),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF2B1A4A), Color(0xFF4A2D8C)],
+        ),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
-              const Icon(Icons.science_outlined, color: AppColors.seed),
+              const Icon(Icons.workspace_premium, color: Color(0xFFFFD54F)),
               const SizedBox(width: 8),
               const Text('Early Access Program',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16)),
               const Spacer(),
-              const TierChip(),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFD54F).withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(status,
+                    key: const Key('early_access_status'),
+                    style: const TextStyle(
+                        color: Color(0xFFFFD54F),
+                        fontWeight: FontWeight.w800,
+                        fontSize: 11)),
+              ),
             ]),
-            const SizedBox(height: 10),
-            Row(children: [
-              const Text('Current Status:',
-                  style: TextStyle(color: Colors.grey, fontSize: 13)),
-              const SizedBox(width: 6),
-              Text(status,
-                  key: const Key('early_access_status'),
-                  style: const TextStyle(fontWeight: FontWeight.w700)),
-            ]),
-            const SizedBox(height: 4),
+            const SizedBox(height: 8),
             const Text(
-              'All PRO & ELITE features are open during preview. Join a '
-              'waiting list to get early-access news. No payment is taken.',
-              style: TextStyle(color: Colors.grey, fontSize: 12),
+              'Unlock PRO & ELITE — Opportunity Radar, Multibagger Finder & '
+              'Portfolio Health. Free during preview.',
+              style: TextStyle(color: Colors.white70, fontSize: 12),
             ),
             const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              height: 42,
+              child: FilledButton.icon(
+                key: const Key('open_plans_link'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFFFD54F),
+                  foregroundColor: const Color(0xFF2B1A4A),
+                ),
+                onPressed: onOpenPlans,
+                icon: const Icon(Icons.auto_awesome, size: 18),
+                label: const Text('See all plans',
+                    style: TextStyle(fontWeight: FontWeight.w800)),
+              ),
+            ),
+            const SizedBox(height: 10),
             Row(children: [
               Expanded(
                 child: OutlinedButton.icon(
                   key: const Key('join_pro_waitlist'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.4)),
+                  ),
                   icon: const Icon(Icons.notifications_active_outlined,
                       size: 18),
                   onPressed: busy ? null : onJoinPro,
-                  label: const Text('Join PRO Waiting List'),
+                  label: const Text('Join PRO'),
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
                 child: OutlinedButton.icon(
                   key: const Key('join_elite_waitlist'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.4)),
+                  ),
                   icon: const Icon(Icons.workspace_premium, size: 18),
                   onPressed: busy ? null : onJoinElite,
-                  label: const Text('Join ELITE Waiting List'),
+                  label: const Text('Join ELITE'),
                 ),
               ),
             ]),
-            const SizedBox(height: 6),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
-                key: const Key('open_plans_link'),
-                onPressed: onOpenPlans,
-                child: const Text('See all preview features'),
-              ),
-            ),
           ],
         ),
       ),

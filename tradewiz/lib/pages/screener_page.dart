@@ -33,6 +33,11 @@ class _ScreenerPageState extends State<ScreenerPage> {
   late Market _market = widget.market ?? Market.idx;
   ScreenerCategory? _categoryFilter;
   double _minScore = 0;
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+  // Phase 10D extra filters (client-side, visual): signal + liquidity.
+  String? _signalFilter; // BUY / HOLD / SELL
+  bool _hideIlliquid = false;
 
   // Pagination: requested top-N grows by _pageSize up to _maxLimit.
   static const int _pageSize = 50;
@@ -49,6 +54,12 @@ class _ScreenerPageState extends State<ScreenerPage> {
   void initState() {
     super.initState();
     _run();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   @override
@@ -112,14 +123,6 @@ class _ScreenerPageState extends State<ScreenerPage> {
       _limit = _pageSize;
     });
     _run(); // re-query server-side with the category filter
-  }
-
-  void _selectMinScore(double v) {
-    setState(() {
-      _minScore = v;
-      _limit = _pageSize;
-    });
-    _run();
   }
 
   bool get _canLoadMore =>
@@ -211,25 +214,122 @@ class _ScreenerPageState extends State<ScreenerPage> {
   // Server already filters; keep a defensive local pass for fallback data.
   List<ScreenerMatch> get _filtered {
     final matches = _result?.matches ?? [];
+    final q = _query.trim().toUpperCase();
     return matches.where((m) {
       if (_minScore > 0 && m.score < _minScore) return false;
       if (_categoryFilter != null && !m.hasCategory(_categoryFilter!)) {
+        return false;
+      }
+      if (_signalFilter != null &&
+          m.signal.toUpperCase() != _signalFilter) {
+        return false;
+      }
+      if (_hideIlliquid && m.signal.toUpperCase() == 'AVOID') {
+        return false;
+      }
+      if (q.isNotEmpty &&
+          !m.symbol.toUpperCase().contains(q) &&
+          !m.name.toUpperCase().contains(q)) {
         return false;
       }
       return true;
     }).toList();
   }
 
+  int get _activeFilterCount {
+    var n = 0;
+    if (_categoryFilter != null) n++;
+    if (_minScore > 0) n++;
+    if (_signalFilter != null) n++;
+    if (_hideIlliquid) n++;
+    return n;
+  }
+
+  Future<void> _openFilters() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _FiltersSheet(
+        market: _market,
+        category: _categoryFilter,
+        minScore: _minScore,
+        signal: _signalFilter,
+        hideIlliquid: _hideIlliquid,
+        onApply: (m, cat, min, sig, hide) {
+          setState(() {
+            _market = m;
+            _categoryFilter = cat;
+            _minScore = min;
+            _signalFilter = sig;
+            _hideIlliquid = hide;
+            _limit = _pageSize;
+          });
+          // Market / category / min-score are server-side params; re-query.
+          // Signal + liquidity are applied client-side in _filtered.
+          _run();
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
+        // Phase 10D: Search + a single Filters entry point (bottom sheet).
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  key: const Key('screener_search'),
+                  controller: _searchCtrl,
+                  onChanged: (v) => setState(() => _query = v),
+                  textInputAction: TextInputAction.search,
+                  decoration: InputDecoration(
+                    hintText: 'Search symbol or company…',
+                    prefixIcon: const Icon(Icons.search, size: 20),
+                    suffixIcon: _query.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(Icons.close, size: 18),
+                            onPressed: () {
+                              _searchCtrl.clear();
+                              setState(() => _query = '');
+                            },
+                          ),
+                    isDense: true,
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _FiltersButton(
+                count: _activeFilterCount,
+                onTap: _openFilters,
+              ),
+            ],
+          ),
+        ),
+        // Quick market + category chips remain for fast access.
         _MarketFilterBar(selected: _market, onSelected: _selectMarket),
         _CategoryFilterBar(
           selected: _categoryFilter,
           onSelected: _selectCategory,
         ),
-        _MinScoreBar(selected: _minScore, onSelected: _selectMinScore),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
           child: Row(
@@ -569,40 +669,194 @@ class _CategoryFilterBar extends StatelessWidget {
 }
 
 /// Quick min-score selector (chips). 0 means "no minimum".
-class _MinScoreBar extends StatelessWidget {
-  const _MinScoreBar({required this.selected, required this.onSelected});
-  final double selected;
-  final ValueChanged<double> onSelected;
-
-  static const _options = <double>[0, 50, 70, 90];
+/// Phase 10D: a single "Filters" entry point that opens the bottom sheet.
+class _FiltersButton extends StatelessWidget {
+  const _FiltersButton({required this.count, required this.onTap});
+  final int count;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-      child: Row(
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: Text(
-              'Min score',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-            ),
-          ),
-          for (final v in _options)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ChoiceChip(
-                selected: v == selected,
-                label: Text(v == 0 ? 'Any' : '≥ ${v.toInt()}'),
-                onSelected: (_) => onSelected(v),
+    return OutlinedButton.icon(
+      key: const Key('screener_filters_button'),
+      onPressed: onTap,
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        side: BorderSide(color: Colors.grey.shade300),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14)),
+      ),
+      icon: const Icon(Icons.tune, size: 18),
+      label: Text(count == 0 ? 'Filters' : 'Filters ($count)'),
+    );
+  }
+}
+
+/// Phase 10D: the consolidated filter bottom sheet — Market, Category, Min
+/// Score, Signal, Liquidity. Purely visual/UX; it drives the SAME state and
+/// the SAME server params as before (no scoring/ranking change).
+class _FiltersSheet extends StatefulWidget {
+  const _FiltersSheet({
+    required this.market,
+    required this.category,
+    required this.minScore,
+    required this.signal,
+    required this.hideIlliquid,
+    required this.onApply,
+  });
+
+  final Market market;
+  final ScreenerCategory? category;
+  final double minScore;
+  final String? signal;
+  final bool hideIlliquid;
+  final void Function(
+    Market market,
+    ScreenerCategory? category,
+    double minScore,
+    String? signal,
+    bool hideIlliquid,
+  ) onApply;
+
+  @override
+  State<_FiltersSheet> createState() => _FiltersSheetState();
+}
+
+class _FiltersSheetState extends State<_FiltersSheet> {
+  late Market _market = widget.market;
+  late ScreenerCategory? _category = widget.category;
+  late double _minScore = widget.minScore;
+  late String? _signal = widget.signal;
+  late bool _hideIlliquid = widget.hideIlliquid;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Filters',
+                  style:
+                      TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+              const SizedBox(height: 12),
+              _label('Market'),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final m in Market.values)
+                    ChoiceChip(
+                      selected: m == _market,
+                      label: Text('${m.flag} ${m.code}'),
+                      onSelected: (_) => setState(() => _market = m),
+                    ),
+                ],
               ),
-            ),
-        ],
+              const SizedBox(height: 14),
+              _label('Category'),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ChoiceChip(
+                    selected: _category == null,
+                    label: const Text('All'),
+                    onSelected: (_) => setState(() => _category = null),
+                  ),
+                  for (final c in ScreenerCategory.values)
+                    ChoiceChip(
+                      selected: _category == c,
+                      label: Text(c.label),
+                      onSelected: (_) => setState(() => _category = c),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              _label('Min Score'),
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final v in const <double>[0, 50, 70, 90])
+                    ChoiceChip(
+                      selected: v == _minScore,
+                      label: Text(v == 0 ? 'Any' : '≥ ${v.toInt()}'),
+                      onSelected: (_) => setState(() => _minScore = v),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              _label('Signal'),
+              Wrap(
+                spacing: 8,
+                children: [
+                  ChoiceChip(
+                    selected: _signal == null,
+                    label: const Text('Any'),
+                    onSelected: (_) => setState(() => _signal = null),
+                  ),
+                  for (final s in const ['BUY', 'HOLD', 'SELL'])
+                    ChoiceChip(
+                      selected: _signal == s,
+                      label: Text(s),
+                      onSelected: (_) => setState(() => _signal = s),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              _label('Liquidity'),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _hideIlliquid,
+                onChanged: (v) => setState(() => _hideIlliquid = v),
+                title: const Text('Hide illiquid / not-investable',
+                    style: TextStyle(fontSize: 14)),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => setState(() {
+                        _market = widget.market;
+                        _category = null;
+                        _minScore = 0;
+                        _signal = null;
+                        _hideIlliquid = false;
+                      }),
+                      child: const Text('Reset'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      key: const Key('screener_filters_apply'),
+                      onPressed: () {
+                        widget.onApply(_market, _category, _minScore,
+                            _signal, _hideIlliquid);
+                        Navigator.of(context).pop();
+                      },
+                      child: const Text('Apply'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
+
+  Widget _label(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Text(text,
+            style: const TextStyle(
+                fontWeight: FontWeight.w700, fontSize: 13)),
+      );
 }
 
 class _MatchCard extends StatelessWidget {
@@ -700,6 +954,8 @@ class _MatchCard extends StatelessWidget {
   }
 }
 
+/// Phase 10D: the Final Explore Score is TradeWizz's hero metric — render it
+/// as the loudest element on the card.
 class _ScorePill extends StatelessWidget {
   const _ScorePill({required this.score});
   final double score;
@@ -707,16 +963,22 @@ class _ScorePill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
-        color: AppColors.seed.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(10),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1565C0), Color(0xFF1E88E5)],
+        ),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Text(
         score.toStringAsFixed(0),
         style: const TextStyle(
-          color: AppColors.seed,
-          fontWeight: FontWeight.w800,
+          color: Colors.white,
+          fontWeight: FontWeight.w900,
+          fontSize: 22,
+          height: 1.0,
         ),
       ),
     );
@@ -732,29 +994,28 @@ class _ScoreBreakdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Widget part(String label, String value, {Color? color}) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      return Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(label,
-              style: const TextStyle(fontSize: 10, color: Colors.grey)),
+          Text('$label ',
+              style: const TextStyle(fontSize: 11, color: Colors.grey)),
           Text(value,
               style: TextStyle(
-                  fontSize: 13,
+                  fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: color)),
+                  color: color ?? Colors.black54)),
         ],
       );
     }
 
+    // Secondary to the hero Final Score pill: show only the components.
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        part('Final', match.effectiveFinalScore.toStringAsFixed(0),
-            color: AppColors.seed),
         part('Base', match.effectiveBaseScore.toStringAsFixed(0)),
-        part('Bonus',
-            '+${match.categoryBonus}',
+        const SizedBox(width: 20),
+        part('Bonus', '+${match.categoryBonus}',
             color: match.categoryBonus > 0 ? AppColors.up : Colors.grey),
+        const SizedBox(width: 20),
         part('Conviction', '${match.convictionScore}/20',
             color: match.convictionScore > 0 ? AppColors.up : Colors.grey),
       ],
