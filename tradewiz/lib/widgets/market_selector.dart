@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/market.dart';
+import '../theme_tradewizz.dart';
 
 /// Compact dropdown to switch between supported markets.
 class MarketSelector extends StatelessWidget {
@@ -18,16 +19,19 @@ class MarketSelector extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: TWColors.bgElevated,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE0E3E7)),
+        border: Border.all(color: TWColors.hairline),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<Market>(
           value: selected,
           isDense: true,
           borderRadius: BorderRadius.circular(12),
-          icon: const Icon(Icons.keyboard_arrow_down, size: 20),
+          dropdownColor: TWColors.bgElevated,
+          style: const TextStyle(color: TWColors.textPrimary),
+          icon: const Icon(Icons.keyboard_arrow_down,
+              size: 20, color: TWColors.textSecondary),
           items: [
             for (final m in Market.values)
               DropdownMenuItem(
@@ -39,7 +43,9 @@ class MarketSelector extends StatelessWidget {
                     const SizedBox(width: 8),
                     Text(
                       m.code,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          color: TWColors.textPrimary),
                     ),
                   ],
                 ),
