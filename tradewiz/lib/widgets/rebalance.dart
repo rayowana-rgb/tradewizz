@@ -9,6 +9,8 @@ import '../services/api_client.dart';
 import '../services/auth_scope.dart';
 import '../services/repository_scope.dart';
 import '../theme.dart';
+import '../theme_tradewizz.dart';
+import 'ds/ds.dart';
 
 Color actionColor(String action) => {
       'ADD': AppColors.up,
@@ -104,20 +106,17 @@ class _RebalanceCardState extends State<RebalanceCard> {
             const SizedBox(width: 8),
             const Text('Portfolio Rebalancing AI',
                 key: Key('rebalance_title'),
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+                style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 17,
+                    color: TWColors.textPrimary)),
           ],
         ),
         const SizedBox(height: 8),
-        Card(
+        TWFloatingCard(
           key: const Key('rebalance_card'),
-          child: InkWell(
-            onTap: _data == null ? null : _openDetail,
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: _buildBody(),
-            ),
-          ),
+          onTap: _data == null ? null : _openDetail,
+          child: _buildBody(),
         ),
       ],
     );
@@ -139,12 +138,12 @@ class _RebalanceCardState extends State<RebalanceCard> {
     }
     if (_token == null) {
       return const Text('Sign in for AI rebalancing guidance.',
-          style: TextStyle(color: Colors.grey));
+          style: TextStyle(color: TWColors.textTertiary));
     }
     if (_error || _data == null) {
       return const Text('Rebalancing unavailable.',
           key: Key('rebalance_error'),
-          style: TextStyle(color: AppColors.down));
+          style: TextStyle(color: TWColors.down));
     }
     final data = _data!;
     return Column(
@@ -167,7 +166,8 @@ class _RebalanceCardState extends State<RebalanceCard> {
         ),
         const SizedBox(height: 10),
         Text(data.summary,
-            style: const TextStyle(fontSize: 12, color: Colors.black54)),
+            style: const TextStyle(
+                fontSize: 12, color: TWColors.textSecondary)),
         const SizedBox(height: 8),
         const Row(
           children: [
@@ -191,11 +191,14 @@ class _RebalanceCardState extends State<RebalanceCard> {
         children: [
           Text(value,
               style: TextStyle(
-                  fontWeight: FontWeight.w800, fontSize: 20, color: color)),
+                  fontWeight: FontWeight.w800,
+                  fontSize: 20,
+                  color: color ?? TWColors.textPrimary)),
           const SizedBox(height: 2),
           Text(label,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.grey, fontSize: 11)),
+              style: const TextStyle(
+                  color: TWColors.textTertiary, fontSize: 11)),
         ],
       ),
     );
@@ -279,9 +282,14 @@ class _RebalanceDetailPageState extends State<RebalanceDetailPage> {
   Widget build(BuildContext context) {
     final data = _data;
     return Scaffold(
+      backgroundColor: TWColors.bgBase,
       appBar: AppBar(
+        backgroundColor: TWColors.bgBase,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
         title: const Text('Portfolio Rebalancing AI',
-            style: TextStyle(fontWeight: FontWeight.w700)),
+            style: TextStyle(
+                fontWeight: FontWeight.w700, color: TWColors.textPrimary)),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -296,15 +304,12 @@ class _RebalanceDetailPageState extends State<RebalanceDetailPage> {
                     _SummaryHeader(data: data),
                     const SizedBox(height: 12),
                     if (data.actions.isEmpty)
-                      const Card(
-                        child: Padding(
-                          padding: EdgeInsets.all(24),
-                          child: Center(
-                            child: Text(
-                              'No simulated holdings to rebalance yet.',
-                              key: Key('rebalance_detail_empty'),
-                              style: TextStyle(color: Colors.grey),
-                            ),
+                      const TWFloatingCard(
+                        child: Center(
+                          child: Text(
+                            'No simulated holdings to rebalance yet.',
+                            key: Key('rebalance_detail_empty'),
+                            style: TextStyle(color: TWColors.textTertiary),
                           ),
                         ),
                       )
@@ -328,9 +333,7 @@ class _SummaryHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+    return TWFloatingCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -338,16 +341,21 @@ class _SummaryHeader extends StatelessWidget {
               children: [
                 Text('Profile: ${data.profile}',
                     style: const TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 13)),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        color: TWColors.textPrimary)),
                 const Spacer(),
                 Text('Score ${data.portfolioScore.toStringAsFixed(0)}',
                     style: const TextStyle(
-                        fontWeight: FontWeight.w800, fontSize: 13)),
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                        color: TWColors.textPrimary)),
               ],
             ),
             const SizedBox(height: 6),
             Text(data.summary,
-                style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                style: const TextStyle(
+                    fontSize: 12, color: TWColors.textSecondary)),
             for (final w in data.warnings) ...[
               const SizedBox(height: 6),
               Row(
@@ -366,7 +374,6 @@ class _SummaryHeader extends StatelessWidget {
             ],
           ],
         ),
-      ),
     );
   }
 }
@@ -386,11 +393,10 @@ class _ActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return TWFloatingCard(
       key: Key('rebalance_action_${a.symbol}'),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
+      padding: const EdgeInsets.all(14),
+      child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
@@ -400,7 +406,9 @@ class _ActionCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text('${a.market.flag} ${a.symbol}',
                     style: const TextStyle(
-                        fontWeight: FontWeight.w800, fontSize: 15)),
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                        color: TWColors.textPrimary)),
                 const SizedBox(width: 8),
                 Container(
                   padding:
@@ -426,7 +434,8 @@ class _ActionCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(a.reason,
-                style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                style: const TextStyle(
+                    fontSize: 12, color: TWColors.textSecondary)),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -467,7 +476,6 @@ class _ActionCard extends StatelessWidget {
             ),
           ],
         ),
-      ),
     );
   }
 
@@ -475,10 +483,13 @@ class _ActionCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text('$k: ',
-              style: const TextStyle(color: Colors.grey, fontSize: 12)),
+              style: const TextStyle(
+                  color: TWColors.textTertiary, fontSize: 12)),
           Text(v,
-              style:
-                  const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+              style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                  color: TWColors.textPrimary)),
         ],
       );
 }

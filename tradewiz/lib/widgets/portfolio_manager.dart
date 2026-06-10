@@ -6,6 +6,8 @@ import '../services/api_client.dart';
 import '../services/auth_scope.dart';
 import '../services/repository_scope.dart';
 import '../theme.dart';
+import '../theme_tradewizz.dart';
+import 'ds/ds.dart';
 
 /// AI Portfolio Manager card — a rule-based advisory over the simulated
 /// portfolio (risk level, scores, and plain-language recommendations).
@@ -85,7 +87,10 @@ class _PortfolioManagerCardState extends State<PortfolioManagerCard> {
             const SizedBox(width: 8),
             const Text('AI Portfolio Manager',
                 key: Key('portfolio_manager_title'),
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+                style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 17,
+                    color: TWColors.textPrimary)),
           ],
         ),
         const SizedBox(height: 8),
@@ -98,21 +103,15 @@ class _PortfolioManagerCardState extends State<PortfolioManagerCard> {
             ),
           )
         else if (_token == null)
-          const Card(
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: Text('Sign in to get AI portfolio guidance.',
-                  style: TextStyle(color: Colors.grey)),
-            ),
+          const TWFloatingCard(
+            child: Text('Sign in to get AI portfolio guidance.',
+                style: TextStyle(color: TWColors.textTertiary)),
           )
         else if (_error || _report == null)
-          const Card(
+          const TWFloatingCard(
             key: Key('portfolio_manager_unavailable'),
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: Text('Portfolio manager unavailable.',
-                  style: TextStyle(color: AppColors.down)),
-            ),
+            child: Text('Portfolio manager unavailable.',
+                style: TextStyle(color: TWColors.down)),
           )
         else
           _ReportCard(report: _report!, riskColor: _riskColor),
@@ -128,17 +127,16 @@ class _ReportCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return TWFloatingCard(
       key: const Key('portfolio_manager_report'),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+      child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 const Text('Risk Level',
-                    style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    style: TextStyle(
+                        color: TWColors.textTertiary, fontSize: 12)),
                 const Spacer(),
                 Container(
                   key: const Key('portfolio_manager_risk'),
@@ -172,18 +170,18 @@ class _ReportCard extends StatelessWidget {
             const Divider(height: 24),
             const Text('Recommendations',
                 style: TextStyle(
-                    color: Colors.grey,
+                    color: TWColors.textSecondary,
                     fontSize: 12,
                     fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             if (report.recommendations.isEmpty)
               const Text('No recommendations right now.',
-                  style: TextStyle(color: Colors.grey, fontSize: 13))
+                  style: TextStyle(
+                      color: TWColors.textTertiary, fontSize: 13))
             else
               for (final rec in report.recommendations)
                 _RecTile(rec: rec),
           ],
-        ),
       ),
     );
   }
@@ -201,10 +199,13 @@ class _ScoreCell extends StatelessWidget {
         children: [
           Text(value.toStringAsFixed(0),
               style: const TextStyle(
-                  fontWeight: FontWeight.w800, fontSize: 18)),
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18,
+                  color: TWColors.textPrimary)),
           const SizedBox(height: 2),
           Text(label,
-              style: const TextStyle(color: Colors.grey, fontSize: 11)),
+              style: const TextStyle(
+                  color: TWColors.textTertiary, fontSize: 11)),
         ],
       ),
     );
@@ -247,10 +248,12 @@ class _RecTile extends StatelessWidget {
                 if (rec.title.isNotEmpty)
                   Text(rec.title,
                       style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 13)),
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                          color: TWColors.textPrimary)),
                 Text(rec.message,
-                    style:
-                        const TextStyle(fontSize: 12, color: Colors.black54)),
+                    style: const TextStyle(
+                        fontSize: 12, color: TWColors.textSecondary)),
               ],
             ),
           ),
