@@ -42,41 +42,34 @@ class TWGlassNavBar extends StatelessWidget {
         final selected = states.contains(WidgetState.selected);
         return IconThemeData(
           color: selected ? TWColors.accentBright : TWColors.textTertiary,
-          size: 24,
+          size: 27,
         );
       }),
     );
 
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        TWSpace.lg,
-        0,
-        TWSpace.lg,
-        bottomInset > 0 ? bottomInset * 0.5 + TWSpace.sm : TWSpace.md,
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(TWRadius.cardLg),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-          child: Container(
-            decoration: BoxDecoration(
-              color: TWColors.surfaceCardGlass,
-              borderRadius: BorderRadius.circular(TWRadius.cardLg),
-              border: Border.all(color: TWColors.hairlineTop, width: 1),
-              boxShadow: TWShadow.ambient,
+    // Flat bar pinned to the bottom edge: full-width, hairline top divider,
+    // backdrop blur for legibility over content — no floating "card" slab.
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+        child: Container(
+          padding: EdgeInsets.only(bottom: bottomInset),
+          decoration: BoxDecoration(
+            color: TWColors.surfaceCardGlass,
+            border: Border(
+              top: BorderSide(color: TWColors.hairlineTop, width: 1),
             ),
-            child: NavigationBarTheme(
-              data: navTheme,
-              child: NavigationBar(
-                height: 64,
-                backgroundColor: Colors.transparent,
-                elevation: 0,
-                labelBehavior:
-                    NavigationDestinationLabelBehavior.onlyShowSelected,
-                selectedIndex: selectedIndex,
-                onDestinationSelected: onDestinationSelected,
-                destinations: destinations,
-              ),
+          ),
+          child: NavigationBarTheme(
+            data: navTheme,
+            child: NavigationBar(
+              height: 64,
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+              selectedIndex: selectedIndex,
+              onDestinationSelected: onDestinationSelected,
+              destinations: destinations,
             ),
           ),
         ),
