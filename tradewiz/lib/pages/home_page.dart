@@ -177,7 +177,7 @@ class _HomePageState extends State<HomePage> {
               fallback: brief?.topOpportunity,
               onView: _openAnalysis,
             ),
-            const SizedBox(height: TWSpace.xl),
+            const SizedBox(height: TWSpace.md),
             // Market Pulse card first.
             _MarketPulseCard(
               market: widget.market,
@@ -583,7 +583,7 @@ class _MarketPulseCard extends StatelessWidget {
               Text(
                 idx.price!.toStringAsFixed(2),
                 key: const Key('home_index_price'),
-                style: TWType.tabular(TWType.title1)
+                style: TWType.tabular(TWType.title2)
                     .copyWith(fontWeight: FontWeight.w800),
               ),
               const SizedBox(width: TWSpace.md),
@@ -615,16 +615,20 @@ class _MarketPulseCard extends StatelessWidget {
             key: const Key('home_index_unavailable'),
             style: TWType.bodySm.copyWith(color: TWColors.textTertiary),
           ),
-          const SizedBox(height: TWSpace.md),
+          const SizedBox(height: TWSpace.sm),
           Row(
             children: [
-              _MiniStat(
-                label: valueLabel,
-                value: valueText,
-                valueKey: const Key('home_value_traded'),
+              Expanded(
+                child: _MiniStat(
+                  label: valueLabel,
+                  value: valueText,
+                  valueKey: const Key('home_value_traded'),
+                ),
               ),
-              const SizedBox(width: TWSpace.xxl),
-              _MiniStat(label: 'Status', value: idx?.status ?? '\u2014'),
+              Expanded(
+                child: _MiniStat(
+                    label: 'Status', value: idx?.status ?? '\u2014'),
+              ),
             ],
           ),
         ],
@@ -832,14 +836,18 @@ class _PortfolioCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             // 1) Total value — the loudest element.
-            Text(_money(a.equity, a.currency),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 34,
-                  fontWeight: FontWeight.w900,
-                  height: 1.0,
-                  fontFeatures: [FontFeature.tabularFigures()],
-                )),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(_money(a.equity, a.currency),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 27,
+                    fontWeight: FontWeight.w900,
+                    height: 1.0,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  )),
+            ),
             const SizedBox(height: 8),
             // 2) Total return.
             Row(
