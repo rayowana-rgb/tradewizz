@@ -24,6 +24,7 @@ import 'services/user_prefs_store.dart';
 import 'services/watchlist_scope.dart';
 import 'services/watchlist_store.dart';
 import 'theme.dart';
+import 'theme_tradewizz.dart';
 import 'widgets/market_selector.dart';
 import 'widgets/notification_bell.dart';
 
@@ -179,7 +180,13 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final pages = [
-      HomePage(market: _market),
+      // Phase 12: Home adopts the dark "Wizard Terminal" design language via a
+      // scoped Theme override, so the redesign ships as a self-contained
+      // vertical slice without changing the other tabs' Material theme.
+      Theme(
+        data: buildTradeWizzTheme(),
+        child: HomePage(market: _market),
+      ),
       WatchlistPage(market: _market),
       ScreenerPage(market: _market),
       AiAnalysisPage(market: _market),

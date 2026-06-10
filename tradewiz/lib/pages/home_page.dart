@@ -16,7 +16,8 @@ import '../services/user_prefs_scope.dart';
 import '../services/watchlist_scope.dart';
 import '../snapshot/snapshot_models.dart';
 import '../snapshot/snapshot_repository.dart';
-import '../theme.dart';
+import '../theme_tradewizz.dart';
+import '../widgets/ds/ds.dart';
 import 'account_page.dart';
 import 'ai_analysis_page.dart';
 
@@ -158,39 +159,46 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     final ideas = _ideas;
     final brief = _dashboard?.morningBrief;
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView(
-        key: const Key('home_list'),
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-        children: [
-          _HeroCard(
-            greeting: _greeting(),
-            idea: ideas.ideas.isNotEmpty ? ideas.ideas.first : null,
-            fallback: brief?.topOpportunity,
-            onView: _openAnalysis,
-          ),
-          const SizedBox(height: 16),
-          _BriefCard(brief: brief),
-          const SizedBox(height: 16),
-          _IndexCard(
-            market: widget.market,
-            index: _index,
-            overview: _overview,
-            condition: _condition,
-            ideas: ideas,
-          ),
-          const SizedBox(height: 16),
-          _PortfolioCard(
-            account: _account,
-            positions: _positions,
-            onOpenPortfolio: _openPortfolio,
-          ),
-          const SizedBox(height: 16),
-          _WatchlistCard(market: widget.market),
-          const SizedBox(height: 16),
-          _IdeasSection(ideas: ideas, onTap: _openIdea),
-        ],
+    // Keep content clear of the floating nav bar at the bottom.
+    final bottomInset = MediaQuery.of(context).padding.bottom;
+    return TWScaffoldBackground(
+      child: RefreshIndicator(
+        color: TWColors.accentBright,
+        backgroundColor: TWColors.bgElevated,
+        onRefresh: _load,
+        child: ListView(
+          key: const Key('home_list'),
+          padding: EdgeInsets.fromLTRB(
+              TWSpace.xl, TWSpace.lg, TWSpace.xl, TWSpace.xxxl + bottomInset),
+          children: [
+            _HeroCard(
+              greeting: _greeting(),
+              idea: ideas.ideas.isNotEmpty ? ideas.ideas.first : null,
+              fallback: brief?.topOpportunity,
+              onView: _openAnalysis,
+            ),
+            const SizedBox(height: TWSpace.lg),
+            _BriefCard(brief: brief),
+            const SizedBox(height: TWSpace.lg),
+            _IndexCard(
+              market: widget.market,
+              index: _index,
+              overview: _overview,
+              condition: _condition,
+              ideas: ideas,
+            ),
+            const SizedBox(height: TWSpace.lg),
+            _PortfolioCard(
+              account: _account,
+              positions: _positions,
+              onOpenPortfolio: _openPortfolio,
+            ),
+            const SizedBox(height: TWSpace.lg),
+            _WatchlistCard(market: widget.market),
+            const SizedBox(height: TWSpace.lg),
+            _IdeasSection(ideas: ideas, onTap: _openIdea),
+          ],
+        ),
       ),
     );
   }
@@ -266,20 +274,24 @@ class _HeroCard extends StatelessWidget {
     return Container(
       key: const Key('home_hero'),
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      padding: const EdgeInsets.all(TWSpace.xl),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(TWRadius.cardLg),
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF1565C0), Color(0xFF1E88E5)],
+          colors: [TWColors.bgElevated, TWColors.bgRaised],
         ),
+        border: Border.all(color: TWColors.hairlineTop, width: 1),
+        boxShadow: const [...TWShadow.ambient, ...TWShadow.accentGlow],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
+              const TWAiOrb(size: 34),
+              const SizedBox(width: TWSpace.md),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -287,16 +299,11 @@ class _HeroCard extends StatelessWidget {
                     Text(greeting,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600)),
-                    const Text("Today's Best Idea",
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            letterSpacing: 0.4,
-                            fontWeight: FontWeight.w700)),
+                        style: TWType.caption
+                            .copyWith(color: TWColors.textSecondary)),
+                    Text("Today's Best Idea",
+                        style: TWType.overline
+                            .copyWith(color: TWColors.accentBright)),
                   ],
                 ),
               ),
@@ -304,64 +311,51 @@ class _HeroCard extends StatelessWidget {
             ],
           ),
           if (hasIdea) ...[
-            const SizedBox(height: 8),
-            // Compact identity line: ticker + signal + score on one row.
+            const SizedBox(height: TWSpace.lg),
+            // Identity line: ticker + signal on one row.
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                const Text('🔥', style: TextStyle(fontSize: 20)),
-                const SizedBox(width: 6),
                 Text(symbol,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 26,
-                        fontWeight: FontWeight.w800)),
-                const SizedBox(width: 10),
-                _SignalPill(signal: signal),
-                const SizedBox(width: 8),
+                    style: TWType.title1.copyWith(
+                        fontWeight: FontWeight.w800, fontSize: 30)),
+                const SizedBox(width: TWSpace.md),
+                TWSignalPill(signal: signal),
+                const Spacer(),
                 Text('Score ${score.toStringAsFixed(0)}',
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700)),
+                    style: TWType.tabular(TWType.label)
+                        .copyWith(color: TWColors.textSecondary)),
               ],
             ),
             if (tags.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Text(tags.join('  •  '),
-                  key: const Key('home_hero_tags'),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600)),
+              const SizedBox(height: TWSpace.md),
+              Wrap(
+                key: const Key('home_hero_tags'),
+                spacing: TWSpace.sm,
+                runSpacing: TWSpace.sm,
+                children: [for (final t in tags) TWTagChip(label: t)],
+              ),
             ],
-            const SizedBox(height: 8),
+            const SizedBox(height: TWSpace.md),
             Text(reason,
                 key: const Key('home_hero_reason'),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                    color: Colors.white, fontSize: 13, height: 1.3)),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              height: 40,
-              child: FilledButton(
-                key: const Key('home_hero_cta'),
-                style: FilledButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: const Color(0xFF1565C0)),
-                onPressed: onView,
-                child: const Text('View Analysis',
-                    style: TextStyle(fontWeight: FontWeight.w700)),
-              ),
+                style: TWType.bodySm.copyWith(color: TWColors.textPrimary)),
+            const SizedBox(height: TWSpace.lg),
+            TWGradientButton(
+              key: const Key('home_hero_cta'),
+              label: 'View Analysis',
+              icon: Icons.auto_graph_rounded,
+              onPressed: onView,
             ),
+            const SizedBox(height: TWSpace.sm),
+            Text('AI research \u00b7 educational only, not financial advice.',
+                style: TWType.caption),
           ] else ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: TWSpace.md),
             Text(reason,
-                style: const TextStyle(color: Colors.white, height: 1.35)),
+                style: TWType.body.copyWith(color: TWColors.textSecondary)),
           ],
         ],
       ),
@@ -392,54 +386,32 @@ class _HeroCard extends StatelessWidget {
   }
 }
 
-class _SignalPill extends StatelessWidget {
-  const _SignalPill({required this.signal});
-  final String signal;
-  @override
-  Widget build(BuildContext context) {
-    final s = signal.toUpperCase();
-    final isBuy = s.contains('BUY');
-    final isSell = s.contains('SELL');
-    final color = isBuy
-        ? AppColors.up
-        : (isSell ? AppColors.down : Colors.orange);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-          color: color, borderRadius: BorderRadius.circular(8)),
-      child: Text(s,
-          style: const TextStyle(
-              color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)),
-    );
-  }
-}
-
 class _Confidence extends StatelessWidget {
   const _Confidence({required this.score});
   final double score;
   @override
   Widget build(BuildContext context) {
+    final color = TWColors.confidence(score);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        const Text('Confidence',
-            style: TextStyle(color: Colors.white70, fontSize: 11)),
+        Text('Confidence', style: TWType.overline.copyWith(fontSize: 9)),
+        const SizedBox(height: 2),
         Row(
           crossAxisAlignment: CrossAxisAlignment.baseline,
           textBaseline: TextBaseline.alphabetic,
           mainAxisSize: MainAxisSize.min,
           children: [
+            Container(
+              width: 7, height: 7,
+              margin: const EdgeInsets.only(right: 6, bottom: 3),
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
             // Bare number kept as its own Text so tests can assert on it.
             Text(score.toStringAsFixed(0),
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800)),
-            const Text('%',
-                style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700)),
+                style: TWType.tabular(TWType.title2).copyWith(color: color)),
+            Text('%',
+                style: TWType.label.copyWith(color: TWColors.textTertiary)),
           ],
         ),
       ],
@@ -457,43 +429,56 @@ class _BriefCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bullets = _bullets();
-    return Card(
+    return TWFloatingCard(
       key: const Key('home_brief'),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: const [
-                Icon(Icons.wb_sunny_outlined, color: AppColors.seed, size: 20),
-                SizedBox(width: 8),
-                Text('Morning Brief',
-                    style: TextStyle(fontWeight: FontWeight.w800)),
-                Spacer(),
-                Text('15s read',
-                    style: TextStyle(color: Colors.grey, fontSize: 12)),
-              ],
-            ),
-            const SizedBox(height: 10),
-            if (bullets.isEmpty)
-              const Text('Your brief is being prepared.',
-                  style: TextStyle(color: Colors.grey))
-            else
-              for (final b in bullets)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 3),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('•  ',
-                          style: TextStyle(fontWeight: FontWeight.w800)),
-                      Expanded(child: Text(b)),
-                    ],
-                  ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const TWAiOrb(size: 26, glow: false),
+              const SizedBox(width: TWSpace.sm),
+              Text('Morning Brief', style: TWType.title3),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: TWSpace.sm, vertical: 3),
+                decoration: BoxDecoration(
+                  color: TWColors.bgElevated,
+                  borderRadius: TWRadius.rChip,
                 ),
-          ],
-        ),
+                child: Text('15s read', style: TWType.caption),
+              ),
+            ],
+          ),
+          const SizedBox(height: TWSpace.md),
+          if (bullets.isEmpty)
+            Text('Your brief is being prepared.',
+                style: TWType.bodySm.copyWith(color: TWColors.textTertiary))
+          else
+            for (final b in bullets)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 6, height: 6,
+                      margin: const EdgeInsets.only(top: 8, right: TWSpace.md),
+                      decoration: const BoxDecoration(
+                          color: TWColors.accent, shape: BoxShape.circle),
+                    ),
+                    Expanded(
+                        child: Text(b,
+                            style: TWType.bodySm
+                                .copyWith(color: TWColors.textSecondary))),
+                  ],
+                ),
+              ),
+          const SizedBox(height: TWSpace.sm),
+          Text('Generated by Wizz \u00b7 not financial advice.',
+              style: TWType.caption),
+        ],
       ),
     );
   }
@@ -553,11 +538,11 @@ String _compactMoney(Market m, double? v) {
 }
 
 Color _conditionColor(String condition) => switch (condition) {
-      'EXTREME_FEAR' => AppColors.down,
-      'FEAR' => Colors.orange,
-      'GREED' => AppColors.up,
+      'EXTREME_FEAR' => TWColors.down,
+      'FEAR' => TWColors.warn,
+      'GREED' => TWColors.up,
       'EXTREME_GREED' => const Color(0xFF1B8E3D),
-      _ => Colors.grey,
+      _ => TWColors.neutral,
     };
 
 class _IndexCard extends StatelessWidget {
@@ -590,97 +575,93 @@ class _IndexCard extends StatelessWidget {
             ? 'n/a'
             : '${ideas.ideas.length} ideas');
 
-    return Card(
+    return TWFloatingCard(
       key: const Key('home_index_card'),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        idx?.name ?? '${market.code} Index',
-                        key: const Key('home_index_name'),
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w800, fontSize: 16),
-                      ),
-                      Text(
-                        idx?.symbol ?? '',
-                        style: const TextStyle(
-                            color: Colors.grey, fontSize: 12),
-                      ),
-                    ],
-                  ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const TWEyebrow('Market Pulse'),
+                    const SizedBox(height: 2),
+                    Text(
+                      idx?.name ?? '${market.code} Index',
+                      key: const Key('home_index_name'),
+                      style: TWType.title3,
+                    ),
+                    Text(
+                      idx?.symbol ?? '',
+                      style: TWType.caption,
+                    ),
+                  ],
                 ),
-                _ConditionBadge(condition: condition),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (idx != null && idx.hasData)
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    idx.price!.toStringAsFixed(2),
-                    key: const Key('home_index_price'),
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w900, fontSize: 24),
-                  ),
-                  const SizedBox(width: 10),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 3),
-                    child: Text(
-                      '${idx.isUp ? '+' : ''}'
-                      '${(idx.change ?? 0).toStringAsFixed(2)} '
-                      '(${idx.isUp ? '+' : ''}'
-                      '${(idx.changePercent ?? 0).toStringAsFixed(2)}%)',
-                      key: const Key('home_index_change'),
-                      style: TextStyle(
-                        color: idx.isUp ? AppColors.up : AppColors.down,
-                        fontWeight: FontWeight.w700,
-                      ),
+              ),
+              _ConditionBadge(condition: condition),
+            ],
+          ),
+          const SizedBox(height: TWSpace.md),
+          if (idx != null && idx.hasData)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  idx.price!.toStringAsFixed(2),
+                  key: const Key('home_index_price'),
+                  style: TWType.tabular(TWType.title1)
+                      .copyWith(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(width: TWSpace.md),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    '${idx.isUp ? '+' : ''}'
+                    '${(idx.change ?? 0).toStringAsFixed(2)} '
+                    '(${idx.isUp ? '+' : ''}'
+                    '${(idx.changePercent ?? 0).toStringAsFixed(2)}%)',
+                    key: const Key('home_index_change'),
+                    style: TWType.tabular(TWType.label).copyWith(
+                      color: idx.isUp ? TWColors.up : TWColors.down,
                     ),
                   ),
-                ],
-              )
-            else
-              Text(
-                idx == null
-                    ? 'Index data loading…'
-                    : 'Index data unavailable',
-                key: const Key('home_index_unavailable'),
-                style: const TextStyle(color: Colors.grey, fontSize: 13),
-              ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                _MiniStat(
-                  label: valueLabel,
-                  value: valueText,
-                  valueKey: const Key('home_value_traded'),
-                ),
-                const SizedBox(width: 24),
-                _MiniStat(
-                  label: 'Status',
-                  value: idx?.status ?? '—',
                 ),
               ],
+            )
+          else
+            Text(
+              idx == null
+                  ? 'Index data loading…'
+                  : 'Index data unavailable',
+              key: const Key('home_index_unavailable'),
+              style: TWType.bodySm.copyWith(color: TWColors.textTertiary),
             ),
-            if (condition.isKnown && condition.reason.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Text(
-                condition.reason,
-                key: const Key('home_condition_reason'),
-                style: const TextStyle(color: Colors.grey, fontSize: 12),
+          const SizedBox(height: TWSpace.lg),
+          Row(
+            children: [
+              _MiniStat(
+                label: valueLabel,
+                value: valueText,
+                valueKey: const Key('home_value_traded'),
+              ),
+              const SizedBox(width: TWSpace.xxl),
+              _MiniStat(
+                label: 'Status',
+                value: idx?.status ?? '—',
               ),
             ],
+          ),
+          if (condition.isKnown && condition.reason.isNotEmpty) ...[
+            const SizedBox(height: TWSpace.md),
+            Text(
+              condition.reason,
+              key: const Key('home_condition_reason'),
+              style: TWType.caption,
+            ),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -695,10 +676,11 @@ class _ConditionBadge extends StatelessWidget {
     final color = _conditionColor(condition.condition);
     return Container(
       key: const Key('home_condition_badge'),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(
+          horizontal: TWSpace.md, vertical: TWSpace.sm),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
+        color: color.withValues(alpha: 0.14),
+        borderRadius: TWRadius.rChip,
         border: Border.all(color: color.withValues(alpha: 0.5)),
       ),
       child: Column(
@@ -706,13 +688,12 @@ class _ConditionBadge extends StatelessWidget {
         children: [
           Text(
             condition.label,
-            style: TextStyle(
-                color: color, fontWeight: FontWeight.w800, fontSize: 12),
+            style: TWType.label.copyWith(color: color),
           ),
           if (condition.isKnown)
             Text(
               '${condition.score}/100',
-              style: TextStyle(color: color, fontSize: 10),
+              style: TWType.tabular(TWType.caption).copyWith(color: color),
             ),
         ],
       ),
@@ -731,13 +712,12 @@ class _MiniStat extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label,
-            style: const TextStyle(color: Colors.grey, fontSize: 11)),
+        Text(label, style: TWType.caption),
         const SizedBox(height: 2),
         Text(value,
             key: valueKey,
-            style: const TextStyle(
-                fontWeight: FontWeight.w800, fontSize: 14)),
+            style: TWType.tabular(TWType.label)
+                .copyWith(color: TWColors.textPrimary)),
       ],
     );
   }
@@ -763,20 +743,19 @@ class _PortfolioCard extends StatelessWidget {
     // number below comes straight from the existing SimAccount / SimPosition
     // data (no new API, no recalculation of the portfolio engine).
     if (a == null) {
-      return Card(
+      return TWFloatingCard(
         key: const Key('home_portfolio'),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
-              Text('My Portfolio',
-                  style: TextStyle(fontWeight: FontWeight.w800)),
-              SizedBox(height: 8),
-              Text('Start a simulated portfolio to track P&L here.',
-                  style: TextStyle(color: Colors.grey)),
-            ],
-          ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const TWEyebrow('Simulated Portfolio'),
+            const SizedBox(height: TWSpace.sm),
+            Text('My Portfolio', style: TWType.title3),
+            const SizedBox(height: TWSpace.sm),
+            Text('Start a simulated portfolio to track P&L here.',
+                style:
+                    TWType.bodySm.copyWith(color: TWColors.textTertiary)),
+          ],
         ),
       );
     }
@@ -793,17 +772,20 @@ class _PortfolioCard extends StatelessWidget {
     final winner = _extreme(highest: true);
     final largest = _largest();
 
-    return Card(
+    return Container(
       key: const Key('home_portfolio'),
-      elevation: 0,
       clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(TWRadius.cardLg),
+        border: Border.all(color: TWColors.hairlineTop, width: 1),
+        boxShadow: const [...TWShadow.ambient, ...TWShadow.accentGlow],
+      ),
       child: Container(
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFF0D47A1), Color(0xFF1565C0), Color(0xFF1E88E5)],
+            colors: [Color(0xFF3A2F6B), TWColors.accent, TWColors.accentBright],
           ),
         ),
         padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
@@ -896,16 +878,19 @@ class _PortfolioCard extends StatelessWidget {
                 key: const Key('home_portfolio_cta'),
                 style: FilledButton.styleFrom(
                   backgroundColor: Colors.white,
-                  foregroundColor: const Color(0xFF0D47A1),
+                  foregroundColor: TWColors.accent,
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
+                      borderRadius: BorderRadius.circular(TWRadius.button)),
                 ),
                 onPressed: onOpenPortfolio,
                 child: const Text('Open Portfolio',
                     style: TextStyle(fontWeight: FontWeight.w800)),
               ),
             ),
+            const SizedBox(height: TWSpace.sm),
+            Text('Simulation only \u00b7 not a brokerage account.',
+                style: TWType.caption.copyWith(color: Colors.white70)),
           ],
         ),
       ),
@@ -1064,48 +1049,43 @@ class _WatchlistCard extends StatelessWidget {
     final store = WatchlistScope.maybeOf(context);
     final items =
         store?.forMarket(market) ?? const <WatchlistItem>[];
-    return Card(
+    return TWFloatingCard(
       key: const Key('home_watchlist'),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Your Watchlist',
-                style: TextStyle(fontWeight: FontWeight.w800)),
-            const SizedBox(height: 8),
-            if (items.isEmpty)
-              const Text('Add symbols to see daily highlights.',
-                  style: TextStyle(color: Colors.grey))
-            else ...[
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                children: [
-                  for (final i in items.take(6))
-                    Chip(
-                      visualDensity: VisualDensity.compact,
-                      label: Text(i.symbol),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  const Icon(Icons.bolt, size: 16, color: Colors.orange),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      'AI Alert: ${items.first.symbol} approaching a key level.',
-                      style: const TextStyle(
-                          fontSize: 13, fontWeight: FontWeight.w600),
-                    ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const TWEyebrow('Watchlist Insights'),
+          const SizedBox(height: 2),
+          Text('Your Watchlist', style: TWType.title3),
+          const SizedBox(height: TWSpace.md),
+          if (items.isEmpty)
+            Text('Add symbols to see daily highlights.',
+                style: TWType.bodySm.copyWith(color: TWColors.textTertiary))
+          else ...[
+            Wrap(
+              spacing: TWSpace.sm,
+              runSpacing: TWSpace.sm,
+              children: [
+                for (final i in items.take(6)) TWTagChip(label: i.symbol),
+              ],
+            ),
+            const SizedBox(height: TWSpace.md),
+            Row(
+              children: [
+                const Icon(Icons.bolt_rounded,
+                    size: 16, color: TWColors.warn),
+                const SizedBox(width: TWSpace.xs),
+                Expanded(
+                  child: Text(
+                    'AI Alert: ${items.first.symbol} approaching a key level.',
+                    style: TWType.bodySm
+                        .copyWith(color: TWColors.textSecondary),
                   ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -1126,44 +1106,49 @@ class _IdeasSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Padding(
-          padding: EdgeInsets.symmetric(vertical: 4),
-          child: Text("Today's Ideas",
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+          padding: EdgeInsets.only(top: TWSpace.xs, bottom: TWSpace.md),
+          child: TWSectionHeader(title: "Today's Ideas", eyebrow: 'Ranked'),
         ),
         if (ideas.isEmpty)
-          const Card(
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: Text('Fresh ideas arrive at the next market open.',
-                  style: TextStyle(color: Colors.grey)),
-            ),
+          TWEmptyState(
+            title: 'No ideas yet',
+            body: 'Fresh ideas arrive at the next market open.',
           )
         else
           for (final idea in ideas.top(8))
-            Card(
-              child: ListTile(
+            Padding(
+              padding: const EdgeInsets.only(bottom: TWSpace.md),
+              child: TWFloatingCard(
                 key: Key('home_idea_${idea.symbol}'),
                 onTap: () => onTap(idea),
-                title: Row(
+                padding: const EdgeInsets.all(TWSpace.lg),
+                child: Row(
                   children: [
-                    Text(idea.symbol,
-                        style: const TextStyle(fontWeight: FontWeight.w800)),
-                    const SizedBox(width: 8),
-                    _Source(label: idea.source.label),
-                  ],
-                ),
-                subtitle: Text(idea.reason,
-                    maxLines: 2, overflow: TextOverflow.ellipsis),
-                trailing: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(idea.score.toStringAsFixed(0),
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w800, fontSize: 16)),
-                    Text(idea.signal,
-                        style: const TextStyle(
-                            fontSize: 11, color: Colors.grey)),
+                    // Final score visually dominant (the ring), tags secondary.
+                    TWScoreRing(score: idea.score, size: 50, stroke: 4),
+                    const SizedBox(width: TWSpace.lg),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(idea.symbol, style: TWType.title3),
+                              const SizedBox(width: TWSpace.sm),
+                              _Source(label: idea.source.label),
+                            ],
+                          ),
+                          const SizedBox(height: 3),
+                          Text(idea.reason,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TWType.caption
+                                  .copyWith(color: TWColors.textTertiary)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: TWSpace.md),
+                    TWSignalPill(signal: idea.signal),
                   ],
                 ),
               ),
@@ -1179,16 +1164,14 @@ class _Source extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: TWSpace.sm, vertical: 2),
       decoration: BoxDecoration(
-        color: AppColors.seed.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
+        color: TWColors.accent.withValues(alpha: 0.16),
+        borderRadius: TWRadius.rChip,
       ),
       child: Text(label,
-          style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w700,
-              color: AppColors.seed)),
+          style: TWType.overline
+              .copyWith(color: TWColors.accentBright, letterSpacing: 0.4)),
     );
   }
 }

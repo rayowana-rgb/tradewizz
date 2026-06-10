@@ -166,13 +166,13 @@ ThemeData buildTradeWizzTheme() {
     error: TWColors.down,
   );
 
-  const fontFamily = 'Manrope'; // bundle in pubspec; falls back gracefully.
-
+  // No bundled font dependency: use the platform system font (SF Pro on iOS,
+  // Roboto on Android). The rounded-geometric voice is approximated by weight
+  // + tracking in TWType. Bundle 'Manrope' later if desired.
   return ThemeData(
     useMaterial3: true,
     brightness: Brightness.dark,
     colorScheme: scheme,
-    fontFamily: fontFamily,
     scaffoldBackgroundColor: TWColors.bgBase,
     canvasColor: TWColors.bgBase,
     splashFactory: NoSplash.splashFactory, // no Material ripple
