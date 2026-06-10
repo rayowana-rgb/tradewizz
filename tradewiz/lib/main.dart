@@ -196,8 +196,14 @@ class _HomeShellState extends State<HomeShell> {
         data: buildTradeWizzTheme(),
         child: ScreenerPage(market: _market),
       ),
-      AiAnalysisPage(market: _market),
-      const AccountPage(),
+      Theme(
+        data: buildTradeWizzTheme(),
+        child: AiAnalysisPage(market: _market),
+      ),
+      Theme(
+        data: buildTradeWizzTheme(),
+        child: const AccountPage(),
+      ),
     ];
 
     const titles = ['Home', 'Watchlist', 'Explore', 'AI Analysis', 'Account'];

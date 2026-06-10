@@ -12,7 +12,8 @@ import '../services/auth_scope.dart';
 import '../services/data_source.dart';
 import '../services/repository_scope.dart';
 import '../services/watchlist_scope.dart';
-import '../theme.dart';
+import '../theme_tradewizz.dart';
+import '../widgets/ds/ds.dart';
 import '../widgets/connection_pill.dart';
 
 /// Full-screen analysis route with a back button. Used when navigating from a
@@ -31,19 +32,22 @@ class AnalysisDetailPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          '$symbol · ${market.code}',
-          style: const TextStyle(fontWeight: FontWeight.w700),
+    return Theme(
+      data: buildTradeWizzTheme(),
+      child: Scaffold(
+        backgroundColor: TWColors.bgBase,
+        appBar: AppBar(
+          title: Text('$symbol · ${market.code}', style: TWType.title3),
         ),
-      ),
-      body: SafeArea(
-        child: AiAnalysisPage(
-          market: market,
-          initialSymbol: symbol,
-          autoRun: true,
-          repository: repository ?? RepositoryScope.of(context),
+        body: TWScaffoldBackground(
+          child: SafeArea(
+            child: AiAnalysisPage(
+              market: market,
+              initialSymbol: symbol,
+              autoRun: true,
+              repository: repository ?? RepositoryScope.of(context),
+            ),
+          ),
         ),
       ),
     );
@@ -171,7 +175,9 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
         if (_loading)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 40),
-            child: Center(child: CircularProgressIndicator()),
+            child: Center(
+                child: CircularProgressIndicator(
+                    color: TWColors.accentBright)),
           ),
         if (_error != null) _ErrorCard(message: _error!),
         if (_result != null && !_loading) ...[
@@ -179,10 +185,7 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
             padding: const EdgeInsets.only(bottom: 10),
             child: Row(
               children: [
-                const Text(
-                  'Result',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-                ),
+                const TWEyebrow('Wizard Analysis'),
                 const Spacer(),
                 ConnectionPill(source: _source),
               ],
@@ -240,7 +243,8 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
   }
 
   Widget _buildForm() {
-    return Card(
+    return TWFloatingCard(
+      padding: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Form(
@@ -346,7 +350,7 @@ class _BuySellButtons extends StatelessWidget {
           icon: const Icon(Icons.trending_up),
           label: const Text('Buy'),
           style: FilledButton.styleFrom(
-            backgroundColor: AppColors.up,
+            backgroundColor: TWColors.up,
             padding: const EdgeInsets.symmetric(vertical: 14),
           ),
         ),
@@ -359,7 +363,7 @@ class _BuySellButtons extends StatelessWidget {
           icon: const Icon(Icons.trending_down),
           label: const Text('Sell'),
           style: FilledButton.styleFrom(
-            backgroundColor: AppColors.down,
+            backgroundColor: TWColors.down,
             padding: const EdgeInsets.symmetric(vertical: 14),
           ),
         ),
@@ -422,19 +426,19 @@ class _PositionBadgeState extends State<_PositionBadge> {
   Widget build(BuildContext context) {
     final p = _position;
     if (p == null) return const SizedBox.shrink();
-    final pnlColor = p.unrealizedPnl >= 0 ? AppColors.up : AppColors.down;
+    final pnlColor = p.unrealizedPnl >= 0 ? TWColors.up : TWColors.down;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Container(
         key: const Key('position_held_badge'),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: AppColors.seed.withValues(alpha: 0.08),
+          color: TWColors.accent.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(children: [
           const Icon(Icons.account_balance_wallet_outlined,
-              size: 18, color: AppColors.seed),
+              size: 18, color: TWColors.accent),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -507,14 +511,15 @@ class _ResultCard extends StatelessWidget {
   final AnalysisResult result;
 
   Color get _signalColor => switch (result.signal) {
-        'BUY' => AppColors.up,
-        'SELL' => AppColors.down,
+        'BUY' => TWColors.up,
+        'SELL' => TWColors.down,
         _ => Colors.orange,
       };
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return TWFloatingCard(
+      padding: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -533,7 +538,7 @@ class _ResultCard extends StatelessWidget {
                       ),
                       Text(
                         '${result.market.flag} ${result.market.code}',
-                        style: const TextStyle(color: Colors.grey),
+                        style: const TextStyle(color: TWColors.textTertiary),
                       ),
                     ],
                   ),
@@ -586,7 +591,7 @@ class _ResultCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Icon(Icons.check_circle_outline,
-                        size: 18, color: AppColors.seed),
+                        size: 18, color: TWColors.accent),
                     const SizedBox(width: 8),
                     Expanded(child: Text(h)),
                   ],
@@ -596,7 +601,7 @@ class _ResultCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               'Placeholder result · generated ${_time(result.generatedAt)}',
-              style: const TextStyle(color: Colors.grey, fontSize: 11),
+              style: const TextStyle(color: TWColors.textTertiary, fontSize: 11),
             ),
           ],
         ),
@@ -617,11 +622,12 @@ class _RecommendationCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final prob = result.profitProbability;
     final color = switch (result.signal) {
-      'BUY' => AppColors.up,
-      'SELL' => AppColors.down,
+      'BUY' => TWColors.up,
+      'SELL' => TWColors.down,
       _ => Colors.orange,
     };
-    return Card(
+    return TWFloatingCard(
+      padding: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -640,7 +646,7 @@ class _RecommendationCard extends StatelessWidget {
               const SizedBox(height: 14),
               Row(
                 children: [
-                  const Icon(Icons.percent, size: 16, color: AppColors.seed),
+                  const Icon(Icons.percent, size: 16, color: TWColors.accent),
                   const SizedBox(width: 6),
                   Text('Profit probability  '
                       '${(prob * 100).toStringAsFixed(0)}%',
@@ -653,15 +659,15 @@ class _RecommendationCard extends StatelessWidget {
                 child: LinearProgressIndicator(
                   value: prob.clamp(0, 1),
                   minHeight: 8,
-                  color: AppColors.seed,
-                  backgroundColor: AppColors.seed.withValues(alpha: 0.12),
+                  color: TWColors.accent,
+                  backgroundColor: TWColors.accent.withValues(alpha: 0.12),
                 ),
               ),
             ],
             if (result.buyReasons.isNotEmpty) ...[
               const SizedBox(height: 14),
               const Text('Reasons',
-                  style: TextStyle(color: Colors.grey, fontSize: 12)),
+                  style: TextStyle(color: TWColors.textTertiary, fontSize: 12)),
               const SizedBox(height: 6),
               Wrap(
                 spacing: 6,
@@ -672,18 +678,18 @@ class _RecommendationCard extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 10, vertical: 5),
                       decoration: BoxDecoration(
-                        color: AppColors.up.withValues(alpha: 0.1),
+                        color: TWColors.up.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           const Icon(Icons.check, size: 13,
-                              color: AppColors.up),
+                              color: TWColors.up),
                           const SizedBox(width: 4),
                           Text(r,
                               style: const TextStyle(
-                                  color: AppColors.up,
+                                  color: TWColors.up,
                                   fontWeight: FontWeight.w600,
                                   fontSize: 12)),
                         ],
@@ -716,7 +722,7 @@ class _SupportResistanceCard extends StatelessWidget {
                 Icon(icon, size: 13, color: c),
                 const SizedBox(width: 4),
                 Text(label,
-                    style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                    style: const TextStyle(color: TWColors.textTertiary, fontSize: 11)),
               ]),
               const SizedBox(height: 2),
               Text(_fmt(v),
@@ -724,7 +730,8 @@ class _SupportResistanceCard extends StatelessWidget {
             ],
           ),
         );
-    return Card(
+    return TWFloatingCard(
+      padding: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -734,16 +741,16 @@ class _SupportResistanceCard extends StatelessWidget {
                 style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             const SizedBox(height: 12),
             Row(children: [
-              level('Imm. support', sr.immediateSupport, AppColors.up,
+              level('Imm. support', sr.immediateSupport, TWColors.up,
                   Icons.south),
-              level('Imm. resistance', sr.immediateResistance, AppColors.down,
+              level('Imm. resistance', sr.immediateResistance, TWColors.down,
                   Icons.north),
             ]),
             const SizedBox(height: 12),
             Row(children: [
-              level('Major support', sr.majorSupport, AppColors.up,
+              level('Major support', sr.majorSupport, TWColors.up,
                   Icons.keyboard_double_arrow_down),
-              level('Major resistance', sr.majorResistance, AppColors.down,
+              level('Major resistance', sr.majorResistance, TWColors.down,
                   Icons.keyboard_double_arrow_up),
             ]),
           ],
@@ -760,7 +767,8 @@ class _TrailingStopCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return TWFloatingCard(
+      padding: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
@@ -782,7 +790,7 @@ class _TrailingStopCard extends StatelessWidget {
                     '${result.trailingStopPercent!.toStringAsFixed(0)}%'
                     '${result.trailingStopPrice != null ? '  ·  at '
                         '${result.trailingStopPrice!.toStringAsFixed(result.trailingStopPrice! >= 100 ? 0 : 2)}' : ''}',
-                    style: const TextStyle(color: Colors.grey, fontSize: 13),
+                    style: const TextStyle(color: TWColors.textTertiary, fontSize: 13),
                   ),
                 ],
               ),
@@ -806,7 +814,7 @@ class _BacktestCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(label,
-                style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                style: const TextStyle(color: TWColors.textTertiary, fontSize: 11)),
             const SizedBox(height: 2),
             Text(value,
                 style: TextStyle(
@@ -817,37 +825,38 @@ class _BacktestCard extends StatelessWidget {
     final avgPct = b.averageReturn * 100;
     final ddPct = b.maxDrawdown * 100;
     final pf = b.profitFactor >= 999 ? '∞' : b.profitFactor.toStringAsFixed(2);
-    return Card(
+    return TWFloatingCard(
+      padding: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
-              const Icon(Icons.history, size: 18, color: AppColors.seed),
+              const Icon(Icons.history, size: 18, color: TWColors.accent),
               const SizedBox(width: 8),
               const Text('Backtest',
                   style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
               const Spacer(),
               Text('${b.signalType} · ${b.forwardDays}d',
-                  style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                  style: const TextStyle(color: TWColors.textTertiary, fontSize: 12)),
             ]),
             const SizedBox(height: 14),
             if (!b.hasSignals)
               const Text('No historical signals for this rule.',
-                  style: TextStyle(color: Colors.grey))
+                  style: TextStyle(color: TWColors.textTertiary))
             else ...[
               Row(children: [
                 Expanded(
                     child: stat('Win rate',
                         '${(b.winRate * 100).toStringAsFixed(0)}%',
                         color: b.winRate >= 0.5
-                            ? AppColors.up
-                            : AppColors.down)),
+                            ? TWColors.up
+                            : TWColors.down)),
                 Expanded(
                     child: stat('Avg return',
                         '${avgPct >= 0 ? '+' : ''}${avgPct.toStringAsFixed(2)}%',
-                        color: avgPct >= 0 ? AppColors.up : AppColors.down)),
+                        color: avgPct >= 0 ? TWColors.up : TWColors.down)),
                 Expanded(child: stat('Profit factor', pf)),
               ]),
               const SizedBox(height: 14),
@@ -855,7 +864,7 @@ class _BacktestCard extends StatelessWidget {
                 Expanded(
                     child: stat('Max drawdown',
                         '${ddPct.toStringAsFixed(2)}%',
-                        color: AppColors.down)),
+                        color: TWColors.down)),
                 Expanded(child: stat('Total signals', '${b.totalSignals}')),
                 Expanded(
                     child: stat('W / L',
@@ -878,9 +887,9 @@ class _PredictionCard extends StatelessWidget {
     final up = prediction.direction == 'UP';
     final down = prediction.direction == 'DOWN';
     final color = up
-        ? AppColors.up
+        ? TWColors.up
         : down
-            ? AppColors.down
+            ? TWColors.down
             : Colors.orange;
     final icon = up
         ? Icons.trending_up
@@ -888,7 +897,8 @@ class _PredictionCard extends StatelessWidget {
             ? Icons.trending_down
             : Icons.trending_flat;
 
-    return Card(
+    return TWFloatingCard(
+      padding: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
@@ -911,7 +921,7 @@ class _PredictionCard extends StatelessWidget {
                     '${prediction.expectedChangePercent >= 0 ? '+' : ''}'
                     '${prediction.expectedChangePercent.toStringAsFixed(1)}% · '
                     '${(prediction.confidence * 100).toStringAsFixed(0)}% confidence',
-                    style: const TextStyle(color: Colors.grey, fontSize: 12),
+                    style: const TextStyle(color: TWColors.textTertiary, fontSize: 12),
                   ),
                 ],
               ),
@@ -929,17 +939,23 @@ class _ErrorCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      color: AppColors.down.withValues(alpha: 0.06),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            const Icon(Icons.error_outline, color: AppColors.down),
-            const SizedBox(width: 12),
-            Expanded(child: Text(message)),
-          ],
-        ),
+    return Container(
+      padding: const EdgeInsets.all(TWSpace.lg),
+      decoration: BoxDecoration(
+        color: TWColors.downSoft,
+        borderRadius: TWRadius.rCard,
+        border: Border.all(color: TWColors.down.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.error_outline, color: TWColors.down),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(message,
+                style:
+                    TWType.bodySm.copyWith(color: TWColors.textPrimary)),
+          ),
+        ],
       ),
     );
   }
@@ -954,12 +970,13 @@ class _EmptyHint extends StatelessWidget {
       padding: const EdgeInsets.only(top: 40),
       child: Column(
         children: const [
-          Icon(Icons.auto_awesome_outlined, size: 48, color: Colors.grey),
+          Icon(Icons.auto_awesome_outlined, size: 48,
+              color: TWColors.textTertiary),
           SizedBox(height: 12),
           Text(
             'Enter a symbol and market to get a placeholder analysis.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey),
+            style: TextStyle(color: TWColors.textTertiary),
           ),
         ],
       ),
