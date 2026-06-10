@@ -177,12 +177,12 @@ class _HomePageState extends State<HomePage> {
               fallback: brief?.topOpportunity,
               onView: _openAnalysis,
             ),
+            const SizedBox(height: TWSpace.xl),
+            // Morning Brief — own card with a raised floating label.
+            _BriefCard(brief: brief),
             const SizedBox(height: TWSpace.md),
-            // Merged "Market Today": Morning Brief bullets + the market-pulse
-            // strip live in one card (separated by a hairline) so Home reads as
-            // fewer, calmer surfaces instead of a stack of identical cards.
-            _MarketTodayCard(
-              brief: brief,
+            // Market Pulse — separate card again.
+            _MarketPulseCard(
               market: widget.market,
               index: _index,
               overview: _overview,
@@ -428,9 +428,129 @@ class _Confidence extends StatelessWidget {
 //    Two related panels share one card, split by a hairline, so Home shows
 //    fewer surfaces while keeping every test key intact.
 // =========================================================================
-class _MarketTodayCard extends StatelessWidget {
-  const _MarketTodayCard({
-    required this.brief,
+// =========================================================================
+// 2a) Morning Brief — its own card again, with a "raised" floating label
+//     notched onto the top edge (the words live outside the card body).
+// =========================================================================
+class _BriefCard extends StatelessWidget {
+  const _BriefCard({required this.brief});
+
+  final MorningBrief? brief;
+
+  @override
+  Widget build(BuildContext context) {
+    final bullets = _bullets();
+    // Stack lets the label pill overhang the top border (clip: none). Inner
+    // top padding reserves room so the bullets never collide with the label.
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        TWFloatingCard(
+          key: const Key('home_brief'),
+          padding: const EdgeInsets.fromLTRB(
+              TWSpace.lg, TWSpace.xl, TWSpace.lg, TWSpace.lg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: TWSpace.sm, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: TWColors.bgElevated,
+                      borderRadius: TWRadius.rChip,
+                    ),
+                    child: Text('15s read', style: TWType.caption),
+                  ),
+                ],
+              ),
+              const SizedBox(height: TWSpace.md),
+              if (bullets.isEmpty)
+                Text('Your brief is being prepared.',
+                    style:
+                        TWType.bodySm.copyWith(color: TWColors.textTertiary))
+              else
+                for (final b in bullets)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          margin: const EdgeInsets.only(
+                              top: 8, right: TWSpace.md),
+                          decoration: const BoxDecoration(
+                              color: TWColors.accent,
+                              shape: BoxShape.circle),
+                        ),
+                        Expanded(
+                            child: Text(b,
+                                style: TWType.bodySm.copyWith(
+                                    color: TWColors.textSecondary))),
+                      ],
+                    ),
+                  ),
+            ],
+          ),
+        ),
+        // Raised floating label — overhangs the top-left edge of the card.
+        Positioned(
+          left: TWSpace.lg,
+          top: -13,
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: TWSpace.md, vertical: 6),
+            decoration: BoxDecoration(
+              color: TWColors.bgElevated,
+              borderRadius: TWRadius.rChip,
+              border: Border.all(color: TWColors.hairlineTop, width: 1),
+              boxShadow: TWShadow.ambientSm,
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const TWAiOrb(size: 18, glow: false),
+                const SizedBox(width: TWSpace.xs),
+                Text('Morning Brief',
+                    style: TWType.label
+                        .copyWith(fontWeight: FontWeight.w700)),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  List<String> _bullets() {
+    final b = brief;
+    if (b == null) return const [];
+    final out = <String>[];
+    if (b.headline.isNotEmpty) out.add(b.headline);
+    if (b.topOpportunity != null && out.length < 3) {
+      final o = b.topOpportunity!;
+      out.add('${o.symbol}: ${o.reason.isEmpty ? o.signal : o.reason}');
+    }
+    if (b.strongestSector.isNotEmpty && out.length < 3) {
+      out.add('Strongest sector: ${b.strongestSector}');
+    }
+    for (final n in b.notes) {
+      if (out.length >= 3) break;
+      out.add(n);
+    }
+    return out.take(3).toList();
+  }
+}
+
+// =========================================================================
+// 2b) Market Pulse — index move + market activity + Fear/Greed, its own card.
+// =========================================================================
+class _MarketPulseCard extends StatelessWidget {
+  const _MarketPulseCard({
     required this.market,
     required this.index,
     required this.overview,
@@ -438,7 +558,6 @@ class _MarketTodayCard extends StatelessWidget {
     required this.ideas,
   });
 
-  final MorningBrief? brief;
   final Market market;
   final MarketIndex? index;
   final MarketOverview? overview;
@@ -448,70 +567,7 @@ class _MarketTodayCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return TWFloatingCard(
-      key: const Key('home_brief'),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _briefSection(context),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: TWSpace.lg),
-            child: Divider(
-                color: TWColors.hairlineTop, height: 1, thickness: 1),
-          ),
-          _pulseSection(context),
-        ],
-      ),
-    );
-  }
-
-  // ---- Morning Brief ----
-  Widget _briefSection(BuildContext context) {
-    final bullets = _bullets();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            const TWAiOrb(size: 26, glow: false),
-            const SizedBox(width: TWSpace.sm),
-            Text('Morning Brief', style: TWType.title3),
-            const Spacer(),
-            Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: TWSpace.sm, vertical: 3),
-              decoration: BoxDecoration(
-                color: TWColors.bgElevated,
-                borderRadius: TWRadius.rChip,
-              ),
-              child: Text('15s read', style: TWType.caption),
-            ),
-          ],
-        ),
-        const SizedBox(height: TWSpace.md),
-        if (bullets.isEmpty)
-          Text('Your brief is being prepared.',
-              style: TWType.bodySm.copyWith(color: TWColors.textTertiary))
-        else
-          for (final b in bullets)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 6, height: 6,
-                    margin: const EdgeInsets.only(top: 8, right: TWSpace.md),
-                    decoration: const BoxDecoration(
-                        color: TWColors.accent, shape: BoxShape.circle),
-                  ),
-                  Expanded(
-                      child: Text(b,
-                          style: TWType.bodySm
-                              .copyWith(color: TWColors.textSecondary))),
-                ],
-              ),
-            ),
-      ],
+      child: _pulseSection(context),
     );
   }
 
@@ -616,29 +672,10 @@ class _MarketTodayCard extends StatelessWidget {
       ],
     );
   }
-
-  List<String> _bullets() {
-    final b = brief;
-    if (b == null) return const [];
-    final out = <String>[];
-    if (b.headline.isNotEmpty) out.add(b.headline);
-    if (b.topOpportunity != null && out.length < 3) {
-      final o = b.topOpportunity!;
-      out.add('${o.symbol}: ${o.reason.isEmpty ? o.signal : o.reason}');
-    }
-    if (b.strongestSector.isNotEmpty && out.length < 3) {
-      out.add('Strongest sector: ${b.strongestSector}');
-    }
-    for (final n in b.notes) {
-      if (out.length >= 3) break;
-      out.add(n);
-    }
-    return out.take(3).toList();
-  }
 }
 
 // =========================================================================
-// 2b) Helpers + badges for the Market Pulse section (above) — currency
+// 2c) Helpers + badges for the Market Pulse section (above) — currency
 //     formatting, Fear/Greed colors, condition badge and mini-stats.
 // =========================================================================
 String _currencySymbol(Market m) => switch (m.currency) {

@@ -7,7 +7,7 @@ import '../models/user_profile_prefs.dart';
 import '../models/watchlist_item.dart';
 import '../services/user_prefs_scope.dart';
 import '../services/watchlist_scope.dart';
-import '../theme.dart';
+import '../theme_tradewizz.dart';
 
 /// Phase A — Onboarding Personalization.
 ///
@@ -178,7 +178,7 @@ class _WelcomeScreen extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.auto_awesome, size: 56, color: AppColors.seed),
+          const Icon(Icons.auto_awesome, size: 56, color: TWColors.accent),
           const SizedBox(height: 24),
           Text('Welcome to TradeWizz',
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -189,9 +189,9 @@ class _WelcomeScreen extends StatelessWidget {
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Get a personalized Morning Brief every market open.',
-            style: TextStyle(fontSize: 15, color: Colors.grey),
+            style: TWType.bodySm.copyWith(color: TWColors.textTertiary),
           ),
           const Spacer(),
           SizedBox(
@@ -454,16 +454,16 @@ class _GenerateScreenState extends State<_GenerateScreen> {
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             ),
           ] else ...[
-            const Icon(Icons.check_circle, size: 52, color: AppColors.up),
+            const Icon(Icons.check_circle, size: 52, color: TWColors.up),
             const SizedBox(height: 20),
             Text('Your Morning Brief is ready',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w800)),
             const SizedBox(height: 12),
             Text('Markets: $marketLabel',
-                style: const TextStyle(color: Colors.grey)),
+                style: TWType.bodySm.copyWith(color: TWColors.textTertiary)),
             Text('Watchlist: ${widget.symbols.length} symbols',
-                style: const TextStyle(color: Colors.grey)),
+                style: TWType.bodySm.copyWith(color: TWColors.textTertiary)),
             const Spacer(),
             SizedBox(
               width: double.infinity,
@@ -515,7 +515,8 @@ class _StepScaffold extends StatelessWidget {
                   .headlineSmall
                   ?.copyWith(fontWeight: FontWeight.w800)),
           const SizedBox(height: 6),
-          Text(subtitle, style: const TextStyle(color: Colors.grey)),
+          Text(subtitle,
+              style: TWType.bodySm.copyWith(color: TWColors.textTertiary)),
           const SizedBox(height: 20),
           Expanded(child: SingleChildScrollView(child: child)),
           SizedBox(
@@ -556,7 +557,7 @@ class _ProgressDots extends StatelessWidget {
               width: i == current ? 22 : 8,
               height: 8,
               decoration: BoxDecoration(
-                color: i <= current ? AppColors.seed : Colors.grey.shade300,
+                color: i <= current ? TWColors.accent : TWColors.hairlineTop,
                 borderRadius: BorderRadius.circular(4),
               ),
             ),

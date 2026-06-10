@@ -23,7 +23,6 @@ import 'services/user_prefs_scope.dart';
 import 'services/user_prefs_store.dart';
 import 'services/watchlist_scope.dart';
 import 'services/watchlist_store.dart';
-import 'theme.dart';
 import 'theme_tradewizz.dart';
 import 'widgets/ds/ds.dart';
 import 'widgets/market_selector.dart';
@@ -115,7 +114,12 @@ class _TradeWizAppState extends State<TradeWizApp> {
                 child: MaterialApp(
                   title: 'TradeWizz',
                   debugShowCheckedModeBanner: false,
-                  theme: buildTradeWizTheme(),
+                  // Dark "Wizard Terminal" theme app-wide so every surface
+                  // (onboarding, loading, login, main shell) is consistent.
+                  // No light surface should ever flash through.
+                  theme: buildTradeWizzTheme(),
+                  darkTheme: buildTradeWizzTheme(),
+                  themeMode: ThemeMode.dark,
                   home: const RootGate(),
                 ),
               ),
@@ -136,6 +140,7 @@ class RootGate extends StatelessWidget {
     final prefs = UserPrefsScope.of(context);
     if (!prefs.isLoaded) {
       return const Scaffold(
+        backgroundColor: TWColors.bgBase,
         body: Center(child: CircularProgressIndicator()),
       );
     }

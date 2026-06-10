@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../repositories/stock_repository.dart';
 import '../services/api_client.dart';
 import '../services/auth_scope.dart';
+import '../theme_tradewizz.dart';
 
 /// Shared login/register form. On success, stores the session and pops.
 class _AuthForm extends StatefulWidget {
@@ -140,10 +141,16 @@ class LoginPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Log in')),
-      body: SafeArea(
-        child: _AuthForm(repository: repository, isRegister: false),
+    // Force the dark "Wizard Terminal" theme so the login form is consistent
+    // with the rest of the app regardless of where it's pushed from.
+    return Theme(
+      data: buildTradeWizzTheme(),
+      child: Scaffold(
+        backgroundColor: TWColors.bgBase,
+        appBar: AppBar(title: const Text('Log in')),
+        body: SafeArea(
+          child: _AuthForm(repository: repository, isRegister: false),
+        ),
       ),
     );
   }
@@ -155,10 +162,14 @@ class RegisterPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Create account')),
-      body: SafeArea(
-        child: _AuthForm(repository: repository, isRegister: true),
+    return Theme(
+      data: buildTradeWizzTheme(),
+      child: Scaffold(
+        backgroundColor: TWColors.bgBase,
+        appBar: AppBar(title: const Text('Create account')),
+        body: SafeArea(
+          child: _AuthForm(repository: repository, isRegister: true),
+        ),
       ),
     );
   }
