@@ -17,7 +17,7 @@ from typing import Callable, List, Optional
 import pandas as pd
 
 from . import backtest as backtest_mod
-from . import indicators, mock_data, scoring
+from . import explore, indicators, mock_data, scoring
 from .scoring import MarketContext
 from .ml import ProfitModel
 from .cache import make_cached_fetcher
@@ -995,6 +995,12 @@ class AnalysisEngine:
             )
             change_pct = _daily_change_pct(df)
             illiquid = self._last_liquidity_illiquid
+            # Phase 9A: additive Explore overlay (category bonus + conviction).
+            # Illiquid names get NO bonus/conviction so they can't be lifted
+            # into the top ranks (Rule 8 #6); their Final Score == Base Score.
+            overlay = explore.compute_overlay(
+                score, cats, ind, allow_bonus=not illiquid
+            )
             return ScreenerMatch(
                 symbol=sym.upper(),
                 name=names.get(sym.upper(), sym.upper()),
@@ -1008,6 +1014,11 @@ class AnalysisEngine:
                 liquidity_note=(
                     "Illiquid — not investable" if illiquid else None
                 ),
+                base_score=overlay["base_score"],
+                category_bonus=overlay["category_bonus"],
+                conviction_score=overlay["conviction_score"],
+                final_score=overlay["final_score"],
+                explore_tags=overlay["explore_tags"],
             )
         except Exception as exc:  # noqa: BLE001
             # Keep the universe fully populated; response stays 200 "live".
@@ -1029,8 +1040,10 @@ class AnalysisEngine:
         """Filter, sort, and paginate.
 
         Filters: ``min_score``, ``categories`` (match must carry one), and
-        ``min_value_traded`` (liquidity floor). Sort: score desc, then
-        value_traded desc (liquidity tiebreaker), then change_percent desc.
+        ``min_value_traded`` (liquidity floor). Sort (Phase 9A): Final Explore
+        Score desc, then value_traded desc (liquidity tiebreaker), then
+        change_percent desc. ``min_score`` still filters on the Base Score so
+        existing callers keep their semantics.
         """
         limit = max(1, min(int(limit), MAX_LIMIT))
         wanted = set(categories or [])
@@ -1042,8 +1055,15 @@ class AnalysisEngine:
             and m.value_traded >= min_value_traded
             and (not wanted or wanted.intersection(m.categories))
         ]
+
+        def _rank_score(m: ScreenerMatch) -> float:
+            # Sort by Final Explore Score when present; fall back to the Base
+            # Score for rows that predate the overlay (e.g. older snapshots).
+            fs = getattr(m, "final_score", None)
+            return fs if fs is not None else m.score
+
         matches.sort(
-            key=lambda m: (m.score, m.value_traded, m.change_percent),
+            key=lambda m: (_rank_score(m), m.value_traded, m.change_percent),
             reverse=True,
         )
         total = len(matches)  # filtered count BEFORE applying the limit

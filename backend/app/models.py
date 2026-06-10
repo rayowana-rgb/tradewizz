@@ -97,6 +97,17 @@ class ScreenerMatch(BaseModel):
     # (no-data symbols). Consumers must never promote a "mock" row to an elite
     # idea / BUY notification.
     data_source: str = "live"
+    # --- Phase 9A Explore intelligence (additive, optional) ---------------
+    # Base Score == the existing scoring engine output (mirrors ``score``);
+    # the engine itself is unchanged. category_bonus (0..25) and
+    # conviction_score (0..20) are additive overlays restored from bot9.
+    # final_score = clamp(base + bonus + conviction, 0..100) and is what the
+    # Explore view sorts by. Older clients ignore these fields.
+    base_score: Optional[float] = None
+    category_bonus: int = 0
+    conviction_score: int = 0
+    final_score: Optional[float] = None
+    explore_tags: List[str] = []
 
 
 class ScreenerResult(BaseModel):

@@ -130,6 +130,13 @@ def mock_screener_match(
         illiquid=True,
         liquidity_note="No live data — not investable",
         data_source="mock",
+        # Phase 9A: fabricated rows get NO Explore bonus/conviction. Final
+        # Score == Base Score == score, so they can never out-rank real names.
+        base_score=score,
+        category_bonus=0,
+        conviction_score=0,
+        final_score=score,
+        explore_tags=[],
     )
 
 
@@ -164,6 +171,12 @@ def mock_screen(market: Market) -> ScreenerResult:
                 # Whole-universe fallback => not real data. Mark as mock so no
                 # consumer promotes these sample rows to an elite idea.
                 data_source="mock",
+                # Phase 9A: no Explore overlay on fabricated rows.
+                base_score=float(score),
+                category_bonus=0,
+                conviction_score=0,
+                final_score=float(score),
+                explore_tags=[],
             )
         )
 

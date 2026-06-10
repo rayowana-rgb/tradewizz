@@ -661,10 +661,27 @@ class _MatchCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(width: 12),
-                _ScorePill(score: match.score),
+                // Phase 9A: the pill shows the FINAL Explore Score (what the
+                // list is sorted by), not the Base Score.
+                _ScorePill(score: match.effectiveFinalScore),
               ],
             ),
-            if (match.categories.isNotEmpty) ...[
+            // Phase 9A: Explore score breakdown (Final = Base + Bonus +
+            // Conviction). Only shown when the server sent the overlay.
+            if (match.finalScore != null) ...[
+              const SizedBox(height: 10),
+              _ScoreBreakdown(match: match),
+            ],
+            if (match.exploreTags.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final t in match.exploreTags) _ExploreTag(label: t),
+                ],
+              ),
+            ] else if (match.categories.isNotEmpty) ...[
               const SizedBox(height: 12),
               Wrap(
                 spacing: 6,
@@ -700,6 +717,75 @@ class _ScorePill extends StatelessWidget {
         style: const TextStyle(
           color: AppColors.seed,
           fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+/// Phase 9A: shows how the Final Explore Score is composed:
+/// Final = Base + Category Bonus + Conviction.
+class _ScoreBreakdown extends StatelessWidget {
+  const _ScoreBreakdown({required this.match});
+  final ScreenerMatch match;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget part(String label, String value, {Color? color}) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: const TextStyle(fontSize: 10, color: Colors.grey)),
+          Text(value,
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: color)),
+        ],
+      );
+    }
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        part('Final', match.effectiveFinalScore.toStringAsFixed(0),
+            color: AppColors.seed),
+        part('Base', match.effectiveBaseScore.toStringAsFixed(0)),
+        part('Bonus',
+            '+${match.categoryBonus}',
+            color: match.categoryBonus > 0 ? AppColors.up : Colors.grey),
+        part('Conviction', '${match.convictionScore}/20',
+            color: match.convictionScore > 0 ? AppColors.up : Colors.grey),
+      ],
+    );
+  }
+}
+
+/// Phase 9A: a small Explore tag chip (Bullish, Silent Accumulation,
+/// Strong CMF, Strong OBV, Strong ADX, ...).
+class _ExploreTag extends StatelessWidget {
+  const _ExploreTag({required this.label});
+  final String label;
+
+  bool get _isConviction =>
+      label.startsWith('Strong ');
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _isConviction ? AppColors.up : AppColors.seed;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: color,
         ),
       ),
     );

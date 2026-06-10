@@ -11,10 +11,18 @@ class ScreenerMatch {
     required this.price,
     required this.changePercent,
     this.categories = const [],
+    this.baseScore,
+    this.categoryBonus = 0,
+    this.convictionScore = 0,
+    this.finalScore,
+    this.exploreTags = const [],
   });
 
   final String symbol;
   final String name;
+
+  /// Base Score == the existing scoring engine output (technical + ML +
+  /// liquidity cap). Unchanged by Phase 9A.
   final double score;
   final String signal;
   final double price;
@@ -23,9 +31,33 @@ class ScreenerMatch {
   /// Tags assigned by the screening engine (bullish, scalping, etc.).
   final List<ScreenerCategory> categories;
 
+  // --- Phase 9A Explore intelligence (backward compatible) ----------------
+  /// Mirror of [score]; the Base Score before the Explore overlay. Null on
+  /// older servers (fall back to [score]).
+  final double? baseScore;
+
+  /// bot9 category bonus (0..25), added on top of the Base Score.
+  final int categoryBonus;
+
+  /// Money-flow / trend conviction (0..20), independent of the Base Score.
+  final int convictionScore;
+
+  /// Final Explore Score = clamp(base + bonus + conviction, 0..100). Null on
+  /// older servers (fall back to [score]).
+  final double? finalScore;
+
+  /// Human-readable Explore tags (Bullish, Silent Accumulation, Strong CMF...).
+  final List<String> exploreTags;
+
   bool get isUp => changePercent >= 0;
 
   bool hasCategory(ScreenerCategory c) => categories.contains(c);
+
+  /// The Base Score to display (mirror falls back to [score]).
+  double get effectiveBaseScore => baseScore ?? score;
+
+  /// The Final Explore Score to display/sort by (falls back to [score]).
+  double get effectiveFinalScore => finalScore ?? score;
 
   factory ScreenerMatch.fromJson(Map<String, dynamic> json) {
     return ScreenerMatch(
@@ -38,6 +70,13 @@ class ScreenerMatch {
       categories: (json['categories'] as List<dynamic>? ?? [])
           .map((e) => ScreenerCategory.fromWire(e?.toString()))
           .whereType<ScreenerCategory>()
+          .toList(),
+      baseScore: (json['base_score'] as num?)?.toDouble(),
+      categoryBonus: (json['category_bonus'] as num?)?.toInt() ?? 0,
+      convictionScore: (json['conviction_score'] as num?)?.toInt() ?? 0,
+      finalScore: (json['final_score'] as num?)?.toDouble(),
+      exploreTags: (json['explore_tags'] as List<dynamic>? ?? [])
+          .map((e) => e.toString())
           .toList(),
     );
   }

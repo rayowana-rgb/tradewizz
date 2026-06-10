@@ -55,4 +55,38 @@ void main() {
       ..addAll({'total_count': 1, 'returned_count': 1});
     expect(ScreenerResult.fromJson(json).hasMore, isFalse);
   });
+
+  // --- Phase 9A: Explore intelligence overlay --------------------------- //
+  test('parses Explore overlay fields when present', () {
+    final json = baseJson();
+    (json['matches'] as List).first.addAll({
+      'base_score': 70.0,
+      'category_bonus': 15,
+      'conviction_score': 18,
+      'final_score': 100.0,
+      'explore_tags': ['Silent Accumulation', 'Strong CMF', 'Strong OBV'],
+    });
+    final m = ScreenerResult.fromJson(json).matches.first;
+    expect(m.baseScore, 70.0);
+    expect(m.categoryBonus, 15);
+    expect(m.convictionScore, 18);
+    expect(m.finalScore, 100.0);
+    expect(m.exploreTags,
+        ['Silent Accumulation', 'Strong CMF', 'Strong OBV']);
+    expect(m.effectiveFinalScore, 100.0);
+    expect(m.effectiveBaseScore, 70.0);
+  });
+
+  test('Explore overlay is backward compatible (old server)', () {
+    // baseJson() has no overlay fields -> safe defaults, no throw.
+    final m = ScreenerResult.fromJson(baseJson()).matches.first;
+    expect(m.baseScore, isNull);
+    expect(m.finalScore, isNull);
+    expect(m.categoryBonus, 0);
+    expect(m.convictionScore, 0);
+    expect(m.exploreTags, isEmpty);
+    // Effective getters fall back to the Base Score.
+    expect(m.effectiveFinalScore, m.score);
+    expect(m.effectiveBaseScore, m.score);
+  });
 }
