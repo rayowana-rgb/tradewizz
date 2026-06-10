@@ -210,8 +210,18 @@ class _HomeShellState extends State<HomeShell> {
     // Market selector only on market-scoped tabs (Home, Watchlist, Explore).
     const marketScoped = {0, 1, 2};
 
-    return Scaffold(
+    // Wrap the whole shell (AppBar with the notification bell + scaffold
+    // background + bottom nav) in the dark "Wizard Terminal" theme so no light
+    // Material surfaces show through at the top or bottom edges.
+    return Theme(
+      data: buildTradeWizzTheme(),
+      child: Scaffold(
+      backgroundColor: TWColors.bgBase,
       appBar: AppBar(
+        backgroundColor: TWColors.bgBase,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
         title: Text(
           titles[_index],
           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 22),
@@ -262,6 +272,7 @@ class _HomeShellState extends State<HomeShell> {
             label: 'Account',
           ),
         ],
+      ),
       ),
     );
   }
