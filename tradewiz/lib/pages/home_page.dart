@@ -440,93 +440,74 @@ class _BriefCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bullets = _bullets();
-    // Stack lets the label pill overhang the top border (clip: none). Inner
-    // top padding reserves room so the bullets never collide with the label.
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        TWFloatingCard(
-          key: const Key('home_brief'),
-          padding: const EdgeInsets.fromLTRB(
-              TWSpace.lg, TWSpace.xl, TWSpace.lg, TWSpace.lg),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return TWFloatingCard(
+      key: const Key('home_brief'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Raised label in the top-left corner, inside the card.
+          Row(
             children: [
-              Row(
-                children: [
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: TWSpace.sm, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: TWColors.bgElevated,
-                      borderRadius: TWRadius.rChip,
-                    ),
-                    child: Text('15s read', style: TWType.caption),
-                  ),
-                ],
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: TWSpace.md, vertical: 6),
+                decoration: BoxDecoration(
+                  color: TWColors.bgElevated,
+                  borderRadius: TWRadius.rChip,
+                  border: Border.all(color: TWColors.hairlineTop, width: 1),
+                  boxShadow: TWShadow.ambientSm,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const TWAiOrb(size: 18, glow: false),
+                    const SizedBox(width: TWSpace.xs),
+                    Text('Morning Brief',
+                        style: TWType.label
+                            .copyWith(fontWeight: FontWeight.w700)),
+                  ],
+                ),
               ),
-              const SizedBox(height: TWSpace.md),
-              if (bullets.isEmpty)
-                Text('Your brief is being prepared.',
-                    style:
-                        TWType.bodySm.copyWith(color: TWColors.textTertiary))
-              else
-                for (final b in bullets)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          width: 6,
-                          height: 6,
-                          margin: const EdgeInsets.only(
-                              top: 8, right: TWSpace.md),
-                          decoration: const BoxDecoration(
-                              color: TWColors.accent,
-                              shape: BoxShape.circle),
-                        ),
-                        Expanded(
-                            child: Text(b,
-                                style: TWType.bodySm.copyWith(
-                                    color: TWColors.textSecondary))),
-                      ],
-                    ),
-                  ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: TWSpace.sm, vertical: 3),
+                decoration: BoxDecoration(
+                  color: TWColors.bgElevated,
+                  borderRadius: TWRadius.rChip,
+                ),
+                child: Text('15s read', style: TWType.caption),
+              ),
             ],
           ),
-        ),
-        // Raised floating label — overhangs the top-center edge of the card.
-        Positioned(
-          left: 0,
-          right: 0,
-          top: -13,
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: Container(
-            padding: const EdgeInsets.symmetric(
-                horizontal: TWSpace.md, vertical: 6),
-            decoration: BoxDecoration(
-              color: TWColors.bgElevated,
-              borderRadius: TWRadius.rChip,
-              border: Border.all(color: TWColors.hairlineTop, width: 1),
-              boxShadow: TWShadow.ambientSm,
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const TWAiOrb(size: 18, glow: false),
-                const SizedBox(width: TWSpace.xs),
-                Text('Morning Brief',
-                    style: TWType.label
-                        .copyWith(fontWeight: FontWeight.w700)),
-              ],
-            ),
-            ),
-          ),
-        ),
-      ],
+          const SizedBox(height: TWSpace.md),
+          if (bullets.isEmpty)
+            Text('Your brief is being prepared.',
+                style: TWType.bodySm.copyWith(color: TWColors.textTertiary))
+          else
+            for (final b in bullets)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      margin:
+                          const EdgeInsets.only(top: 8, right: TWSpace.md),
+                      decoration: const BoxDecoration(
+                          color: TWColors.accent, shape: BoxShape.circle),
+                    ),
+                    Expanded(
+                        child: Text(b,
+                            style: TWType.bodySm.copyWith(
+                                color: TWColors.textSecondary))),
+                  ],
+                ),
+              ),
+        ],
+      ),
     );
   }
 
