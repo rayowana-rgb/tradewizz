@@ -144,6 +144,43 @@ class _SummaryTab extends StatelessWidget {
         s.floatingPnl >= 0 ? AppColors.up : AppColors.down;
     final realizedColor =
         s.realizedPnl >= 0 ? AppColors.up : AppColors.down;
+    // Mature empty state: no broker connected yet. Explain the current
+    // (simulation-only) reality instead of showing zeroed-out tiles.
+    if (brokers.isEmpty) {
+      return ListView(
+        key: const Key('broker_empty'),
+        padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
+        children: [
+          Icon(Icons.account_balance_outlined,
+              size: 44, color: AppColors.seed.withValues(alpha: 0.7)),
+          const SizedBox(height: 14),
+          const Text('Broker connection is not enabled yet',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+          const SizedBox(height: 6),
+          const Text(
+            'For now, TradeWizz uses simulated portfolio tracking.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey, fontSize: 13),
+          ),
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              key: const Key('broker_empty_cta'),
+              icon: const Icon(Icons.show_chart),
+              label: const Text('Use Simulation Portfolio'),
+              onPressed: () => Navigator.of(context).maybePop(),
+            ),
+          ),
+          const SizedBox(height: 10),
+          const Center(
+            child: Text('Broker linking — coming soon',
+                style: TextStyle(color: Colors.grey, fontSize: 12)),
+          ),
+        ],
+      );
+    }
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [

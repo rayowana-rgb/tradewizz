@@ -137,10 +137,11 @@ void main() {
     );
     expect(find.byKey(const Key('account_holdings_card')), findsOneWidget);
     expect(find.text('AAPL · US'), findsWidgets);
-    // Trade history card with the BUY trade.
+    // Trade history card with the BUY trade. Use a small scroll delta so the
+    // short trades card (just below holdings) is not overshot.
     await tester.scrollUntilVisible(
       find.byKey(const Key('account_trades_card')),
-      300,
+      120,
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.text('BUY 10 AAPL'), findsOneWidget);

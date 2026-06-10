@@ -110,31 +110,34 @@ void main() {
     // Simulation summary + holdings (with Buy/Sell) are present.
     expect(find.byKey(const Key('account_portfolio_card')), findsOneWidget);
 
+    // New IA order: Insights section leads with Trade Journal, then Health,
+    // then the AI Portfolio Manager. Use a small scroll delta so short cards
+    // are not overshot in the lazy list.
     await tester.scrollUntilVisible(
-        find.byKey(const Key('account_health_section')), 300,
+        find.byKey(const Key('account_journal_link')), 120,
+        scrollable: list);
+    expect(find.byKey(const Key('account_journal_link')), findsOneWidget);
+
+    await tester.scrollUntilVisible(
+        find.byKey(const Key('account_health_section')), 120,
         scrollable: list);
     expect(find.byKey(const Key('account_health_section')), findsOneWidget);
     expect(find.byKey(const Key('account_health_card')), findsOneWidget);
     expect(find.byKey(const Key('account_health_score')), findsOneWidget);
 
     await tester.scrollUntilVisible(
-        find.byKey(const Key('account_manager_section')), 300,
+        find.byKey(const Key('account_manager_section')), 120,
         scrollable: list);
     expect(find.byKey(const Key('account_manager_section')), findsOneWidget);
 
     await tester.scrollUntilVisible(
-        find.byKey(const Key('account_journal_link')), 300,
-        scrollable: list);
-    expect(find.byKey(const Key('account_journal_link')), findsOneWidget);
-
-    await tester.scrollUntilVisible(
-        find.byKey(const Key('account_brokers_portfolio_link')), 300,
+        find.byKey(const Key('account_brokers_portfolio_link')), 120,
         scrollable: list);
     expect(find.byKey(const Key('account_brokers_portfolio_link')),
         findsOneWidget);
 
     await tester.scrollUntilVisible(
-        find.byKey(const Key('reset_simulation_button')), 300,
+        find.byKey(const Key('reset_simulation_button')), 120,
         scrollable: list);
     expect(find.byKey(const Key('reset_simulation_button')), findsOneWidget);
   });

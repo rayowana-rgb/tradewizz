@@ -7,6 +7,7 @@ import '../services/auth_scope.dart';
 import '../services/repository_scope.dart';
 import '../theme.dart';
 import '../widgets/portfolio_manager.dart';
+import 'ai_analysis_page.dart';
 
 /// Portfolio Journal — a research diary of simulated buys/sells with the
 /// snapshot (score / signal / radar rank / portfolio health) at purchase, plus
@@ -107,27 +108,62 @@ class _JournalPageState extends State<JournalPage> {
               ),
             )
           else ...[
-            _StatsCard(stats: _stats),
-            const SizedBox(height: 16),
             if (_entries.isEmpty)
-              const Card(
-                key: Key('journal_empty'),
-                child: Padding(
-                  padding: EdgeInsets.all(24),
-                  child: Center(
-                    child: Text(
-                      'No journal entries yet. Buy a name in the simulator to '
-                      'start your diary.',
-                      style: TextStyle(color: Colors.grey),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-              )
-            else
+              _JournalEmptyState(repository: widget.repository)
+            else ...[
+              _StatsCard(stats: _stats),
+              const SizedBox(height: 16),
               for (final e in _entries) _JournalCard(entry: e),
+            ],
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// Mature empty state for the journal: explains *why* it is empty and gives a
+/// clear next action instead of showing a blank card.
+class _JournalEmptyState extends StatelessWidget {
+  const _JournalEmptyState({this.repository});
+  final StockRepository? repository;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      key: const Key('journal_empty'),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 28, 20, 24),
+        child: Column(
+          children: [
+            Icon(Icons.menu_book_outlined,
+                size: 44, color: AppColors.seed.withValues(alpha: 0.7)),
+            const SizedBox(height: 14),
+            const Text('No trades yet',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+            const SizedBox(height: 6),
+            const Text(
+              'Your journal will appear after you place simulated buy/sell '
+              'orders.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey, fontSize: 13),
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                key: const Key('journal_empty_cta'),
+                icon: const Icon(Icons.auto_awesome),
+                label: const Text('Go to AI Analysis'),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => AiAnalysisPage(repository: repository),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

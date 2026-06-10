@@ -1,6 +1,5 @@
 import 'dart:async' show unawaited;
 
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
 import '../models/broker.dart';
@@ -18,8 +17,6 @@ import '../services/social_sign_in.dart';
 import '../theme.dart';
 import '../widgets/rebalance.dart';
 import 'advanced_page.dart';
-import 'cache_inspector_page.dart';
-import 'snapshot_inspector_page.dart';
 import '../widgets/premium.dart';
 import 'ai_analysis_page.dart';
 import 'auth_pages.dart';
@@ -287,6 +284,12 @@ class _AccountPageState extends State<AccountPage> {
           _disclaimerBanner(port?.disclaimer),
           const SizedBox(height: 16),
 
+          // ============================================================
+          // SECTION: Portfolio (value, holdings, trade history)
+          // ============================================================
+          const _SectionHeader('Portfolio',
+              key: Key('account_section_portfolio')),
+
           // --- Simulated portfolio summary ------------------------------
           const Padding(
             padding: EdgeInsets.only(left: 4, bottom: 8),
@@ -328,6 +331,26 @@ class _AccountPageState extends State<AccountPage> {
           _TradesCard(trades: _trades),
           const SizedBox(height: 24),
 
+          // ============================================================
+          // SECTION: Insights (journal, health, AI manager)
+          // ============================================================
+          const _SectionHeader('Insights',
+              key: Key('account_section_insights')),
+
+          // --- Trade Journal (user-facing investing feature) ------------
+          _LinkCard(
+            cardKey: const Key('account_journal_link'),
+            icon: Icons.menu_book_outlined,
+            title: 'Trade Journal',
+            subtitle: 'Review your simulated trades and win rate.',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => JournalPage(repository: widget.repository),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
           // --- Portfolio Health -----------------------------------------
           const Padding(
             padding: EdgeInsets.only(left: 4, bottom: 8),
@@ -355,106 +378,45 @@ class _AccountPageState extends State<AccountPage> {
 
           // --- Portfolio Rebalancing AI ---------------------------------
           RebalanceCard(repository: widget.repository),
-          const SizedBox(height: 16),
+          const SizedBox(height: 24),
 
-          // --- Journal --------------------------------------------------
-          Card(
-            key: const Key('account_journal_link'),
-            child: ListTile(
-              leading: const Icon(Icons.menu_book_outlined,
-                  color: AppColors.seed),
-              title: const Text('Trade Journal',
-                  style: TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: const Text(
-                  'Your buy/sell decisions, scores & realized returns.'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) =>
-                      JournalPage(repository: widget.repository),
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
+          // ============================================================
+          // SECTION: Connections (external broker portfolio)
+          // ============================================================
+          const _SectionHeader('Connections',
+              key: Key('account_section_connections')),
 
-          // --- Connected Brokers Portfolio ------------------------------
-          Card(
-            key: const Key('account_brokers_portfolio_link'),
-            child: ListTile(
-              leading: const Icon(Icons.account_balance_outlined,
-                  color: AppColors.seed),
-              title: const Text('Connected Brokers Portfolio',
-                  style: TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: const Text(
-                  'Positions, orders & performance across your brokers.'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) =>
-                      PortfolioPage(repository: widget.repository),
-                ),
+          // --- Connected Brokers Portfolio (single source of truth) -----
+          _LinkCard(
+            cardKey: const Key('account_brokers_portfolio_link'),
+            icon: Icons.account_balance_outlined,
+            title: 'Connected Brokers',
+            subtitle: 'Connect or review an external broker portfolio.',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => PortfolioPage(repository: widget.repository),
               ),
             ),
           ),
           const SizedBox(height: 24),
 
-          // --- Advanced (Phase F): power-user features off the main path -
-          Card(
-            key: const Key('account_advanced_link'),
-            child: ListTile(
-              leading: const Icon(Icons.tune, color: AppColors.seed),
-              title: const Text('Advanced',
-                  style: TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: const Text(
-                  'Global Rotation, Journal, Analytics & Cache.'),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const AdvancedPage()),
-              ),
+          // ============================================================
+          // SECTION: Account (subscription, advanced tools, reset/logout)
+          // ============================================================
+          const _SectionHeader('Account',
+              key: Key('account_section_account')),
+
+          // --- Advanced Tools: low-frequency / developer features -------
+          _LinkCard(
+            cardKey: const Key('account_advanced_link'),
+            icon: Icons.tune,
+            title: 'Advanced Tools',
+            subtitle: 'Developer tools, cache, snapshot & analytics.',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AdvancedPage()),
             ),
           ),
           const SizedBox(height: 16),
-
-          // --- Cache Inspector (debug builds only, Phase L) -------------
-          if (kDebugMode) ...[
-            Card(
-              key: const Key('account_cache_inspector_link'),
-              child: ListTile(
-                leading: const Icon(Icons.storage_outlined,
-                    color: AppColors.seed),
-                title: const Text('Cache Inspector',
-                    style: TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: const Text(
-                    'Developer tool: inspect & clear the local cache.'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const CacheInspectorPage(),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Card(
-              key: const Key('account_snapshot_inspector_link'),
-              child: ListTile(
-                leading: const Icon(Icons.dashboard_customize_outlined,
-                    color: AppColors.seed),
-                title: const Text('Snapshot Inspector',
-                    style: TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: const Text(
-                    'Developer tool: snapshot age, TTL, size & refresh.'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const SnapshotInspectorPage(),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-          ],
 
           // --- Reset -----------------------------------------------------
           SizedBox(
@@ -585,6 +547,61 @@ class _PortfolioValueHeader extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// A bold section header used to group Account into Portfolio / Insights /
+/// Connections / Account. Keeps the page scannable instead of a long list.
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader(this.title, {super.key});
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 2, bottom: 10),
+      child: Text(
+        title.toUpperCase(),
+        style: TextStyle(
+          fontWeight: FontWeight.w800,
+          fontSize: 12,
+          letterSpacing: 1.1,
+          color: AppColors.seed.withValues(alpha: 0.85),
+        ),
+      ),
+    );
+  }
+}
+
+/// A consistent navigation card: icon, title, one-line explanation and a clear
+/// chevron CTA. Used for Journal / Connected Brokers / Advanced entries.
+class _LinkCard extends StatelessWidget {
+  const _LinkCard({
+    required this.cardKey,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+  final Key cardKey;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      key: cardKey,
+      child: ListTile(
+        leading: Icon(icon, color: AppColors.seed),
+        title: Text(title,
+            style: const TextStyle(fontWeight: FontWeight.w700)),
+        subtitle: Text(subtitle),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: onTap,
+      ),
     );
   }
 }
