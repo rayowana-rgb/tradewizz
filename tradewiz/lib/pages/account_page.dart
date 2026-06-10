@@ -14,7 +14,8 @@ import '../services/auth_scope.dart';
 import '../services/entitlements_scope.dart';
 import '../services/repository_scope.dart';
 import '../services/social_sign_in.dart';
-import '../theme.dart';
+import '../theme_tradewizz.dart';
+import '../widgets/ds/ds.dart';
 import '../widgets/rebalance.dart';
 import 'advanced_page.dart';
 import '../widgets/premium.dart';
@@ -224,20 +225,23 @@ class _AccountPageState extends State<AccountPage> {
     final port = _portfolio;
     final acct = port?.account;
 
-    return RefreshIndicator(
+    return TWScaffoldBackground(
+      child: RefreshIndicator(
       onRefresh: _load,
+      color: TWColors.accentBright,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
         children: [
           // --- Profile ---------------------------------------------------
-          Card(
+          TWFloatingCard(
+            padding: EdgeInsets.zero,
             child: Padding(
               padding: const EdgeInsets.all(20),
               child: Row(children: [
                 CircleAvatar(
                   radius: 26,
-                  backgroundColor: AppColors.seed.withValues(alpha: 0.12),
-                  child: const Icon(Icons.person, color: AppColors.seed),
+                  backgroundColor: TWColors.accent.withValues(alpha: 0.12),
+                  child: const Icon(Icons.person, color: TWColors.accent),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -246,7 +250,7 @@ class _AccountPageState extends State<AccountPage> {
                     children: [
                       const Text('Signed in as',
                           style:
-                              TextStyle(color: Colors.grey, fontSize: 12)),
+                              TextStyle(color: TWColors.textTertiary, fontSize: 12)),
                       const SizedBox(height: 2),
                       Text(
                         user.email,
@@ -352,16 +356,23 @@ class _AccountPageState extends State<AccountPage> {
           const SizedBox(height: 12),
 
           // --- Portfolio Health -----------------------------------------
-          const Padding(
-            padding: EdgeInsets.only(left: 4, bottom: 8),
-            child: Text('Portfolio Health',
-                key: Key('account_health_section'),
-                style:
-                    TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-          ),
-          _PortfolioHealthCard(
-            health: _health,
-            loading: _healthLoading,
+          // Header + card grouped into one list item so the lazy ListView
+          // builds them together (keeps presence assertions stable).
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(left: 4, bottom: 8),
+                child: Text('Portfolio Health',
+                    key: Key('account_health_section'),
+                    style:
+                        TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              ),
+              _PortfolioHealthCard(
+                health: _health,
+                loading: _healthLoading,
+              ),
+            ],
           ),
           const SizedBox(height: 24),
 
@@ -426,7 +437,7 @@ class _AccountPageState extends State<AccountPage> {
               icon: const Icon(Icons.restart_alt),
               label: const Text('Reset Simulation Portfolio'),
               style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.seed,
+                foregroundColor: TWColors.accent,
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
               onPressed: _loading ? null : _reset,
@@ -442,7 +453,7 @@ class _AccountPageState extends State<AccountPage> {
               icon: const Icon(Icons.logout),
               label: const Text('Log out'),
               style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.down,
+                foregroundColor: TWColors.down,
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
               onPressed: () async {
@@ -457,6 +468,7 @@ class _AccountPageState extends State<AccountPage> {
             ),
           ),
         ],
+      ),
       ),
     );
   }
@@ -515,7 +527,7 @@ class _PortfolioValueHeader extends StatelessWidget {
     final basis = a.equity - totalPnl;
     final pct = basis.abs() < 0.0001 ? 0.0 : (totalPnl / basis) * 100;
     final up = totalPnl >= 0;
-    final color = up ? AppColors.up : AppColors.down;
+    final color = up ? TWColors.up : TWColors.down;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -524,7 +536,7 @@ class _PortfolioValueHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text('Portfolio Value',
-                  style: TextStyle(color: Colors.grey, fontSize: 11)),
+                  style: TextStyle(color: TWColors.textTertiary, fontSize: 11)),
               Text(_money(a.equity, a.currency),
                   key: const Key('account_hero_value'),
                   maxLines: 1,
@@ -567,7 +579,7 @@ class _SectionHeader extends StatelessWidget {
           fontWeight: FontWeight.w800,
           fontSize: 12,
           letterSpacing: 1.1,
-          color: AppColors.seed.withValues(alpha: 0.85),
+          color: TWColors.accent.withValues(alpha: 0.85),
         ),
       ),
     );
@@ -592,15 +604,19 @@ class _LinkCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
+    return TWFloatingCard(
       key: cardKey,
-      child: ListTile(
-        leading: Icon(icon, color: AppColors.seed),
-        title: Text(title,
-            style: const TextStyle(fontWeight: FontWeight.w700)),
-        subtitle: Text(subtitle),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: onTap,
+      padding: EdgeInsets.zero,
+      child: Material(
+        type: MaterialType.transparency,
+        child: ListTile(
+          leading: Icon(icon, color: TWColors.accent),
+          title: Text(title, style: TWType.label),
+          subtitle: Text(subtitle, style: TWType.caption),
+          trailing: const Icon(Icons.chevron_right,
+              color: TWColors.textTertiary),
+          onTap: onTap,
+        ),
       ),
     );
   }
@@ -627,7 +643,7 @@ class _SummaryCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(label,
-                style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                style: const TextStyle(color: TWColors.textTertiary, fontSize: 11)),
             const SizedBox(height: 2),
             Text(value,
                 key: key,
@@ -636,8 +652,9 @@ class _SummaryCard extends StatelessWidget {
           ],
         );
 
-    return Card(
+    return TWFloatingCard(
       key: const Key('account_portfolio_card'),
+      padding: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -654,13 +671,13 @@ class _SummaryCard extends StatelessWidget {
               )
             else if (a == null && failed)
               Row(children: [
-                const Icon(Icons.info_outline, size: 18, color: Colors.grey),
+                const Icon(Icons.info_outline, size: 18, color: TWColors.textTertiary),
                 const SizedBox(width: 8),
                 const Expanded(
                   child: Text(
                     "Couldn't load your simulation portfolio right now.",
                     key: Key('account_portfolio_error'),
-                    style: TextStyle(color: Colors.grey, fontSize: 13),
+                    style: TextStyle(color: TWColors.textTertiary, fontSize: 13),
                   ),
                 ),
                 TextButton(onPressed: onRetry, child: const Text('Retry')),
@@ -689,14 +706,14 @@ class _SummaryCard extends StatelessWidget {
                     'Unrealized P/L',
                     '${a.unrealizedPnl >= 0 ? '+' : ''}'
                         '${a.unrealizedPnl.toStringAsFixed(2)}',
-                    color: a.unrealizedPnl >= 0 ? AppColors.up : AppColors.down,
+                    color: a.unrealizedPnl >= 0 ? TWColors.up : TWColors.down,
                     key: const Key('account_unrealized_pnl'),
                   ),
                   stat(
                     'Realized P/L',
                     '${a.realizedPnl >= 0 ? '+' : ''}'
                         '${a.realizedPnl.toStringAsFixed(2)}',
-                    color: a.realizedPnl >= 0 ? AppColors.up : AppColors.down,
+                    color: a.realizedPnl >= 0 ? TWColors.up : TWColors.down,
                     key: const Key('account_realized_pnl'),
                   ),
                   stat('Currency', a.currency),
@@ -725,30 +742,36 @@ class _HoldingsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (positions.isEmpty) {
-      return const Card(
+      return const TWFloatingCard(
         key: Key('account_holdings_empty'),
+        padding: EdgeInsets.all(16),
         child: Padding(
-          padding: EdgeInsets.all(16),
+          padding: EdgeInsets.zero,
           child: Text('No simulated holdings yet. Buy a stock to get started.',
-              style: TextStyle(color: Colors.grey, fontSize: 13)),
+              style: TextStyle(color: TWColors.textTertiary, fontSize: 13)),
         ),
       );
     }
-    return Card(
+    return TWFloatingCard(
       key: const Key('account_holdings_card'),
-      child: Column(
-        children: [
-          for (var i = 0; i < positions.length; i++) ...[
-            if (i > 0) const Divider(height: 1),
-            _holdingTile(positions[i]),
+      padding: EdgeInsets.zero,
+      child: Material(
+        type: MaterialType.transparency,
+        child: Column(
+          children: [
+            for (var i = 0; i < positions.length; i++) ...[
+              if (i > 0)
+                const Divider(height: 1, color: TWColors.hairline),
+              _holdingTile(positions[i]),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
 
   Widget _holdingTile(SimPosition p) {
-    final pnlColor = p.unrealizedPnl >= 0 ? AppColors.up : AppColors.down;
+    final pnlColor = p.unrealizedPnl >= 0 ? TWColors.up : TWColors.down;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -791,7 +814,7 @@ class _HoldingsCard extends StatelessWidget {
                 key: Key('holding_sell_${p.symbol}_${p.market.code}'),
                 onPressed: () => onSell(p),
                 style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.down),
+                    foregroundColor: TWColors.down),
                 child: const Text('Sell'),
               ),
             ),
@@ -809,32 +832,38 @@ class _TradesCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (trades.isEmpty) {
-      return const Card(
+      return const TWFloatingCard(
         key: Key('account_trades_empty'),
+        padding: EdgeInsets.all(16),
         child: Padding(
-          padding: EdgeInsets.all(16),
+          padding: EdgeInsets.zero,
           child: Text('No simulated trades yet.',
-              style: TextStyle(color: Colors.grey, fontSize: 13)),
+              style: TextStyle(color: TWColors.textTertiary, fontSize: 13)),
         ),
       );
     }
     final shown = trades.take(20).toList();
-    return Card(
+    return TWFloatingCard(
       key: const Key('account_trades_card'),
-      child: Column(
-        children: [
-          for (var i = 0; i < shown.length; i++) ...[
-            if (i > 0) const Divider(height: 1),
-            _tradeTile(shown[i]),
+      padding: EdgeInsets.zero,
+      child: Material(
+        type: MaterialType.transparency,
+        child: Column(
+          children: [
+            for (var i = 0; i < shown.length; i++) ...[
+              if (i > 0)
+                const Divider(height: 1, color: TWColors.hairline),
+              _tradeTile(shown[i]),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
 
   Widget _tradeTile(SimTrade t) {
     final isBuy = t.side == 'BUY';
-    final color = isBuy ? AppColors.up : AppColors.down;
+    final color = isBuy ? TWColors.up : TWColors.down;
     return ListTile(
       dense: true,
       leading: Icon(isBuy ? Icons.arrow_downward : Icons.arrow_upward,
@@ -857,8 +886,9 @@ class _PortfolioHealthCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final h = health;
     if (h == null) {
-      return Card(
+      return TWFloatingCard(
         key: const Key('account_health_card'),
+        padding: EdgeInsets.zero,
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: loading
@@ -870,18 +900,19 @@ class _PortfolioHealthCard extends StatelessWidget {
               : const Text(
                   'No portfolio health yet. Buy a stock to see your '
                   'health score, strengths and warnings.',
-                  style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  style: TextStyle(color: TWColors.textTertiary, fontSize: 13)),
         ),
       );
     }
     final score = h.healthScore;
     final color = score >= 70
-        ? AppColors.up
+        ? TWColors.up
         : score >= 40
             ? Colors.orange
-            : AppColors.down;
-    return Card(
+            : TWColors.down;
+    return TWFloatingCard(
       key: const Key('account_health_card'),
+      padding: EdgeInsets.zero,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -897,14 +928,14 @@ class _PortfolioHealthCard extends StatelessWidget {
               const SizedBox(width: 8),
               Text('/ 100  ${h.rating}',
                   style: const TextStyle(
-                      color: Colors.grey, fontWeight: FontWeight.w600)),
+                      color: TWColors.textTertiary, fontWeight: FontWeight.w600)),
             ]),
             if (h.strengths.isNotEmpty) ...[
               const SizedBox(height: 8),
               for (final s in h.strengths.take(2))
                 Row(children: [
                   const Icon(Icons.check_circle_outline,
-                      size: 16, color: AppColors.up),
+                      size: 16, color: TWColors.up),
                   const SizedBox(width: 6),
                   Expanded(
                       child: Text(s,
@@ -989,7 +1020,7 @@ class _LoggedOutViewState extends State<_LoggedOutView> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.account_circle_outlined, size: 64,
-                color: Colors.grey),
+                color: TWColors.textTertiary),
             const SizedBox(height: 12),
             const Text(
               'Sign in to TradeWiz',
@@ -998,7 +1029,7 @@ class _LoggedOutViewState extends State<_LoggedOutView> {
             const SizedBox(height: 4),
             const Text(
               'Track your simulated portfolio across all markets.',
-              style: TextStyle(color: Colors.grey),
+              style: TextStyle(color: TWColors.textTertiary),
             ),
             const SizedBox(height: 24),
             SizedBox(
@@ -1047,8 +1078,8 @@ class _LoggedOutViewState extends State<_LoggedOutView> {
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                     child: Text(
                       'or continue with',
-                      style: TextStyle(
-                        color: Colors.grey.shade600,
+                      style: const TextStyle(
+                        color: TWColors.textTertiary,
                         fontSize: 12,
                       ),
                     ),
