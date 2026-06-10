@@ -445,29 +445,11 @@ class _BriefCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Raised label in the top-left corner, inside the card.
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: TWSpace.md, vertical: 6),
-                decoration: BoxDecoration(
-                  color: TWColors.bgElevated,
-                  borderRadius: TWRadius.rChip,
-                  border: Border.all(color: TWColors.hairlineTop, width: 1),
-                  boxShadow: TWShadow.ambientSm,
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const TWAiOrb(size: 18, glow: false),
-                    const SizedBox(width: TWSpace.xs),
-                    Text('Morning Brief',
-                        style: TWType.label
-                            .copyWith(fontWeight: FontWeight.w700)),
-                  ],
-                ),
-              ),
+              const TWAiOrb(size: 26, glow: false),
+              const SizedBox(width: TWSpace.sm),
+              Text('Morning Brief', style: TWType.title3),
               const Spacer(),
               Container(
                 padding: const EdgeInsets.symmetric(
