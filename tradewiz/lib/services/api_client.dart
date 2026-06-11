@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../config/app_config.dart';
@@ -26,14 +28,42 @@ class ApiException implements Exception {
 class ApiClient {
   ApiClient({AppConfig? config, http.Client? httpClient})
       : _config = config ?? AppConfig.fromEnvironment(),
-        _http = httpClient ?? http.Client();
+        _http = httpClient ?? http.Client() {
+    // One-time diagnostic: which backend is this build actually talking to?
+    // Helps catch release builds that ship a wrong/placeholder base URL.
+    // No secrets or tokens are ever logged.
+    if (!_loggedConfig) {
+      _loggedConfig = true;
+      _log('Using backend baseUrl=$baseUrl '
+          '(mockFallback=${_config.mockFallback}, '
+          'timeout=${_config.requestTimeout.inSeconds}s)');
+    }
+  }
 
   final AppConfig _config;
   final http.Client _http;
 
+  static bool _loggedConfig = false;
+
   String get baseUrl => _config.baseUrl;
 
   void close() => _http.close();
+
+  /// Lightweight diagnostic logger. Only emits in debug/profile (or when
+  /// asserts are enabled); never logged in plain release output. Never
+  /// includes auth headers, bearer tokens, or request bodies.
+  void _log(String message) {
+    if (kReleaseMode) return;
+    developer.log(message, name: 'TradeWizz.api');
+  }
+
+  /// A readable, token-free description of a transport failure that names the
+  /// host the app tried to reach, so connectivity problems are diagnosable
+  /// from user-visible errors without exposing secrets.
+  String _transportError(Uri uri, String reason) {
+    final host = uri.host.isEmpty ? uri.toString() : uri.host;
+    return '$reason (could not reach $host).';
+  }
 
   /// GET /analyze/{symbol}
   Future<Sourced<Map<String, dynamic>>> analyze(String symbol, Market market) {
@@ -182,11 +212,14 @@ class ApiClient {
     } on ApiException {
       rethrow;
     } on TimeoutException {
-      throw ApiException('The request timed out.');
-    } on SocketException {
-      throw ApiException('Could not reach the server.');
-    } on http.ClientException {
-      throw ApiException('Network error contacting the server.');
+      _log('Timeout contacting $uri');
+      throw ApiException(_transportError(uri, 'The request timed out'));
+    } on SocketException catch (e) {
+      _log('SocketException contacting $uri: ${e.osError?.message ?? e.message}');
+      throw ApiException(_transportError(uri, 'Could not reach the server'));
+    } on http.ClientException catch (e) {
+      _log('ClientException contacting $uri: ${e.message}');
+      throw ApiException(_transportError(uri, 'Network error contacting the server'));
     } on FormatException {
       throw ApiException('Could not read the server response.');
     }
@@ -226,11 +259,14 @@ class ApiClient {
     } on ApiException {
       rethrow;
     } on TimeoutException {
-      return _maybeFallback(fallback, 'The request timed out.');
-    } on SocketException {
-      return _maybeFallback(fallback, 'Could not reach the server.');
-    } on http.ClientException {
-      return _maybeFallback(fallback, 'Network error contacting the server.');
+      _log('Timeout contacting $uri');
+      return _maybeFallback(fallback, _transportError(uri, 'The request timed out'));
+    } on SocketException catch (e) {
+      _log('SocketException contacting $uri: ${e.osError?.message ?? e.message}');
+      return _maybeFallback(fallback, _transportError(uri, 'Could not reach the server'));
+    } on http.ClientException catch (e) {
+      _log('ClientException contacting $uri: ${e.message}');
+      return _maybeFallback(fallback, _transportError(uri, 'Network error contacting the server'));
     } on FormatException {
       throw ApiException('Could not read the server response.');
     }

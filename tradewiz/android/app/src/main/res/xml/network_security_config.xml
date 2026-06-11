@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Network security policy for TradeWizz (Android).
+
+  Default: cleartext HTTP is DISABLED app-wide. The production backend must be
+  reached over HTTPS. This keeps the release build secure by default.
+
+  Exception: a small allow-list of cleartext domains is provided ONLY so the
+  app can talk to a local / LAN development backend (the FastAPI server that
+  runs on the Mac Mini at http://<host>:8000). These are private/local hosts
+  and are not the production endpoint. Remove or edit this list as the
+  production HTTPS endpoint becomes available.
+-->
+<network-security-config>
+    <!-- Production / public traffic: HTTPS only. -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- Local / LAN development backend (HTTP only). Domain-scoped, not global.
+         NOTE: Android network-security-config matches exact hosts only (no CIDR
+         ranges). To test a release build against a backend on your LAN IP, add
+         that exact IP as another <domain> entry below, e.g.
+             <domain includeSubdomains="false">192.168.1.100</domain> -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">10.0.2.2</domain>      <!-- Android emulator -> host loopback -->
+    </domain-config>
+</network-security-config>
