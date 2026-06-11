@@ -1072,7 +1072,7 @@ class _PortfolioCard extends StatelessWidget {
             // Header — icon + title + positions badge.
             Row(
               children: [
-                const Text('💼  My Portfolio',
+                const Text('My Portfolio',
                     style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w700,
