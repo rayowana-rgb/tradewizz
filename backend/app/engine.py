@@ -21,6 +21,7 @@ from . import explore, indicators, mock_data, scoring
 from .scoring import MarketContext
 from .ml import ProfitModel
 from .cache import make_cached_fetcher
+from .market_config import idr_per_unit as _idr_per_unit
 from .universe import UniverseRepository
 from .models import (
     AnalysisResult,
@@ -45,12 +46,15 @@ DEFAULT_MIN_VALUE_TRADED_IDR = 2_000_000_000
 
 
 def default_min_value_traded(market: Market) -> float:
-    """Per-market default liquidity floor (2B IDR, FX-scaled for HKD/KRW)."""
-    if market is Market.HKEX:
-        return DEFAULT_MIN_VALUE_TRADED_IDR / 2000.0  # ~1M HKD
-    if market in (Market.KOSPI, Market.KOSDAQ):
-        return DEFAULT_MIN_VALUE_TRADED_IDR / 12.0  # ~167M KRW
-    return float(DEFAULT_MIN_VALUE_TRADED_IDR)  # IDX / default
+    """Per-market default liquidity floor (2B IDR, FX-scaled to local currency).
+
+    The legacy IDR floor is divided by the market's ``idr_per_unit`` (single
+    source of truth in ``market_config``) so every market gets a sane
+    local-currency threshold instead of an IDR-sized one. IDX (idr_per_unit=1)
+    keeps the original 2B figure; e.g. US -> 2e9/16000 ~= 125k USD,
+    JPY -> 2e9/105 ~= 19M JPY, SGD -> 2e9/12000 ~= 167k SGD.
+    """
+    return DEFAULT_MIN_VALUE_TRADED_IDR / _idr_per_unit(market)
 
 # Max concurrent per-symbol fetches during /screen (override via env).
 _SCREEN_WORKERS = int(os.environ.get("TRADEWIZ_SCREEN_WORKERS", "8"))
@@ -556,25 +560,42 @@ class AnalysisEngine:
     def _value_floor(market: Optional[Market], idr_amount: float) -> float:
         """Scale a legacy IDR liquidity threshold to the market's currency.
 
-        Rough FX so HKD/KRW markets don't require IDR-sized turnover. IDX keeps
-        the original IDR figures.
+        Divides the IDR amount by the market's ``idr_per_unit`` (single source
+        of truth in ``market_config``) so no market is gated by an IDR-sized
+        turnover floor. IDX (idr_per_unit=1) keeps the original IDR figures;
+        e.g. HKEX -> /2000, KOSPI/KOSDAQ -> /12, US -> /16000, JPY -> /105,
+        SGD -> /12000.
         """
-        # Approx value of 1 unit of currency in IDR (order-of-magnitude).
-        # 1 HKD ~ 2000 IDR, 1 KRW ~ 12 IDR.
-        if market in (Market.HKEX,):
-            return idr_amount / 2000.0
-        if market in (Market.KOSPI, Market.KOSDAQ):
-            return idr_amount / 12.0
-        return idr_amount  # IDX / default: legacy IDR amounts
+        if market is None:
+            return idr_amount  # default: legacy IDR amounts
+        return idr_amount / _idr_per_unit(market)
 
-    @staticmethod
-    def _cheap_price(market: Optional[Market]) -> float:
-        """Legacy 'cheap' price ceiling (<250-300 IDR) scaled per market."""
-        if market in (Market.HKEX,):
-            return 5.0  # ~ small-cap HKD
-        if market in (Market.KOSPI, Market.KOSDAQ):
-            return 5000.0  # KRW
-        return 300.0  # IDX / default
+    # Legacy hand-tuned 'cheap' price ceilings (in local currency) for the
+    # original markets. Kept as explicit overrides so existing IDX/HKEX/KRW
+    # behavior is unchanged; other markets derive the ceiling from the same
+    # FX-scaling table (idr_per_unit) used by the value/liquidity floors.
+    _CHEAP_PRICE_BASE_IDR = 300.0  # IDX legacy <250-300 IDR ceiling.
+    _CHEAP_PRICE_OVERRIDE = {
+        Market.IDX: 300.0,   # legacy IDR
+        Market.HKEX: 5.0,    # ~ small-cap HKD
+        Market.KOSPI: 5000.0,  # KRW
+        Market.KOSDAQ: 5000.0,  # KRW
+    }
+
+    @classmethod
+    def _cheap_price(cls, market: Optional[Market]) -> float:
+        """'Cheap' price ceiling (legacy <250-300 IDR) scaled per market.
+
+        Original markets (IDX/HKEX/KOSPI/KOSDAQ) keep their hand-tuned ceilings;
+        new markets derive theirs from the shared FX table so the ceiling lands
+        in sane local-currency magnitude (e.g. US ~= 300/16000 USD).
+        """
+        if market is None:
+            return cls._CHEAP_PRICE_BASE_IDR
+        override = cls._CHEAP_PRICE_OVERRIDE.get(market)
+        if override is not None:
+            return override
+        return cls._CHEAP_PRICE_BASE_IDR / _idr_per_unit(market)
 
     def _signal_and_score(
         self,

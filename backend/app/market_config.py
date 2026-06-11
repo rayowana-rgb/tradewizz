@@ -48,6 +48,11 @@ class MarketConfig:
     yahoo_suffix: str
     trading_hours: TradingHours
     display_name: str
+    # Approximate value of 1 unit of this market's currency in IDR
+    # (order-of-magnitude only). Used to FX-scale the legacy IDR liquidity /
+    # value-traded / cheap-price thresholds into local currency so a non-IDX
+    # market is not wiped out by an IDR-sized floor. IDX == 1.0 (no scaling).
+    idr_per_unit: float = 1.0
 
     def to_dict(self) -> dict:
         return {
@@ -57,6 +62,7 @@ class MarketConfig:
             "yahoo_suffix": self.yahoo_suffix,
             "trading_hours": self.trading_hours.to_dict(),
             "display_name": self.display_name,
+            "idr_per_unit": self.idr_per_unit,
         }
 
 
@@ -69,6 +75,7 @@ MARKET_CONFIGS: Dict[Market, MarketConfig] = {
         yahoo_suffix=".JK",
         trading_hours=TradingHours(dtime(9, 0), dtime(16, 0)),
         display_name="Indonesia Stock Exchange",
+        idr_per_unit=1.0,
     ),
     Market.HKEX: MarketConfig(
         market=Market.HKEX,
@@ -77,6 +84,7 @@ MARKET_CONFIGS: Dict[Market, MarketConfig] = {
         yahoo_suffix=".HK",
         trading_hours=TradingHours(dtime(9, 30), dtime(16, 0)),
         display_name="Hong Kong Stock Exchange",
+        idr_per_unit=2000.0,
     ),
     Market.KOSPI: MarketConfig(
         market=Market.KOSPI,
@@ -85,6 +93,7 @@ MARKET_CONFIGS: Dict[Market, MarketConfig] = {
         yahoo_suffix=".KS",
         trading_hours=TradingHours(dtime(9, 0), dtime(15, 30)),
         display_name="Korea Stock Exchange (KOSPI)",
+        idr_per_unit=12.0,
     ),
     Market.KOSDAQ: MarketConfig(
         market=Market.KOSDAQ,
@@ -93,6 +102,7 @@ MARKET_CONFIGS: Dict[Market, MarketConfig] = {
         yahoo_suffix=".KQ",
         trading_hours=TradingHours(dtime(9, 0), dtime(15, 30)),
         display_name="KOSDAQ",
+        idr_per_unit=12.0,
     ),
     # --- Global market expansion ---
     Market.US: MarketConfig(
@@ -102,6 +112,7 @@ MARKET_CONFIGS: Dict[Market, MarketConfig] = {
         yahoo_suffix="",  # US symbols are bare (AAPL, MSFT, NVDA).
         trading_hours=TradingHours(dtime(9, 30), dtime(16, 0)),
         display_name="United States (NYSE/Nasdaq/AMEX)",
+        idr_per_unit=16000.0,
     ),
     Market.JAPAN: MarketConfig(
         market=Market.JAPAN,
@@ -110,6 +121,7 @@ MARKET_CONFIGS: Dict[Market, MarketConfig] = {
         yahoo_suffix=".T",
         trading_hours=TradingHours(dtime(9, 0), dtime(15, 0)),
         display_name="Japan Exchange Group (Tokyo)",
+        idr_per_unit=105.0,
     ),
     Market.INDIA: MarketConfig(
         market=Market.INDIA,
@@ -118,6 +130,7 @@ MARKET_CONFIGS: Dict[Market, MarketConfig] = {
         yahoo_suffix=".NS",
         trading_hours=TradingHours(dtime(9, 15), dtime(15, 30)),
         display_name="National Stock Exchange of India",
+        idr_per_unit=190.0,
     ),
     Market.VIETNAM: MarketConfig(
         market=Market.VIETNAM,
@@ -126,6 +139,7 @@ MARKET_CONFIGS: Dict[Market, MarketConfig] = {
         yahoo_suffix=".VN",
         trading_hours=TradingHours(dtime(9, 0), dtime(15, 0)),
         display_name="Vietnam (HOSE/HNX/UPCOM)",
+        idr_per_unit=0.65,
     ),
     Market.SINGAPORE: MarketConfig(
         market=Market.SINGAPORE,
@@ -134,6 +148,7 @@ MARKET_CONFIGS: Dict[Market, MarketConfig] = {
         yahoo_suffix=".SI",
         trading_hours=TradingHours(dtime(9, 0), dtime(17, 0)),
         display_name="Singapore Exchange",
+        idr_per_unit=12000.0,
     ),
 }
 
@@ -157,6 +172,17 @@ def yahoo_suffix(market: Market) -> str:
 def currency(market: Market) -> str:
     cfg = MARKET_CONFIGS.get(market)
     return cfg.currency if cfg else ""
+
+
+def idr_per_unit(market: Market) -> float:
+    """Approx IDR value of 1 unit of the market's currency (1.0 for IDX/unknown).
+
+    This is the single FX-scaling factor used to translate the legacy IDR
+    liquidity / value-traded / cheap-price thresholds into the market's local
+    currency. Order-of-magnitude only; it gates liquidity, it does not price.
+    """
+    cfg = MARKET_CONFIGS.get(market)
+    return cfg.idr_per_unit if cfg else 1.0
 
 
 def timezone_name(market: Market) -> str:
