@@ -100,6 +100,15 @@ class TWColors {
     colors: [Color(0xFF302B47), Color(0xFF2A2740)],
   );
 
+  // Darker, near-flat indigo/navy surface for subtle informational cards
+  // (e.g. Morning Brief). Recedes into the dark scene so the brighter
+  // portfolio/premium gradient stays the signature focal surface.
+  static const Gradient briefGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFF221E36), Color(0xFF1C1930)],
+  );
+
   /// Confidence ramp (0..100): down -> warn -> up.
   static Color confidence(num score) {
     if (score >= 70) return up;

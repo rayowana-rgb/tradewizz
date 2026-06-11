@@ -462,6 +462,7 @@ class _BriefCard extends StatelessWidget {
     final insights = _insights();
     return TWFloatingCard(
       key: const Key('home_brief'),
+      gradient: TWColors.briefGradient,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
