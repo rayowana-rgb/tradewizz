@@ -224,13 +224,17 @@ class _AccountPageState extends State<AccountPage> {
     final user = auth.user!;
     final port = _portfolio;
     final acct = port?.account;
+    // Reserve room for the floating glass navbar + home indicator so the last
+    // item (Log out) is never hidden behind it.
+    final bottomInset = MediaQuery.of(context).padding.bottom;
 
     return TWScaffoldBackground(
       child: RefreshIndicator(
       onRefresh: _load,
       color: TWColors.accentBright,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        padding: EdgeInsets.fromLTRB(
+            16, 16, 16, bottomInset + TWSpace.xxxxl),
         children: [
           // --- Profile ---------------------------------------------------
           TWFloatingCard(
