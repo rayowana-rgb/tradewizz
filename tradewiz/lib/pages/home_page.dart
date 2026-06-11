@@ -646,15 +646,17 @@ class _InsightColumn extends StatelessWidget {
             ),
             const SizedBox(width: 6),
             Flexible(
-              child: Text(i.title,
+              child: Text(i.title.toUpperCase(),
                   maxLines: 2,
                   style: TWType.bodySm.copyWith(
                       color: TWColors.accentBright,
-                      fontWeight: FontWeight.w700)),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1.1)),
             ),
           ],
         ),
-        const SizedBox(height: TWSpace.md),
+        const SizedBox(height: TWSpace.sm),
         ..._content(i),
       ],
     );
@@ -667,12 +669,14 @@ class _InsightColumn extends StatelessWidget {
           if (i.body != null)
             Text(i.body!,
                 style: TWType.bodySm.copyWith(
-                    color: TWColors.textPrimary, height: 1.35)),
+                    color: TWColors.textPrimary,
+                    fontSize: 13,
+                    height: 1.3)),
           if (i.opportunityLabel != null) ...[
-            const SizedBox(height: TWSpace.sm),
+            const SizedBox(height: 4),
             Text(i.opportunityLabel!,
-                style: TWType.bodySm
-                    .copyWith(color: TWColors.textSecondary)),
+                style: TWType.bodySm.copyWith(
+                    color: TWColors.textSecondary, fontSize: 12)),
             const SizedBox(height: 2),
             RichText(
               text: TextSpan(children: [
@@ -680,12 +684,14 @@ class _InsightColumn extends StatelessWidget {
                     text: i.ticker ?? '',
                     style: TWType.bodySm.copyWith(
                         color: TWColors.accentBright,
-                        fontWeight: FontWeight.w800)),
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700)),
                 if (i.tickerMeta != null)
                   TextSpan(
                       text: ' ${i.tickerMeta}',
                       style: TWType.bodySm.copyWith(
                           color: TWColors.textPrimary,
+                          fontSize: 13,
                           fontWeight: FontWeight.w700)),
               ]),
             ),
@@ -698,9 +704,10 @@ class _InsightColumn extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: TWType.title3.copyWith(
                   color: TWColors.accentBright,
-                  fontWeight: FontWeight.w800)),
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700)),
           if (i.scorePill != null) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
             Container(
               padding: const EdgeInsets.symmetric(
                   horizontal: TWSpace.sm, vertical: 3),
@@ -715,10 +722,10 @@ class _InsightColumn extends StatelessWidget {
             ),
           ],
           if (i.bullets.isNotEmpty) ...[
-            const SizedBox(height: TWSpace.sm),
+            const SizedBox(height: 6),
             for (final b in i.bullets)
               Padding(
-                padding: const EdgeInsets.only(bottom: 4),
+                padding: const EdgeInsets.only(bottom: 3),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -736,6 +743,7 @@ class _InsightColumn extends StatelessWidget {
                       child: Text(b,
                           style: TWType.bodySm.copyWith(
                               color: TWColors.textSecondary,
+                              fontSize: 12,
                               height: 1.3)),
                     ),
                   ],
@@ -749,13 +757,14 @@ class _InsightColumn extends StatelessWidget {
               maxLines: 2,
               style: TWType.bodySm.copyWith(
                   color: TWColors.accentBright,
-                  fontWeight: FontWeight.w800,
-                  height: 1.25)),
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  height: 1.2)),
           if (i.body != null) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
             Text(i.body!,
-                style: TWType.bodySm
-                    .copyWith(color: TWColors.textPrimary)),
+                style: TWType.bodySm.copyWith(
+                    color: TWColors.textPrimary, fontSize: 13)),
           ],
         ];
     }
