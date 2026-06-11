@@ -152,6 +152,8 @@ class _WatchlistPageState extends State<WatchlistPage> {
         ],
 
         // --- YOUR WATCHLIST ------------------------------------------------
+        // Balance the heading: equal breathing room above and below it.
+        const SizedBox(height: TWSpace.md),
         const _SectionHeader(
           icon: Icons.star_rounded,
           title: 'Your Watchlist',
