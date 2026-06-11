@@ -17,17 +17,20 @@ class TWAiOrb extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        // Indigo-plum orb (icon squircle warmed over the original indigo),
-        // lit from the upper-left.
-        gradient: const RadialGradient(
-          center: Alignment(-0.4, -0.5),
-          radius: 1.15,
-          colors: [Color(0xFF534063), Color(0xFF2A2440)],
+        // Rounded-square (squircle) indigo->violet mark, lit from the
+        // upper-left like the reference sparkle badge.
+        borderRadius: BorderRadius.circular(size * 0.32),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF5B4FCF), Color(0xFF3D2C8D)],
         ),
         boxShadow: glow ? TWShadow.wizardGlow : null,
-        // Dark-navy charcoal outline like the icon glyph edges.
-        border: Border.all(color: TWColors.outlineNavy.withValues(alpha: 0.6)),
+        // Soft top highlight edge for the glossy badge look.
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.10),
+          width: 1,
+        ),
       ),
       child: Center(
         child: Icon(
