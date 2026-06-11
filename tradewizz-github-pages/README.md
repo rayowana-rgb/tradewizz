@@ -10,6 +10,7 @@ Static marketing + legal website for **TradeWizz**, the AI-powered stock researc
 | `privacy.html` | Privacy Policy (Google Play & App Store) |
 | `terms.html`   | Terms of Service                         |
 | `support.html` | Support page + FAQ                        |
+| `delete-account.html` | Account Deletion page (Google Play Data Safety) |
 
 ## Use these URLs for store listings
 
@@ -17,6 +18,7 @@ Static marketing + legal website for **TradeWizz**, the AI-powered stock researc
 - **Privacy Policy URL:** https://rayowana.github.io/tradewizz/privacy.html
 - **Terms URL:** https://rayowana.github.io/tradewizz/terms.html
 - **Support URL:** https://rayowana.github.io/tradewizz/support.html
+- **Delete Account URL (Google Play Data Safety):** https://rayowana-rgb.github.io/tradewizz/delete-account.html
 
 ## Deploy to GitHub Pages
 
@@ -36,6 +38,7 @@ Static marketing + legal website for **TradeWizz**, the AI-powered stock researc
 - **Privacy:** https://rayowana.github.io/tradewizz/privacy.html
 - **Terms:** https://rayowana.github.io/tradewizz/terms.html
 - **Support:** https://rayowana.github.io/tradewizz/support.html
+- **Delete Account:** https://rayowana-rgb.github.io/tradewizz/delete-account.html
 
 > Tip: if you upload the contents of the `tradewizz-github-pages/` folder rather than the folder itself, the HTML files must sit at the repository root so the paths above resolve.
 
