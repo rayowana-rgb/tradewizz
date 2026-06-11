@@ -29,9 +29,9 @@ class TWFloatingCard extends StatefulWidget {
   /// Adds the accent glow (use sparingly: hero / AI cards only).
   final bool glow;
 
-  /// Optional surface gradient override. Defaults to the premium violet-indigo
-  /// surface ([TWColors.premiumGradient]); pass [TWColors.portfolioGradient]
-  /// for the full signature blue-corner hero look.
+  /// Optional surface gradient override. Defaults to the subtle dark indigo
+  /// surface ([TWColors.briefGradient], matching Morning Brief); pass
+  /// [TWColors.portfolioGradient] for the signature blue-corner hero look.
   final Gradient? gradient;
 
   @override
@@ -48,7 +48,7 @@ class _TWFloatingCardState extends State<TWFloatingCard> {
       ...(_pressed ? TWShadow.ambientSm : TWShadow.ambient),
       if (widget.glow) ...TWShadow.accentGlow,
     ];
-    final gradient = widget.gradient ?? TWColors.premiumGradient;
+    final gradient = widget.gradient ?? TWColors.briefGradient;
 
     Widget card = AnimatedContainer(
       duration: const Duration(milliseconds: 140),
