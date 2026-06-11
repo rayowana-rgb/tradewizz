@@ -201,7 +201,7 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
             child: Text(
               'Simulation mode only. This does not place a real trade.',
               style: TextStyle(
-                  color: Colors.orange, fontWeight: FontWeight.w700, fontSize: 13),
+                  color: Colors.orange, fontWeight: FontWeight.w700, fontSize: 12),
             ),
           ),
         ]),
@@ -231,7 +231,7 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
               Text(
                 '${widget.side.label} ${widget.symbol} · ${widget.market.code}',
                 style:
-                    const TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
+                    const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
               ),
               const SizedBox(height: 16),
               TextFormField(
@@ -339,7 +339,7 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
                 Row(children: const [
                   Text('Simulated Order Preview',
                       style: TextStyle(
-                          fontWeight: FontWeight.w800, fontSize: 17)),
+                          fontWeight: FontWeight.w800, fontSize: 15)),
                   Spacer(),
                   _SimChip(),
                 ]),
@@ -410,7 +410,7 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
           const Text(
             'Simulated order filled',
             key: Key('sim_result_title'),
-            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20),
           ),
           const SizedBox(height: 6),
           Text('${r.side} ${r.quantity.toStringAsFixed(0)} ${r.symbol} '

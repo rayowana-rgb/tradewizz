@@ -89,7 +89,7 @@ class _PortfolioManagerCardState extends State<PortfolioManagerCard> {
                 key: Key('portfolio_manager_title'),
                 style: TextStyle(
                     fontWeight: FontWeight.w800,
-                    fontSize: 17,
+                    fontSize: 15,
                     color: TWColors.textPrimary)),
           ],
         ),
@@ -177,7 +177,7 @@ class _ReportCard extends StatelessWidget {
             if (report.recommendations.isEmpty)
               const Text('No recommendations right now.',
                   style: TextStyle(
-                      color: TWColors.textTertiary, fontSize: 13))
+                      color: TWColors.textTertiary, fontSize: 12))
             else
               for (final rec in report.recommendations)
                 _RecTile(rec: rec),
@@ -200,12 +200,12 @@ class _ScoreCell extends StatelessWidget {
           Text(value.toStringAsFixed(0),
               style: const TextStyle(
                   fontWeight: FontWeight.w800,
-                  fontSize: 18,
+                  fontSize: 20,
                   color: TWColors.textPrimary)),
           const SizedBox(height: 2),
           Text(label,
               style: const TextStyle(
-                  color: TWColors.textTertiary, fontSize: 11)),
+                  color: TWColors.textTertiary, fontSize: 12)),
         ],
       ),
     );
@@ -249,7 +249,7 @@ class _RecTile extends StatelessWidget {
                   Text(rec.title,
                       style: const TextStyle(
                           fontWeight: FontWeight.w700,
-                          fontSize: 13,
+                          fontSize: 12,
                           color: TWColors.textPrimary)),
                 Text(rec.message,
                     style: const TextStyle(

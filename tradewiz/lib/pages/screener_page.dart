@@ -223,7 +223,7 @@ class _ScreenerPageState extends State<ScreenerPage> {
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
               child: Text('${match.symbol} · ${_market.code}',
                   style: const TextStyle(
-                      fontWeight: FontWeight.w800, fontSize: 16)),
+                      fontWeight: FontWeight.w800, fontSize: 15)),
             ),
             ListTile(
               key: const Key('screener_action_buy'),
@@ -794,7 +794,7 @@ class _FiltersSheetState extends State<_FiltersSheet> {
             children: [
               const Text('Filters',
                   style:
-                      TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+                      TextStyle(fontWeight: FontWeight.w800, fontSize: 20)),
               const SizedBox(height: 12),
               _label('Market'),
               Wrap(
@@ -866,7 +866,7 @@ class _FiltersSheetState extends State<_FiltersSheet> {
                 value: _hideIlliquid,
                 onChanged: (v) => setState(() => _hideIlliquid = v),
                 title: const Text('Hide illiquid / not-investable',
-                    style: TextStyle(fontSize: 14)),
+                    style: TextStyle(fontSize: 15)),
               ),
               const SizedBox(height: 8),
               Row(
@@ -908,7 +908,7 @@ class _FiltersSheetState extends State<_FiltersSheet> {
         padding: const EdgeInsets.only(bottom: 6),
         child: Text(text,
             style: const TextStyle(
-                fontWeight: FontWeight.w700, fontSize: 13)),
+                fontWeight: FontWeight.w700, fontSize: 12)),
       );
 }
 

@@ -187,28 +187,85 @@ class TWRadius {
 class TWType {
   static const List<FontFeature> _tabular = [FontFeature.tabularFigures()];
 
+  // All TWType styles snap onto the four standard sizes (28 / 20 / 15 / 12)
+  // defined by [TWTypography]. Kept as named aliases for existing call sites.
   static const TextStyle display = TextStyle(
-      fontSize: 28, height: 34 / 28, fontWeight: FontWeight.w800, letterSpacing: -0.4, color: TWColors.textPrimary);
+      fontSize: 28, height: 34 / 28, fontWeight: FontWeight.w700, letterSpacing: -0.4, color: TWColors.textPrimary);
   static const TextStyle title1 = TextStyle(
-      fontSize: 24, height: 30 / 24, fontWeight: FontWeight.w700, letterSpacing: -0.3, color: TWColors.textPrimary);
+      fontSize: 28, height: 34 / 28, fontWeight: FontWeight.w700, letterSpacing: -0.3, color: TWColors.textPrimary);
   static const TextStyle title2 = TextStyle(
-      fontSize: 20, height: 26 / 20, fontWeight: FontWeight.w700, letterSpacing: -0.2, color: TWColors.textPrimary);
+      fontSize: 20, height: 26 / 20, fontWeight: FontWeight.w600, letterSpacing: -0.2, color: TWColors.textPrimary);
   static const TextStyle title3 = TextStyle(
-      fontSize: 17, height: 22 / 17, fontWeight: FontWeight.w600, letterSpacing: -0.2, color: TWColors.textPrimary);
+      fontSize: 20, height: 26 / 20, fontWeight: FontWeight.w600, letterSpacing: -0.2, color: TWColors.textPrimary);
   static const TextStyle body = TextStyle(
-      fontSize: 16, height: 24 / 16, fontWeight: FontWeight.w500, color: TWColors.textSecondary);
+      fontSize: 15, height: 22 / 15, fontWeight: FontWeight.w500, color: TWColors.textSecondary);
   static const TextStyle bodySm = TextStyle(
-      fontSize: 14, height: 20 / 14, fontWeight: FontWeight.w500, color: TWColors.textSecondary);
+      fontSize: 15, height: 22 / 15, fontWeight: FontWeight.w500, color: TWColors.textSecondary);
   static const TextStyle label = TextStyle(
-      fontSize: 13, height: 16 / 13, fontWeight: FontWeight.w600, letterSpacing: 0.2, color: TWColors.textPrimary);
+      fontSize: 12, height: 16 / 12, fontWeight: FontWeight.w500, letterSpacing: 0.2, color: TWColors.textPrimary);
   static const TextStyle caption = TextStyle(
       fontSize: 12, height: 16 / 12, fontWeight: FontWeight.w500, letterSpacing: 0.2, color: TWColors.textTertiary);
   static const TextStyle overline = TextStyle(
-      fontSize: 11, height: 14 / 11, fontWeight: FontWeight.w700, letterSpacing: 1.2, color: TWColors.textTertiary);
+      fontSize: 12, height: 16 / 12, fontWeight: FontWeight.w500, letterSpacing: 1.2, color: TWColors.textTertiary);
   static const TextStyle monoNum = TextStyle(
-      fontSize: 17, height: 22 / 17, fontWeight: FontWeight.w600, color: TWColors.textPrimary, fontFeatures: _tabular);
+      fontSize: 20, height: 26 / 20, fontWeight: FontWeight.w600, color: TWColors.textPrimary, fontFeatures: _tabular);
 
   /// Tabular variant of any style for prices/scores.
+  static TextStyle tabular(TextStyle s) => s.copyWith(fontFeatures: _tabular);
+}
+
+// ---------------------------------------------------------------------------
+// Typography scale — STRICT four-size system.
+//
+// The entire app uses only these four sizes. Replace any arbitrary font size
+// (13/14/16/17/18/22/24/26...) with the nearest token below. Every card
+// follows the hierarchy: small label -> large title -> medium content ->
+// small metadata.
+//
+//   xl     28 / w700  -> portfolio values, stock prices, AI score, key numbers
+//   large  20 / w600  -> section headers, card titles, screen titles
+//   medium 15 / w500  -> secondary info, metrics, supporting values, content
+//   small  12 / w500  -> labels, captions, metadata, helper text
+// ---------------------------------------------------------------------------
+class TWTypography {
+  static const List<FontFeature> _tabular = [FontFeature.tabularFigures()];
+
+  /// Extra Large — portfolio values, stock prices, AI confidence score.
+  static const TextStyle xl = TextStyle(
+    fontSize: 28,
+    height: 34 / 28,
+    fontWeight: FontWeight.w700,
+    letterSpacing: -0.4,
+    color: TWColors.textPrimary,
+  );
+
+  /// Large — section headers, card titles, screen titles.
+  static const TextStyle large = TextStyle(
+    fontSize: 20,
+    height: 26 / 20,
+    fontWeight: FontWeight.w600,
+    letterSpacing: -0.2,
+    color: TWColors.textPrimary,
+  );
+
+  /// Medium — secondary information, metrics, supporting values, card content.
+  static const TextStyle medium = TextStyle(
+    fontSize: 15,
+    height: 22 / 15,
+    fontWeight: FontWeight.w500,
+    color: TWColors.textSecondary,
+  );
+
+  /// Small — labels, captions, metadata, helper text.
+  static const TextStyle small = TextStyle(
+    fontSize: 12,
+    height: 16 / 12,
+    fontWeight: FontWeight.w500,
+    letterSpacing: 0.2,
+    color: TWColors.textTertiary,
+  );
+
+  /// Tabular-figures variant for any token (prices, scores, percentages).
   static TextStyle tabular(TextStyle s) => s.copyWith(fontFeatures: _tabular);
 }
 

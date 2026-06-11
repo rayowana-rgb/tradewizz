@@ -132,7 +132,7 @@ class _SummaryTab extends StatelessWidget {
                   key: key,
                   style: TextStyle(
                     fontWeight: FontWeight.w800,
-                    fontSize: 18,
+                    fontSize: 20,
                     color: color,
                   ),
                 ),
@@ -156,12 +156,12 @@ class _SummaryTab extends StatelessWidget {
           const SizedBox(height: 14),
           const Text('Broker connection is not enabled yet',
               textAlign: TextAlign.center,
-              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
           const SizedBox(height: 6),
           const Text(
             'For now, TradeWizz uses simulated portfolio tracking.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey, fontSize: 13),
+            style: TextStyle(color: Colors.grey, fontSize: 12),
           ),
           const SizedBox(height: 18),
           SizedBox(
@@ -330,7 +330,7 @@ class _PerformanceTab extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(label,
-                      style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                      style: const TextStyle(color: Colors.grey, fontSize: 12)),
                   const SizedBox(height: 4),
                   Text(
                     pct ? '${money(v)}%' : money(v),
@@ -367,7 +367,7 @@ class _PerformanceTab extends StatelessWidget {
                 key: note.startsWith('Realized')
                     ? const Key('realized_note')
                     : null,
-                style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                style: const TextStyle(color: Colors.grey, fontSize: 12)),
           ),
 
         const SizedBox(height: 16),

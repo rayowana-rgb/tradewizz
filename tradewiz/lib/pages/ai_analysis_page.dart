@@ -254,7 +254,7 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
             children: [
               const Text(
                 'Analyze a Stock',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
               ),
               const SizedBox(height: 12),
               TextFormField(
@@ -444,14 +444,14 @@ class _PositionBadgeState extends State<_PositionBadge> {
             child: Text(
               'Simulated holding: ${p.quantity.toStringAsFixed(0)} @ '
               '${p.averageCost.toStringAsFixed(2)}',
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
             ),
           ),
           Text(
             '${p.unrealizedPnl >= 0 ? '+' : ''}'
             '${p.unrealizedPnl.toStringAsFixed(2)}',
             style: TextStyle(
-                color: pnlColor, fontWeight: FontWeight.w700, fontSize: 13),
+                color: pnlColor, fontWeight: FontWeight.w700, fontSize: 12),
           ),
         ]),
       ),
@@ -601,7 +601,7 @@ class _ResultCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               'Placeholder result · generated ${_time(result.generatedAt)}',
-              style: const TextStyle(color: TWColors.textTertiary, fontSize: 11),
+              style: const TextStyle(color: TWColors.textTertiary, fontSize: 12),
             ),
           ],
         ),
@@ -722,7 +722,7 @@ class _SupportResistanceCard extends StatelessWidget {
                 Icon(icon, size: 13, color: c),
                 const SizedBox(width: 4),
                 Text(label,
-                    style: const TextStyle(color: TWColors.textTertiary, fontSize: 11)),
+                    style: const TextStyle(color: TWColors.textTertiary, fontSize: 12)),
               ]),
               const SizedBox(height: 2),
               Text(_fmt(v),
@@ -790,7 +790,7 @@ class _TrailingStopCard extends StatelessWidget {
                     '${result.trailingStopPercent!.toStringAsFixed(0)}%'
                     '${result.trailingStopPrice != null ? '  ·  at '
                         '${result.trailingStopPrice!.toStringAsFixed(result.trailingStopPrice! >= 100 ? 0 : 2)}' : ''}',
-                    style: const TextStyle(color: TWColors.textTertiary, fontSize: 13),
+                    style: const TextStyle(color: TWColors.textTertiary, fontSize: 12),
                   ),
                 ],
               ),
@@ -814,7 +814,7 @@ class _BacktestCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(label,
-                style: const TextStyle(color: TWColors.textTertiary, fontSize: 11)),
+                style: const TextStyle(color: TWColors.textTertiary, fontSize: 12)),
             const SizedBox(height: 2),
             Text(value,
                 style: TextStyle(

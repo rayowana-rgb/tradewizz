@@ -261,7 +261,7 @@ class _AccountPageState extends State<AccountPage> {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                             fontWeight: FontWeight.w800,
-                            fontSize: 16,
+                            fontSize: 15,
                             color: TWColors.textPrimary),
                       ),
                     ],
@@ -303,7 +303,7 @@ class _AccountPageState extends State<AccountPage> {
                 key: Key('account_portfolio_section'),
                 style: TextStyle(
                     fontWeight: FontWeight.w800,
-                    fontSize: 16,
+                    fontSize: 15,
                     color: TWColors.textPrimary)),
           ),
           _SummaryCard(
@@ -503,7 +503,7 @@ class _AccountPageState extends State<AccountPage> {
               style: const TextStyle(
                   color: Colors.orange,
                   fontWeight: FontWeight.w700,
-                  fontSize: 13),
+                  fontSize: 12),
             ),
           ),
         ]),
@@ -548,13 +548,13 @@ class _PortfolioValueHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text('Portfolio Value',
-                  style: TextStyle(color: TWColors.textTertiary, fontSize: 11)),
+                  style: TextStyle(color: TWColors.textTertiary, fontSize: 12)),
               Text(_money(a.equity, a.currency),
                   key: const Key('account_hero_value'),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      fontSize: 24,
+                      fontSize: 20,
                       fontWeight: FontWeight.w900,
                       color: TWColors.textPrimary)),
             ],
@@ -569,7 +569,7 @@ class _PortfolioValueHeader extends StatelessWidget {
             Text('${up ? '+' : ''}${pct.toStringAsFixed(1)}%',
                 key: const Key('account_hero_return'),
                 style: TextStyle(
-                    color: color, fontWeight: FontWeight.w800, fontSize: 13)),
+                    color: color, fontWeight: FontWeight.w800, fontSize: 12)),
           ],
         ),
       ],
@@ -657,13 +657,13 @@ class _SummaryCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(label,
-                style: const TextStyle(color: TWColors.textTertiary, fontSize: 11)),
+                style: const TextStyle(color: TWColors.textTertiary, fontSize: 12)),
             const SizedBox(height: 2),
             Text(value,
                 key: key,
                 style: TextStyle(
                     fontWeight: FontWeight.w800,
-                    fontSize: 16,
+                    fontSize: 15,
                     color: color ?? TWColors.textPrimary)),
           ],
         );
@@ -693,7 +693,7 @@ class _SummaryCard extends StatelessWidget {
                   child: Text(
                     "Couldn't load your simulation portfolio right now.",
                     key: Key('account_portfolio_error'),
-                    style: TextStyle(color: TWColors.textTertiary, fontSize: 13),
+                    style: TextStyle(color: TWColors.textTertiary, fontSize: 12),
                   ),
                 ),
                 TextButton(onPressed: onRetry, child: const Text('Retry')),
@@ -764,7 +764,7 @@ class _HoldingsCard extends StatelessWidget {
         child: Padding(
           padding: EdgeInsets.zero,
           child: Text('No simulated holdings yet. Buy a stock to get started.',
-              style: TextStyle(color: TWColors.textTertiary, fontSize: 13)),
+              style: TextStyle(color: TWColors.textTertiary, fontSize: 12)),
         ),
       );
     }
@@ -859,7 +859,7 @@ class _TradesCard extends StatelessWidget {
         child: Padding(
           padding: EdgeInsets.zero,
           child: Text('No simulated trades yet.',
-              style: TextStyle(color: TWColors.textTertiary, fontSize: 13)),
+              style: TextStyle(color: TWColors.textTertiary, fontSize: 12)),
         ),
       );
     }
@@ -924,7 +924,7 @@ class _PortfolioHealthCard extends StatelessWidget {
               : const Text(
                   'No portfolio health yet. Buy a stock to see your '
                   'health score, strengths and warnings.',
-                  style: TextStyle(color: TWColors.textTertiary, fontSize: 13)),
+                  style: TextStyle(color: TWColors.textTertiary, fontSize: 12)),
         ),
       );
     }
@@ -1054,7 +1054,7 @@ class _LoggedOutViewState extends State<_LoggedOutView> {
               'Sign in to TradeWiz',
               style: TextStyle(
                   fontWeight: FontWeight.w800,
-                  fontSize: 18,
+                  fontSize: 20,
                   color: TWColors.textPrimary),
             ),
             const SizedBox(height: 4),
@@ -1174,7 +1174,7 @@ class _LoggedOutViewState extends State<_LoggedOutView> {
                 _error!,
                 key: const Key('social_error'),
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.red, fontSize: 13),
+                style: const TextStyle(color: Colors.red, fontSize: 12),
               ),
             ],
           ],
@@ -1231,7 +1231,7 @@ class _EarlyAccessCard extends StatelessWidget {
                   style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w800,
-                      fontSize: 16)),
+                      fontSize: 15)),
               const Spacer(),
               Container(
                 padding:
@@ -1245,7 +1245,7 @@ class _EarlyAccessCard extends StatelessWidget {
                     style: const TextStyle(
                         color: Color(0xFFFFD54F),
                         fontWeight: FontWeight.w800,
-                        fontSize: 11)),
+                        fontSize: 12)),
               ),
             ]),
             const SizedBox(height: 8),

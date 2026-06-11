@@ -30,7 +30,7 @@ class AdvancedPage extends StatelessWidget {
               child: Text(
                 'Low-frequency tools and diagnostics.',
                 key: Key('advanced_description'),
-                style: TextStyle(color: Colors.grey, fontSize: 13),
+                style: TextStyle(color: Colors.grey, fontSize: 12),
               ),
             ),
             _Tile(
@@ -126,7 +126,7 @@ class _Tile extends StatelessWidget {
                 ),
                 child: const Text('Developer Tool',
                     style: TextStyle(
-                        fontSize: 10, fontWeight: FontWeight.w700)),
+                        fontSize: 12, fontWeight: FontWeight.w700)),
               ),
             ],
           ],

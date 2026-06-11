@@ -247,7 +247,7 @@ class _SnapshotInspectorPageState extends State<SnapshotInspectorPage> {
                   ),
                   child: Text('Source: ${_lastSource.label}',
                       style: const TextStyle(
-                          fontSize: 11, fontWeight: FontWeight.w700)),
+                          fontSize: 12, fontWeight: FontWeight.w700)),
                 ),
               ],
             ),

@@ -108,7 +108,7 @@ class _PremiumDashboardSectionState extends State<PremiumDashboardSection> {
           padding: EdgeInsets.only(left: 2, bottom: 8),
           child: Text('TradeWizz PRO Preview',
               key: Key('pro_preview_header'),
-              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
         ),
         _card(
           key: 'dash_card_opportunities',
@@ -210,7 +210,7 @@ class _PremiumDashboardSectionState extends State<PremiumDashboardSection> {
         ),
         child: Text(text,
             style: TextStyle(
-                color: color, fontWeight: FontWeight.w800, fontSize: 11)),
+                color: color, fontWeight: FontWeight.w800, fontSize: 12)),
       );
 }
 
@@ -260,7 +260,7 @@ class _MultibaggerCardBody extends StatelessWidget {
     if (list != null && list.isEmpty) {
       return const Center(
         child: Text('No multibagger candidates right now.',
-            style: TextStyle(color: Colors.grey, fontSize: 13)),
+            style: TextStyle(color: Colors.grey, fontSize: 12)),
       );
     }
     final rows = list ?? _placeholderMulti;
@@ -293,10 +293,10 @@ class _HealthCardBody extends StatelessWidget {
         Row(children: [
           Text('${score.toStringAsFixed(0)}/100',
               style: const TextStyle(
-                  fontWeight: FontWeight.w800, fontSize: 26)),
+                  fontWeight: FontWeight.w800, fontSize: 28)),
           const SizedBox(width: 10),
           Text(rating,
-              style: const TextStyle(color: Colors.grey, fontSize: 14)),
+              style: const TextStyle(color: Colors.grey, fontSize: 15)),
         ]),
         const SizedBox(height: 8),
         Text(warning,
@@ -320,7 +320,7 @@ Widget _row(String left, String market, double score, String tag) => Padding(
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: Text(tag,
-                style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                style: const TextStyle(color: Colors.grey, fontSize: 12)),
           ),
         Text(score.toStringAsFixed(0),
             style: const TextStyle(fontWeight: FontWeight.w800)),

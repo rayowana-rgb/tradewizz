@@ -229,7 +229,7 @@ class _HomeShellState extends State<HomeShell> {
         scrolledUnderElevation: 0,
         title: Text(
           titles[_index],
-          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 22),
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 20),
         ),
         actions: [
           if (marketScoped.contains(_index))

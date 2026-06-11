@@ -143,7 +143,7 @@ class PreviewBadge extends StatelessWidget {
         const SizedBox(width: 4),
         Text(label,
             style: TextStyle(
-                color: color, fontWeight: FontWeight.w800, fontSize: 10)),
+                color: color, fontWeight: FontWeight.w800, fontSize: 12)),
       ]),
     );
   }

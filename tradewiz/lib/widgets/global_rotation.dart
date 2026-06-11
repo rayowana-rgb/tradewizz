@@ -115,7 +115,7 @@ class _GlobalRotationCardState extends State<GlobalRotationCard> {
             const SizedBox(width: 8),
             const Text('Global Rotation',
                 key: Key('global_rotation_title'),
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             const Spacer(),
             if (_data != null)
               TextButton(
@@ -180,7 +180,7 @@ class _GlobalRotationCardState extends State<GlobalRotationCard> {
         Text(data.bestMarket,
             key: const Key('global_rotation_best_market'),
             style:
-                const TextStyle(fontWeight: FontWeight.w900, fontSize: 22)),
+                const TextStyle(fontWeight: FontWeight.w900, fontSize: 20)),
         if (data.rotationSummary.isNotEmpty) ...[
           const SizedBox(height: 4),
           Text(data.rotationSummary,
@@ -226,7 +226,7 @@ class _RotationRow extends StatelessWidget {
                 style: TextStyle(
                     color: recColor(m.recommendation),
                     fontWeight: FontWeight.w800,
-                    fontSize: 9)),
+                    fontSize: 12)),
           ),
         ],
       ),
@@ -308,7 +308,7 @@ class _GlobalRotationDetailPageState extends State<GlobalRotationDetailPage> {
                     padding: const EdgeInsets.only(bottom: 12),
                     child: Text(data.rotationSummary,
                         style: const TextStyle(
-                            fontSize: 13, color: Colors.black54)),
+                            fontSize: 12, color: Colors.black54)),
                   ),
                 for (final m in data.markets) _DetailCard(m: m),
               ],
@@ -337,7 +337,7 @@ class _DetailCard extends StatelessWidget {
                   child: Text('#${m.rank}',
                       style: const TextStyle(
                           fontWeight: FontWeight.w800,
-                          fontSize: 16,
+                          fontSize: 15,
                           color: Colors.grey)),
                 ),
                 Text('${m.market.flag} ${m.market.name}',
@@ -355,7 +355,7 @@ class _DetailCard extends StatelessWidget {
                       style: TextStyle(
                           color: recColor(m.recommendation),
                           fontWeight: FontWeight.w800,
-                          fontSize: 11)),
+                          fontSize: 12)),
                 ),
               ],
             ),

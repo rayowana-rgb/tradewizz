@@ -122,7 +122,7 @@ class _AiMorningBriefSectionState extends State<AiMorningBriefSection> {
             const SizedBox(width: 8),
             const Text('AI Morning Brief',
                 key: Key('morning_brief_title'),
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             const Spacer(),
             _PreviewTag(),
           ],
@@ -205,7 +205,7 @@ class _BriefCard extends StatelessWidget {
               children: [
                 Text('${brief.market.flag} ${brief.market.code} MARKET',
                     style: const TextStyle(
-                        fontWeight: FontWeight.w800, fontSize: 14)),
+                        fontWeight: FontWeight.w800, fontSize: 15)),
                 const Spacer(),
                 _RegimeChip(regime: brief.marketRegime, color: regimeColor),
               ],
@@ -213,7 +213,7 @@ class _BriefCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(brief.headline,
                 key: const Key('morning_brief_headline'),
-                style: const TextStyle(fontSize: 13, color: Colors.black87)),
+                style: const TextStyle(fontSize: 12, color: Colors.black87)),
             const Divider(height: 24),
             if (brief.topOpportunity != null)
               _BriefRow(
@@ -291,7 +291,7 @@ class _BriefRow extends StatelessWidget {
           children: [
             Text(pick.symbol,
                 style:
-                    const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                    const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             const SizedBox(width: 8),
             Container(
               padding:
@@ -304,7 +304,7 @@ class _BriefRow extends StatelessWidget {
                   style: const TextStyle(
                       color: AppColors.seed,
                       fontWeight: FontWeight.w700,
-                      fontSize: 11)),
+                      fontSize: 12)),
             ),
           ],
         ),
@@ -340,7 +340,7 @@ class _RegimeChip extends StatelessWidget {
       ),
       child: Text(label,
           style: TextStyle(
-              color: color, fontWeight: FontWeight.w700, fontSize: 11)),
+              color: color, fontWeight: FontWeight.w700, fontSize: 12)),
     );
   }
 }
@@ -358,7 +358,7 @@ class _PreviewTag extends StatelessWidget {
           style: TextStyle(
               color: Color(0xFF8A6D00),
               fontWeight: FontWeight.w800,
-              fontSize: 10)),
+              fontSize: 12)),
     );
   }
 }

@@ -86,7 +86,7 @@ class _JournalPageState extends State<JournalPage> {
           const SizedBox(height: 24),
           const Text('Portfolio Journal',
               key: Key('journal_title'),
-              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
           const SizedBox(height: 4),
           const Text(
             'Your research diary of simulated trades. No real broker order is '
@@ -140,13 +140,13 @@ class _JournalEmptyState extends StatelessWidget {
                 size: 44, color: AppColors.seed.withValues(alpha: 0.7)),
             const SizedBox(height: 14),
             const Text('No trades yet',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             const SizedBox(height: 6),
             const Text(
               'Your journal will appear after you place simulated buy/sell '
               'orders.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey, fontSize: 13),
+              style: TextStyle(color: Colors.grey, fontSize: 12),
             ),
             const SizedBox(height: 18),
             SizedBox(
@@ -230,10 +230,10 @@ class _Stat extends StatelessWidget {
         children: [
           Text(value,
               style: TextStyle(
-                  fontWeight: FontWeight.w800, fontSize: 16, color: color)),
+                  fontWeight: FontWeight.w800, fontSize: 15, color: color)),
           const SizedBox(height: 2),
           Text(label,
-              style: const TextStyle(color: Colors.grey, fontSize: 11)),
+              style: const TextStyle(color: Colors.grey, fontSize: 12)),
         ],
       ),
     );
@@ -276,7 +276,7 @@ class _JournalCard extends StatelessWidget {
                           color:
                               entry.isClosed ? Colors.grey : AppColors.up,
                           fontWeight: FontWeight.w700,
-                          fontSize: 10)),
+                          fontSize: 12)),
                 ),
                 const Spacer(),
                 if (ret != null)

@@ -108,7 +108,7 @@ class _RebalanceCardState extends State<RebalanceCard> {
                 key: Key('rebalance_title'),
                 style: TextStyle(
                     fontWeight: FontWeight.w800,
-                    fontSize: 17,
+                    fontSize: 15,
                     color: TWColors.textPrimary)),
           ],
         ),
@@ -198,7 +198,7 @@ class _RebalanceCardState extends State<RebalanceCard> {
           Text(label,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                  color: TWColors.textTertiary, fontSize: 11)),
+                  color: TWColors.textTertiary, fontSize: 12)),
         ],
       ),
     );
@@ -342,13 +342,13 @@ class _SummaryHeader extends StatelessWidget {
                 Text('Profile: ${data.profile}',
                     style: const TextStyle(
                         fontWeight: FontWeight.w700,
-                        fontSize: 13,
+                        fontSize: 12,
                         color: TWColors.textPrimary)),
                 const Spacer(),
                 Text('Score ${data.portfolioScore.toStringAsFixed(0)}',
                     style: const TextStyle(
                         fontWeight: FontWeight.w800,
-                        fontSize: 13,
+                        fontSize: 12,
                         color: TWColors.textPrimary)),
               ],
             ),
@@ -421,7 +421,7 @@ class _ActionCard extends StatelessWidget {
                       style: TextStyle(
                           color: actionColor(a.action),
                           fontWeight: FontWeight.w800,
-                          fontSize: 10)),
+                          fontSize: 12)),
                 ),
                 const Spacer(),
                 if (a.priority == 'HIGH')
@@ -429,7 +429,7 @@ class _ActionCard extends StatelessWidget {
                       style: TextStyle(
                           color: AppColors.down,
                           fontWeight: FontWeight.w800,
-                          fontSize: 10)),
+                          fontSize: 12)),
               ],
             ),
             const SizedBox(height: 8),

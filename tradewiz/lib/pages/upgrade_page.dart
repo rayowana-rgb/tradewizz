@@ -161,7 +161,7 @@ class _CurrentPlanCard extends StatelessWidget {
         subtitle: Text(tier.label,
             key: const Key('current_plan_label'),
             style: const TextStyle(
-                fontWeight: FontWeight.w800, fontSize: 18)),
+                fontWeight: FontWeight.w800, fontSize: 20)),
       ),
     );
   }
@@ -184,7 +184,7 @@ class _PreviewBanner extends StatelessWidget {
             child: Text(
               'TradeWizz PRO & ELITE are in preview. Every feature is open to '
               'you right now — join the waiting list to get early access news.',
-              style: TextStyle(fontSize: 13),
+              style: TextStyle(fontSize: 12),
             ),
           ),
         ]),
@@ -222,7 +222,7 @@ class _PlanCard extends StatelessWidget {
               children: [
                 Text(plan.tier.label,
                     style: const TextStyle(
-                        fontWeight: FontWeight.w800, fontSize: 18)),
+                        fontWeight: FontWeight.w800, fontSize: 20)),
                 const Spacer(),
                 if (!isFree)
                   Container(
@@ -236,13 +236,13 @@ class _PlanCard extends StatelessWidget {
                         style: const TextStyle(
                             color: AppColors.seed,
                             fontWeight: FontWeight.w800,
-                            fontSize: 11)),
+                            fontSize: 12)),
                   ),
               ],
             ),
             const SizedBox(height: 4),
             Text(plan.description,
-                style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                style: const TextStyle(color: Colors.grey, fontSize: 12)),
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,

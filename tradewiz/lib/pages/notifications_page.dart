@@ -204,7 +204,7 @@ class _NotificationTile extends StatelessWidget {
           child: Icon(_icon, color: _color, size: 20),
         ),
         title: Text(notification.title,
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
         subtitle: Text(notification.body,
             style: const TextStyle(fontSize: 12)),
         trailing: notification.read

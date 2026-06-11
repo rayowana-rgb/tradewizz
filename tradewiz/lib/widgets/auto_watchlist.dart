@@ -144,7 +144,7 @@ class _AutoWatchlistCardState extends State<AutoWatchlistCard> {
             const SizedBox(width: 8),
             const Text('Auto Watchlist AI',
                 key: Key('auto_watchlist_title'),
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
             const SizedBox(width: 8),
             Container(
               padding:
@@ -157,7 +157,7 @@ class _AutoWatchlistCardState extends State<AutoWatchlistCard> {
                   style: TextStyle(
                       color: AppColors.seed,
                       fontWeight: FontWeight.w800,
-                      fontSize: 9)),
+                      fontSize: 12)),
             ),
           ],
         ),
@@ -208,7 +208,7 @@ class _AutoWatchlistCardState extends State<AutoWatchlistCard> {
               ? "No new picks today — you're all caught up."
               : '$count new pick(s) suggested today.',
           key: const Key('auto_watchlist_count'),
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
         ),
         if (count > 0) ...[
           const SizedBox(height: 4),
@@ -472,6 +472,6 @@ class _AutoWatchlistReviewPageState extends State<_AutoWatchlistReviewPage> {
         ),
         child: Text(text,
             style: TextStyle(
-                color: color, fontWeight: FontWeight.w800, fontSize: 9)),
+                color: color, fontWeight: FontWeight.w800, fontSize: 12)),
       );
 }

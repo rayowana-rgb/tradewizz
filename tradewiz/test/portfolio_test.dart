@@ -197,6 +197,13 @@ void main() {
     expect(find.text('100000.00'), findsOneWidget); // cash
     expect(find.byKey(const Key('floating_pnl')), findsOneWidget);
     expect(find.byKey(const Key('realized_pnl')), findsOneWidget);
+    // Aggregation note sits below the fold; scroll it into view.
+    await tester.dragUntilVisible(
+      find.textContaining('Aggregated from: MOOMOO'),
+      find.byType(ListView).first,
+      const Offset(0, -200),
+    );
+    await tester.pumpAndSettle();
     expect(find.textContaining('Aggregated from: MOOMOO'), findsOneWidget);
   });
 
@@ -222,6 +229,12 @@ void main() {
   testWidgets('Portfolio shows multiple brokers (Moomoo + IBKR)',
       (tester) async {
     await tester.pumpWidget(_wrap(_repo(multiBroker: true)));
+    await tester.pumpAndSettle();
+    await tester.dragUntilVisible(
+      find.textContaining('Aggregated from: MOOMOO, IBKR'),
+      find.byType(ListView).first,
+      const Offset(0, -200),
+    );
     await tester.pumpAndSettle();
     expect(find.textContaining('Aggregated from: MOOMOO, IBKR'),
         findsOneWidget);

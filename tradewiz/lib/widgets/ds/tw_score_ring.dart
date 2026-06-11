@@ -36,7 +36,7 @@ class TWScoreRing extends StatelessWidget {
               Text(clamped.toStringAsFixed(0),
                   style: TWType.tabular(TWType.title3).copyWith(color: Colors.white)),
               if (label != null)
-                Text(label!, style: TWType.overline.copyWith(fontSize: 8)),
+                Text(label!, style: TWType.overline.copyWith(fontSize: 12)),
             ],
           ),
         ),

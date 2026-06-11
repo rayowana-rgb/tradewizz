@@ -117,7 +117,7 @@ class _NotificationBellState extends State<NotificationBell> {
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 10,
+                    fontSize: 12,
                     fontWeight: FontWeight.w700,
                   ),
                 ),

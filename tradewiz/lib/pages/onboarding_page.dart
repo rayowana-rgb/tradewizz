@@ -186,7 +186,7 @@ class _WelcomeScreen extends StatelessWidget {
           const SizedBox(height: 12),
           const Text(
             'Your personal AI investing advisor.',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
           Text(
@@ -202,7 +202,7 @@ class _WelcomeScreen extends StatelessWidget {
               child: const Padding(
                 padding: EdgeInsets.symmetric(vertical: 14),
                 child: Text('Get Started',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
               ),
             ),
           ),
@@ -451,7 +451,7 @@ class _GenerateScreenState extends State<_GenerateScreen> {
             const Center(
               child: Text('Creating your personalized AI Brief…',
                   key: Key('onboarding_generating'),
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
             ),
           ] else ...[
             const Icon(Icons.check_circle, size: 52, color: TWColors.up),
@@ -474,7 +474,7 @@ class _GenerateScreenState extends State<_GenerateScreen> {
                   padding: EdgeInsets.symmetric(vertical: 14),
                   child: Text('See my Brief',
                       style:
-                          TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                          TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
                 ),
               ),
             ),
@@ -528,7 +528,7 @@ class _StepScaffold extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 child: Text(nextLabel,
                     style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w700)),
+                        fontSize: 15, fontWeight: FontWeight.w700)),
               ),
             ),
           ),

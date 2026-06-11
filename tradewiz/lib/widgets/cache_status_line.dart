@@ -44,7 +44,7 @@ class CacheStatusLine extends StatelessWidget {
         const SizedBox(width: 4),
         Text(
           label,
-          style: TextStyle(fontSize: 11, color: color),
+          style: TextStyle(fontSize: 12, color: color),
         ),
       ],
     );

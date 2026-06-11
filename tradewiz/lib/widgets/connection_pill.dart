@@ -95,7 +95,7 @@ class ConnectionBanner extends StatelessWidget {
             child: Text(
               s.description,
               style: TextStyle(
-                  color: color, fontWeight: FontWeight.w600, fontSize: 13),
+                  color: color, fontWeight: FontWeight.w600, fontSize: 12),
             ),
           ),
           if (onRetry != null) ...[

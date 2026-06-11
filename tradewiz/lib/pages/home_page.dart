@@ -331,7 +331,7 @@ class _HeroCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TWType.title1.copyWith(
-                          fontWeight: FontWeight.w800, fontSize: 30)),
+                          fontWeight: FontWeight.w800, fontSize: 28)),
                 ),
                 const SizedBox(width: TWSpace.md),
                 TWSignalPill(signal: signal),
@@ -420,7 +420,7 @@ class _Confidence extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        Text('Confidence', style: TWType.overline.copyWith(fontSize: 9)),
+        Text('Confidence', style: TWType.overline.copyWith(fontSize: 12)),
         const SizedBox(height: 2),
         Row(
           crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -651,7 +651,7 @@ class _InsightColumn extends StatelessWidget {
                   maxLines: 2,
                   style: TWType.bodySm.copyWith(
                       color: TWColors.accentBright,
-                      fontSize: 11,
+                      fontSize: 12,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 1.1)),
             ),
@@ -671,7 +671,7 @@ class _InsightColumn extends StatelessWidget {
             Text(i.body!,
                 style: TWType.bodySm.copyWith(
                     color: TWColors.textPrimary,
-                    fontSize: 13,
+                    fontSize: 12,
                     height: 1.3)),
           if (i.opportunityLabel != null) ...[
             const SizedBox(height: 4),
@@ -685,14 +685,14 @@ class _InsightColumn extends StatelessWidget {
                     text: i.ticker ?? '',
                     style: TWType.bodySm.copyWith(
                         color: TWColors.accentBright,
-                        fontSize: 17,
+                        fontSize: 15,
                         fontWeight: FontWeight.w700)),
                 if (i.tickerMeta != null)
                   TextSpan(
                       text: ' ${i.tickerMeta}',
                       style: TWType.bodySm.copyWith(
                           color: TWColors.textPrimary,
-                          fontSize: 13,
+                          fontSize: 12,
                           fontWeight: FontWeight.w700)),
               ]),
             ),
@@ -705,7 +705,7 @@ class _InsightColumn extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: TWType.title3.copyWith(
                   color: TWColors.accentBright,
-                  fontSize: 18,
+                  fontSize: 20,
                   fontWeight: FontWeight.w700)),
           if (i.scorePill != null) ...[
             const SizedBox(height: 4),
@@ -758,14 +758,14 @@ class _InsightColumn extends StatelessWidget {
               maxLines: 2,
               style: TWType.bodySm.copyWith(
                   color: TWColors.accentBright,
-                  fontSize: 17,
+                  fontSize: 15,
                   fontWeight: FontWeight.w700,
                   height: 1.2)),
           if (i.body != null) ...[
             const SizedBox(height: 4),
             Text(i.body!,
                 style: TWType.bodySm.copyWith(
-                    color: TWColors.textPrimary, fontSize: 13)),
+                    color: TWColors.textPrimary, fontSize: 12)),
           ],
         ];
     }
@@ -825,7 +825,7 @@ class _MarketPulseCard extends StatelessWidget {
                     key: const Key('home_index_name'),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TWType.title3.copyWith(fontSize: 17),
+                    style: TWType.title3.copyWith(fontSize: 15),
                   ),
                 ],
               ),
@@ -1082,7 +1082,7 @@ class _PortfolioCard extends StatelessWidget {
                     style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w700,
-                        fontSize: 16)),
+                        fontSize: 15)),
                 const Spacer(),
                 _Pill(text: '${positions.length} '
                     '${positions.length == 1 ? 'Position' : 'Positions'}'),
@@ -1101,7 +1101,7 @@ class _PortfolioCard extends StatelessWidget {
                       const Text('Portfolio Value',
                           style: TextStyle(
                               color: Colors.white70,
-                              fontSize: 13,
+                              fontSize: 12,
                               fontWeight: FontWeight.w600)),
                       const SizedBox(height: 6),
                       FittedBox(
@@ -1110,7 +1110,7 @@ class _PortfolioCard extends StatelessWidget {
                         child: Text(_money(a.equity, a.currency),
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 32,
+                              fontSize: 28,
                               fontWeight: FontWeight.w900,
                               height: 1.0,
                               fontFeatures: [FontFeature.tabularFigures()],
@@ -1137,7 +1137,7 @@ class _PortfolioCard extends StatelessWidget {
                               style: const TextStyle(
                                 color: TWColors.up,
                                 fontWeight: FontWeight.w800,
-                                fontSize: 14,
+                                fontSize: 15,
                                 fontFeatures: [FontFeature.tabularFigures()],
                               ),
                             ),
@@ -1255,7 +1255,7 @@ class _PortfolioCard extends StatelessWidget {
                     style: TextStyle(
                       color: upColor,
                       fontWeight: FontWeight.w800,
-                      fontSize: 18,
+                      fontSize: 20,
                       height: 1.0,
                       fontFeatures: const [FontFeature.tabularFigures()],
                     ),
@@ -1267,7 +1267,7 @@ class _PortfolioCard extends StatelessWidget {
                   style: TextStyle(
                     color: upColor,
                     fontWeight: FontWeight.w700,
-                    fontSize: 13,
+                    fontSize: 12,
                     fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
@@ -1413,7 +1413,7 @@ class _PortfolioMetricCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                         color: Colors.white60,
-                        fontSize: 11,
+                        fontSize: 12,
                         fontWeight: FontWeight.w600)),
                 const SizedBox(height: 6),
                 Text(symbol,
@@ -1422,7 +1422,7 @@ class _PortfolioMetricCard extends StatelessWidget {
                     style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w800,
-                        fontSize: 16)),
+                        fontSize: 15)),
                 const SizedBox(height: 3),
                 Row(
                   children: [
@@ -1438,7 +1438,7 @@ class _PortfolioMetricCard extends StatelessWidget {
                           style: TextStyle(
                               color: valueColor,
                               fontWeight: FontWeight.w700,
-                              fontSize: 14,
+                              fontSize: 15,
                               fontFeatures: const [
                                 FontFeature.tabularFigures()
                               ])),
