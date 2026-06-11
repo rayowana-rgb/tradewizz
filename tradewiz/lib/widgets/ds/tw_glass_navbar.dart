@@ -47,23 +47,31 @@ class TWGlassNavBar extends StatelessWidget {
       }),
     );
 
-    // Flat bar pinned to the bottom edge: full-width, hairline top divider,
-    // backdrop blur for legibility over content — no floating "card" slab.
-    return ClipRect(
+    // Translucent glass bar with softly rounded top corners. Content scrolls
+    // behind it (extendBody) and shows faintly through the low-alpha fill;
+    // a strong backdrop blur keeps the icons/labels legible.
+    final radius = const BorderRadius.vertical(top: Radius.circular(24));
+    return ClipRRect(
+      borderRadius: radius,
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+        filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
         child: Container(
           padding: EdgeInsets.only(bottom: bottomInset),
           decoration: BoxDecoration(
-            color: TWColors.surfaceCardGlass,
+            // Lower alpha than surfaceCardGlass so content reads through it.
+            color: TWColors.bgRaised.withValues(alpha: 0.40),
+            borderRadius: radius,
             border: Border(
-              top: BorderSide(color: TWColors.hairlineTop, width: 1),
+              top: BorderSide(
+                color: Colors.white.withValues(alpha: 0.06),
+                width: 1,
+              ),
             ),
           ),
           child: NavigationBarTheme(
             data: navTheme,
             child: NavigationBar(
-              height: 64,
+              height: 60,
               backgroundColor: Colors.transparent,
               elevation: 0,
               labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
