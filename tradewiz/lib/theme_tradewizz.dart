@@ -82,6 +82,24 @@ class TWColors {
     colors: [Color(0xFF453B52), bgElevated, bgBase],
   );
 
+  // -- Premium surface (single source of truth: the Home "My Portfolio" card) --
+  // Deep indigo -> dark violet -> electric blue. Signature TradeWizz surface.
+  static const Color premiumIndigo = Color(0xFF2A2740);
+  static const Color premiumViolet = Color(0xFF2E2C66);
+  static const Gradient portfolioGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [premiumIndigo, premiumViolet, accent],
+  );
+
+  // Softer variant for dense content cards (metrics, news, reasoning) where the
+  // electric-blue corner would distract. Same violet-indigo family, no blue.
+  static const Gradient premiumGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFF302B47), Color(0xFF2A2740)],
+  );
+
   /// Confidence ramp (0..100): down -> warn -> up.
   static Color confidence(num score) {
     if (score >= 70) return up;
@@ -110,6 +128,13 @@ class TWShadow {
   static const List<BoxShadow> wizardGlow = [
     BoxShadow(color: Color(0x33FFFFFF), blurRadius: 30, offset: Offset(0, 0)),
   ];
+
+  // Premium card depth: deep ambient drop + soft accent glow. This is the
+  // exact shadow stack used by the Home "My Portfolio" card.
+  static const List<BoxShadow> premium = [
+    BoxShadow(color: Color(0x59000000), blurRadius: 32, offset: Offset(0, 12)),
+    BoxShadow(color: Color(0x594F7CFF), blurRadius: 28, offset: Offset(0, 8)),
+  ];
 }
 
 // ---------------------------------------------------------------------------
@@ -133,12 +158,14 @@ class TWSpace {
 class TWRadius {
   static const double card = 18;
   static const double cardLg = 22;
+  static const double premium = 24; // premium surface (My Portfolio family)
   static const double button = 14;
   static const double sm = 10;
   static const double chip = 999;
 
   static BorderRadius get rCard => BorderRadius.circular(card);
   static BorderRadius get rCardLg => BorderRadius.circular(cardLg);
+  static BorderRadius get rPremium => BorderRadius.circular(premium);
   static BorderRadius get rButton => BorderRadius.circular(button);
   static BorderRadius get rSm => BorderRadius.circular(sm);
   static BorderRadius get rChip => BorderRadius.circular(chip);

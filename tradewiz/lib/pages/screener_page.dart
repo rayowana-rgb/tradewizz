@@ -243,7 +243,7 @@ class _ScreenerPageState extends State<ScreenerPage> {
               padding: EdgeInsets.fromLTRB(16, 4, 16, 12),
               child: Text(
                 'Simulation mode only. No real broker order will be sent.',
-                style: TextStyle(color: Colors.grey, fontSize: 12),
+                style: TextStyle(color: TWColors.textTertiary, fontSize: 12),
               ),
             ),
           ],

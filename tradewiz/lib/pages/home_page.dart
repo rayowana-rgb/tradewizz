@@ -1062,17 +1062,13 @@ class _PortfolioCard extends StatelessWidget {
       key: const Key('home_portfolio'),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(TWRadius.cardLg),
+        borderRadius: BorderRadius.circular(TWRadius.premium),
         border: Border.all(color: TWColors.hairlineTop, width: 1),
-        boxShadow: const [...TWShadow.ambient, ...TWShadow.accentGlow],
+        boxShadow: TWShadow.premium,
       ),
       child: Container(
         decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF2A2740), Color(0xFF2E2C66), TWColors.accent],
-          ),
+          gradient: TWColors.portfolioGradient,
         ),
         padding: const EdgeInsets.all(24),
         child: Column(
