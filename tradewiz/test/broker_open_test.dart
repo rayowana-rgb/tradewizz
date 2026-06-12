@@ -45,18 +45,25 @@ class _FakeLauncher implements BrokerLauncher {
 
 void main() {
   group('BrokerApp model', () {
-    test('catalog has all five required brokers', () {
+    test('catalog has all required brokers', () {
       final ids = BrokerApp.values.map((b) => b.id).toSet();
       expect(
         ids,
-        containsAll(<String>['stockbit', 'moomoo', 'ajaib', 'ipot', 'mirae_hots']),
+        containsAll(<String>[
+          'stockbit',
+          'moomoo',
+          'ajaib',
+          'ipot',
+          'mirae_hots',
+          'ibkr',
+        ]),
       );
     });
 
     test('symbol deep link uppercases + encodes the bare ticker', () {
-      final uri = BrokerApp.moomoo
+      final uri = BrokerApp.ajaib
           .openUri(symbol: 'aapl', market: Market.us);
-      expect(uri.toString(), 'moomoo://quote/AAPL');
+      expect(uri.toString(), 'ajaib://stock/AAPL');
     });
 
     test('Stockbit uses a verified HTTPS App Link to the symbol page', () {
@@ -65,7 +72,36 @@ void main() {
       expect(uri.toString(),
           'https://stockbit.com/symbol/BBCA');
       expect(BrokerApp.stockbit.usesHttpsDeepLink, isTrue);
-      expect(BrokerApp.moomoo.usesHttpsDeepLink, isFalse);
+      expect(BrokerApp.ajaib.usesHttpsDeepLink, isFalse);
+    });
+
+    test('Moomoo uses an HTTPS App Link with the market suffix', () {
+      // Verified format: https://www.moomoo.com/stock/<SYMBOL>-<MARKET>.
+      expect(
+        BrokerApp.moomoo.openUri(symbol: 'aapl', market: Market.us).toString(),
+        'https://www.moomoo.com/stock/AAPL-US',
+      );
+      expect(
+        BrokerApp.moomoo
+            .openUri(symbol: '7203', market: Market.japan)
+            .toString(),
+        'https://www.moomoo.com/stock/7203-JP',
+      );
+      expect(BrokerApp.moomoo.usesHttpsDeepLink, isTrue);
+    });
+
+    test('Moomoo falls back to the app when the market is not listed', () {
+      // India has no Moomoo symbol page (moomooSuffix == null) -> launch app.
+      final uri =
+          BrokerApp.moomoo.openUri(symbol: 'RELIANCE', market: Market.india);
+      expect(uri.toString(), 'moomoo://');
+    });
+
+    test('IBKR opens the app (no guessed per-symbol deep link)', () {
+      final uri =
+          BrokerApp.ibkr.openUri(symbol: 'AAPL', market: Market.us);
+      expect(uri.toString(), 'ibkr://');
+      expect(BrokerApp.ibkr.supportsSymbolDeepLink, isFalse);
     });
 
     test('brokers without a deep link fall back to the launch url', () {
@@ -79,7 +115,7 @@ void main() {
     test('deep link never carries order params (read-only hand-off)', () {
       final uri = BrokerApp.moomoo
           .openUri(symbol: 'AAPL', market: Market.us);
-      expect(uri.toString(), 'moomoo://quote/AAPL');
+      expect(uri.toString(), 'https://www.moomoo.com/stock/AAPL-US');
       expect(uri.toString(), isNot(contains('qty')));
       expect(uri.toString(), isNot(contains('price')));
       expect(uri.toString(), isNot(contains('order')));
@@ -123,7 +159,7 @@ void main() {
     });
 
     test('installed broker deep-links + emits broker_open_confirmed', () async {
-      final fake = _FakeLauncher(installedSchemes: {'moomoo'});
+      final fake = _FakeLauncher(installedSchemes: {'ajaib'});
       final events = <String>[];
       Map<String, String>? props;
       final svc = BrokerService(
@@ -135,15 +171,15 @@ void main() {
       );
 
       final outcome = await svc.open(
-        broker: BrokerApp.moomoo,
+        broker: BrokerApp.ajaib,
         symbol: 'bbca',
         market: Market.idx,
       );
 
       expect(outcome, BrokerOpenOutcome.launchedApp);
-      expect(fake.openCalls.single.toString(), 'moomoo://quote/BBCA');
+      expect(fake.openCalls.single.toString(), 'ajaib://stock/BBCA');
       expect(events, ['broker_open_confirmed']);
-      expect(props?['broker'], 'moomoo');
+      expect(props?['broker'], 'ajaib');
       expect(props?['symbol'], 'BBCA');
       expect(props?['market'], 'IDX');
       expect(props?['installed'], 'true');
@@ -217,29 +253,51 @@ void main() {
 
     test('deep-link failure falls back to launching the bare app', () async {
       final fake = _FakeLauncher(
-        installedSchemes: {'moomoo'},
-        failOpenFor: {'moomoo://quote/AAPL'},
+        installedSchemes: {'ajaib'},
+        failOpenFor: {'ajaib://stock/AAPL'},
       );
       final svc = BrokerService(launcher: fake);
 
       final outcome = await svc.open(
-        broker: BrokerApp.moomoo,
+        broker: BrokerApp.ajaib,
         symbol: 'AAPL',
         market: Market.us,
       );
 
       expect(outcome, BrokerOpenOutcome.launchedApp);
-      expect(fake.openCalls.first.toString(), 'moomoo://quote/AAPL');
-      expect(fake.openCalls.last.toString(), 'moomoo://');
+      expect(fake.openCalls.first.toString(), 'ajaib://stock/AAPL');
+      expect(fake.openCalls.last.toString(), 'ajaib://');
+    });
+
+    test('Moomoo HTTPS deep link opens the symbol without an install probe',
+        () async {
+      final fake = _FakeLauncher(installedSchemes: const {});
+      final events = <String>[];
+      final svc = BrokerService(
+        launcher: fake,
+        analytics: (e, {required properties}) => events.add(e),
+      );
+      final outcome = await svc.open(
+        broker: BrokerApp.moomoo,
+        symbol: 'aapl',
+        market: Market.us,
+      );
+      expect(outcome, BrokerOpenOutcome.launchedApp);
+      expect(fake.openCalls.single.toString(),
+          'https://www.moomoo.com/stock/AAPL-US');
+      expect(fake.canOpenCalls, isEmpty);
+      expect(events, ['broker_open_confirmed']);
     });
 
     test('isInstalled reflects the launcher canOpen result', () async {
       final fake = _FakeLauncher(installedSchemes: {'ajaib'});
       final svc = BrokerService(launcher: fake);
       expect(await svc.isInstalled(BrokerApp.ajaib), isTrue);
-      expect(await svc.isInstalled(BrokerApp.moomoo), isFalse);
+      // IBKR has no HTTPS link + isn't in installedSchemes -> not installed.
+      expect(await svc.isInstalled(BrokerApp.ibkr), isFalse);
       // HTTPS App Link brokers always resolve, so they report installed.
       expect(await svc.isInstalled(BrokerApp.stockbit), isTrue);
+      expect(await svc.isInstalled(BrokerApp.moomoo), isTrue);
     });
   });
 

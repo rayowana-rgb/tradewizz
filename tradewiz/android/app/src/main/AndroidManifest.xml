@@ -70,6 +70,10 @@
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="miraehots"/>
         </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="ibkr"/>
+        </intent>
         <!-- Open the Play Store (https) listing when a broker is not installed. -->
         <intent>
             <action android:name="android.intent.action.VIEW"/>

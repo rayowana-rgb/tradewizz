@@ -30,10 +30,14 @@ enum BrokerApp {
   moomoo(
     id: 'moomoo',
     label: 'Moomoo',
-    androidPackage: 'com.moomoo.trade',
+    androidPackage: 'com.moomoo.trade.universal',
     iosScheme: 'moomoo',
-    // Moomoo's universal quote deep link; symbol passed bare.
-    deepLinkTemplate: 'moomoo://quote/{symbol}',
+    // Moomoo exposes per-symbol pages as HTTPS App Links of the form
+    // https://www.moomoo.com/stock/<SYMBOL>-<MARKET> (verified 200 for
+    // US/JP/SG). The market suffix comes from Market.moomooSuffix; when it is
+    // null (market not listed by Moomoo) openUri() falls back to launching the
+    // app. {market} is substituted in openUri(), not here.
+    deepLinkTemplate: 'https://www.moomoo.com/stock/{symbol}-{market}',
     launchUrl: 'moomoo://',
   ),
   ajaib(
@@ -60,6 +64,18 @@ enum BrokerApp {
     iosScheme: 'miraehots',
     deepLinkTemplate: null,
     launchUrl: 'miraehots://',
+  ),
+  ibkr(
+    id: 'ibkr',
+    label: 'IBKR',
+    // Interactive Brokers' IBKR Mobile app.
+    androidPackage: 'atws.app',
+    iosScheme: 'ibkr',
+    // IBKR does not document a public per-symbol deep link or symbol web page,
+    // so we intentionally do NOT guess one (a bad link would corrupt the
+    // ticker, as we saw with Stockbit). Open the app instead.
+    deepLinkTemplate: null,
+    launchUrl: 'ibkr://',
   );
 
   const BrokerApp({
@@ -116,6 +132,18 @@ enum BrokerApp {
     final template = deepLinkTemplate;
     if (template == null) return Uri.parse(launchUrl);
     final sym = Uri.encodeComponent(symbol.trim().toUpperCase());
+
+    // Moomoo symbol pages require a market suffix (e.g. AAPL-US). When the
+    // market isn't listed by Moomoo there is no clean symbol page, so launch
+    // the app rather than build a URL that would 404.
+    if (template.contains('{market}')) {
+      final suffix = market.moomooSuffix;
+      if (suffix == null) return Uri.parse(launchUrl);
+      return Uri.parse(
+        template.replaceAll('{symbol}', sym).replaceAll('{market}', suffix),
+      );
+    }
+
     return Uri.parse(template.replaceAll('{symbol}', sym));
   }
 

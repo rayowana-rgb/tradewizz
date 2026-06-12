@@ -158,13 +158,25 @@ class BrokerService {
     // same symbol otherwise. Open the deep link directly without gating on a
     // custom-scheme install probe (which these brokers don't expose).
     if (deepLink && broker.usesHttpsDeepLink) {
-      final ok = await _safeOpen(
-        broker.openUri(symbol: symbol, market: market),
-        appLink: true,
-      );
-      final outcome =
-          ok ? BrokerOpenOutcome.launchedApp : BrokerOpenOutcome.failed;
-      _track(broker, symbol, market, ok, outcome);
+      final uri = broker.openUri(symbol: symbol, market: market);
+      // openUri may fall back to the app's custom scheme when the market has no
+      // clean symbol page (e.g. Moomoo on an unlisted market). Only the real
+      // https link uses the Universal/App Link launch mode.
+      if (uri.scheme == 'https') {
+        final ok = await _safeOpen(uri, appLink: true);
+        final outcome =
+            ok ? BrokerOpenOutcome.launchedApp : BrokerOpenOutcome.failed;
+        _track(broker, symbol, market, ok, outcome);
+        return outcome;
+      }
+      // Custom-scheme fallback: open the app, else send to the Play Store.
+      final launched = await _safeOpen(uri);
+      final outcome = launched
+          ? BrokerOpenOutcome.launchedApp
+          : (await _safeOpen(broker.playStoreUri)
+              ? BrokerOpenOutcome.openedStore
+              : BrokerOpenOutcome.failed);
+      _track(broker, symbol, market, launched, outcome);
       return outcome;
     }
 

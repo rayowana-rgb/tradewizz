@@ -11,6 +11,7 @@ enum Market {
     currency: 'IDR',
     yahooSuffix: '.JK',
     tradableViaMoomoo: false,
+    moomooSuffix: 'ID',
   ),
   hkex(
     code: 'HKEX',
@@ -19,6 +20,7 @@ enum Market {
     currency: 'HKD',
     yahooSuffix: '.HK',
     tradableViaMoomoo: true,
+    moomooSuffix: 'HK',
   ),
   kospi(
     code: 'KOSPI',
@@ -27,6 +29,7 @@ enum Market {
     currency: 'KRW',
     yahooSuffix: '.KS',
     tradableViaMoomoo: false,
+    moomooSuffix: 'KR',
   ),
   kosdaq(
     code: 'KOSDAQ',
@@ -35,6 +38,7 @@ enum Market {
     currency: 'KRW',
     yahooSuffix: '.KQ',
     tradableViaMoomoo: false,
+    moomooSuffix: 'KR',
   ),
   // --- Global market expansion (Excel-backed universes on the backend) ---
   us(
@@ -44,6 +48,7 @@ enum Market {
     currency: 'USD',
     yahooSuffix: '',
     tradableViaMoomoo: false,
+    moomooSuffix: 'US',
   ),
   japan(
     code: 'JAPAN',
@@ -52,6 +57,7 @@ enum Market {
     currency: 'JPY',
     yahooSuffix: '.T',
     tradableViaMoomoo: false,
+    moomooSuffix: 'JP',
   ),
   india(
     code: 'INDIA',
@@ -60,6 +66,8 @@ enum Market {
     currency: 'INR',
     yahooSuffix: '.NS',
     tradableViaMoomoo: false,
+    // Moomoo does not list Indian equities; no clean symbol page.
+    moomooSuffix: null,
   ),
   vietnam(
     code: 'VIETNAM',
@@ -68,6 +76,8 @@ enum Market {
     currency: 'VND',
     yahooSuffix: '.VN',
     tradableViaMoomoo: false,
+    // Moomoo does not list Vietnamese equities; no clean symbol page.
+    moomooSuffix: null,
   ),
   singapore(
     code: 'SINGAPORE',
@@ -76,6 +86,7 @@ enum Market {
     currency: 'SGD',
     yahooSuffix: '.SI',
     tradableViaMoomoo: false,
+    moomooSuffix: 'SG',
   );
 
   const Market({
@@ -85,6 +96,7 @@ enum Market {
     required this.currency,
     required this.yahooSuffix,
     required this.tradableViaMoomoo,
+    required this.moomooSuffix,
   });
 
   final String code;
@@ -97,6 +109,12 @@ enum Market {
 
   /// Whether manual Buy/Sell via Moomoo is offered for this market.
   final bool tradableViaMoomoo;
+
+  /// Market suffix used by Moomoo's web/app symbol pages
+  /// (`moomoo.com/stock/<SYMBOL>-<SUFFIX>`). Null when Moomoo does not list
+  /// this market, so the broker hand-off just opens the app instead of
+  /// building a link that would 404.
+  final String? moomooSuffix;
 
   /// Resolve a [Market] from its wire code (e.g. 'US'); defaults to IDX.
   static Market fromCode(String? code) {

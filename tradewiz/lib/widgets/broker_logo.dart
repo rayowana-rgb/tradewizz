@@ -22,6 +22,7 @@ class BrokerLogo extends StatelessWidget {
     'ajaib': Color(0xFF6C5CE7), // Ajaib purple
     'ipot': Color(0xFFE53935), // IPOT red
     'mirae_hots': Color(0xFF0B5FFF), // Mirae blue
+    'ibkr': Color(0xFFD81222), // Interactive Brokers red
   };
 
   /// Monogram shown on the tile.
@@ -31,6 +32,7 @@ class BrokerLogo extends StatelessWidget {
     'ajaib': 'A',
     'ipot': 'IP',
     'mirae_hots': 'M',
+    'ibkr': 'IB',
   };
 
   Color get _color => _brandColor[broker.id] ?? TWColors.accent;
