@@ -232,7 +232,11 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
           const SizedBox(height: 12),
           // Read-only hand-off: open the user's broker app to research/trade
           // this symbol. TradeWizz never executes trades itself.
-          OpenBrokerButton(symbol: _result!.symbol, market: _market),
+          OpenBrokerButton(
+            symbol: _result!.symbol,
+            market: _market,
+            source: 'analysis',
+          ),
           if (_prediction != null) ...[
             const SizedBox(height: 16),
             _PredictionCard(prediction: _prediction!),

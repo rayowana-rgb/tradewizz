@@ -10,7 +10,6 @@ class _FakeLauncher implements BrokerLauncher {
   _FakeLauncher({
     this.installedSchemes = const {},
     this.failOpenFor = const {},
-    this.android = true,
   });
 
   /// URL schemes (e.g. 'stockbit') that report as installed via canOpen().
@@ -19,15 +18,13 @@ class _FakeLauncher implements BrokerLauncher {
   /// Uris (by toString()) that should fail to open.
   final Set<String> failOpenFor;
 
-  final bool android;
-
   final List<Uri> canOpenCalls = [];
   final List<Uri> openCalls = [];
 
   @override
-  bool get isAndroid => android;
+  bool get isAndroid => true;
   @override
-  bool get isIOS => !android;
+  bool get isIOS => false;
 
   @override
   Future<bool> canOpen(Uri uri) async {
@@ -91,14 +88,14 @@ void main() {
   });
 
   group('BrokerService hand-off', () {
-    test('installed broker deep-links to the symbol + emits analytics', () async {
+    test('installed broker deep-links + emits broker_open_confirmed', () async {
       final fake = _FakeLauncher(installedSchemes: {'stockbit'});
-      String? event;
+      final events = <String>[];
       Map<String, String>? props;
       final svc = BrokerService(
         launcher: fake,
         analytics: (e, {required properties}) {
-          event = e;
+          events.add(e);
           props = properties;
         },
       );
@@ -111,7 +108,7 @@ void main() {
 
       expect(outcome, BrokerOpenOutcome.launchedApp);
       expect(fake.openCalls.single.toString(), 'stockbit://stocks/BBCA');
-      expect(event, 'broker_open_clicked');
+      expect(events, ['broker_open_confirmed']);
       expect(props?['broker'], 'stockbit');
       expect(props?['symbol'], 'BBCA');
       expect(props?['market'], 'IDX');
@@ -119,13 +116,12 @@ void main() {
       expect(props?['outcome'], 'launchedApp');
     });
 
-    test('not-installed broker opens the Play Store fallback', () async {
+    test('not-installed broker -> Play Store + broker_store_redirect', () async {
       final fake = _FakeLauncher(installedSchemes: const {});
-      String? outcomeMeta;
+      final events = <String>[];
       final svc = BrokerService(
         launcher: fake,
-        analytics: (e, {required properties}) =>
-            outcomeMeta = properties['outcome'],
+        analytics: (e, {required properties}) => events.add(e),
       );
 
       final outcome = await svc.open(
@@ -139,7 +135,50 @@ void main() {
         fake.openCalls.single.toString(),
         'https://play.google.com/store/apps/details?id=com.miraeasset.global.id.hots',
       );
-      expect(outcomeMeta, 'openedStore');
+      expect(events, ['broker_store_redirect']);
+    });
+
+    test('trackClicked emits broker_open_clicked with source', () {
+      final events = <String>[];
+      Map<String, String>? props;
+      final svc = BrokerService(
+        launcher: _FakeLauncher(),
+        analytics: (e, {required properties}) {
+          events.add(e);
+          props = properties;
+        },
+      );
+      svc.trackClicked(
+        broker: BrokerApp.moomoo,
+        symbol: 'aapl',
+        market: Market.us,
+        source: 'screener',
+      );
+      expect(events, ['broker_open_clicked']);
+      expect(props?['broker'], 'moomoo');
+      expect(props?['symbol'], 'AAPL');
+      expect(props?['source'], 'screener');
+    });
+
+    test('failed open emits no success event', () async {
+      final fake = _FakeLauncher(
+        installedSchemes: const {},
+        failOpenFor: {
+          'https://play.google.com/store/apps/details?id=ajaib.co.id',
+        },
+      );
+      final events = <String>[];
+      final svc = BrokerService(
+        launcher: fake,
+        analytics: (e, {required properties}) => events.add(e),
+      );
+      final outcome = await svc.open(
+        broker: BrokerApp.ajaib,
+        symbol: 'BBRI',
+        market: Market.idx,
+      );
+      expect(outcome, BrokerOpenOutcome.failed);
+      expect(events, isEmpty);
     });
 
     test('deep-link failure falls back to launching the bare app', () async {

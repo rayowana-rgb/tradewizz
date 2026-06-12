@@ -56,10 +56,18 @@ class ActivationMetrics extends ChangeNotifier {
   void subscriptionConverted(String tier) =>
       _emit('subscription_converted', meta: tier);
 
-  /// User tapped an "Open Broker" action and we handed off to a broker app or
-  /// the Play Store. [meta] carries `broker=...;symbol=...;market=...;...`.
-  /// This is a read-only hand-off event; TradeWizz never executes trades.
+  /// User tapped an "Open Broker" action (intent to hand off). [meta] carries
+  /// `broker=...;symbol=...;market=...;...`. Read-only; never a trade.
   void trackBrokerOpen(String meta) => _emit('broker_open_clicked', meta: meta);
+
+  /// User confirmed the hand-off on the confirmation sheet and we launched the
+  /// installed broker app.
+  void trackBrokerOpenConfirmed(String meta) =>
+      _emit('broker_open_confirmed', meta: meta);
+
+  /// Broker app was not installed, so we redirected the user to the Play Store.
+  void trackBrokerStoreRedirect(String meta) =>
+      _emit('broker_store_redirect', meta: meta);
 
   /// Activation = onboarding complete AND first value delivered.
   bool get activated =>

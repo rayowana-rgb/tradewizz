@@ -6,6 +6,7 @@ import '../models/broker.dart';
 import '../models/broker_app.dart';
 import '../models/simulation.dart';
 import '../models/subscription.dart';
+import '../widgets/broker_open_sheet.dart';
 import '../widgets/portfolio_manager.dart';
 import 'journal_page.dart';
 import 'portfolio_page.dart';
@@ -618,67 +619,6 @@ class _SectionHeader extends StatelessWidget {
 class _PreferredBrokerCard extends StatelessWidget {
   const _PreferredBrokerCard();
 
-  Future<void> _pick(BuildContext context) async {
-    final store = UserPrefsScope.maybeOf(context);
-    if (store == null) return;
-    final current = store.prefs.preferredBrokerId;
-    final selected = await showModalBottomSheet<String?>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      barrierColor: TWColors.sheetScrim,
-      builder: (ctx) => SafeArea(
-        top: false,
-        child: Container(
-          decoration: const BoxDecoration(
-            color: TWColors.bgRaised,
-            borderRadius:
-                BorderRadius.vertical(top: Radius.circular(TWRadius.cardLg)),
-            border: Border(top: BorderSide(color: TWColors.hairlineTop)),
-          ),
-          padding: const EdgeInsets.fromLTRB(
-              TWSpace.lg, TWSpace.lg, TWSpace.lg, TWSpace.xl),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('Preferred broker', style: TWType.title3),
-              const SizedBox(height: TWSpace.sm),
-              RadioGroup<String?>(
-                groupValue: current,
-                onChanged: (v) => Navigator.of(ctx).pop(v),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    RadioListTile<String?>(
-                      key: const Key('preferred_broker_none'),
-                      value: null,
-                      title: Text('No default', style: TWType.label),
-                      activeColor: TWColors.accent,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                    for (final b in BrokerApp.values)
-                      RadioListTile<String?>(
-                        key: Key('preferred_broker_${b.id}'),
-                        value: b.id,
-                        title: Text(b.label, style: TWType.label),
-                        activeColor: TWColors.accent,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-    // A null result is ambiguous (dismissed vs. picked "No default"); only act
-    // when the sheet was actually used. We detect dismissal via the route pop
-    // returning before any tile tap by comparing to a sentinel is overkill, so
-    // we simply apply the selection — "No default" is a valid, idempotent set.
-    await store.setPreferredBroker(selected);
-  }
-
   @override
   Widget build(BuildContext context) {
     final prefs = UserPrefsScope.maybeOf(context)?.prefs;
@@ -700,7 +640,7 @@ class _PreferredBrokerCard extends StatelessWidget {
           ),
           trailing:
               const Icon(Icons.chevron_right, color: TWColors.textTertiary),
-          onTap: () => _pick(context),
+          onTap: () => showPreferredBrokerSheet(context),
         ),
       ),
     );
@@ -908,18 +848,31 @@ class _HoldingsCard extends StatelessWidget {
               '${p.averageCost.toStringAsFixed(2)} '
               '· last ${p.lastPrice.toStringAsFixed(2)}',
               style: const TextStyle(color: TWColors.textTertiary)),
-          trailing: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end,
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Text(p.marketValue.toStringAsFixed(2),
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: TWColors.textPrimary)),
-              Text(
-                '${p.unrealizedPnl >= 0 ? '+' : ''}'
-                '${p.unrealizedPnl.toStringAsFixed(2)}',
-                style: TextStyle(color: pnlColor, fontSize: 12),
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(p.marketValue.toStringAsFixed(2),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: TWColors.textPrimary)),
+                  Text(
+                    '${p.unrealizedPnl >= 0 ? '+' : ''}'
+                    '${p.unrealizedPnl.toStringAsFixed(2)}',
+                    style: TextStyle(color: pnlColor, fontSize: 12),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 4),
+              // Read-only broker hand-off for this holding.
+              OpenBrokerIconButton(
+                symbol: p.symbol,
+                market: p.market,
+                source: 'portfolio',
+                size: 18,
               ),
             ],
           ),

@@ -9,6 +9,7 @@ import '../services/repository_scope.dart';
 import '../services/watchlist_scope.dart';
 import '../theme_tradewizz.dart';
 import '../widgets/auto_watchlist.dart';
+import '../widgets/broker_open_sheet.dart';
 import '../widgets/ds/ds.dart';
 import 'ai_analysis_page.dart';
 
@@ -488,6 +489,13 @@ class _WatchRow extends StatelessWidget {
                 Text('${item.market.flag} ${item.market.code}',
                     style: TWType.caption),
             ],
+          ),
+          // Read-only broker hand-off for this watchlist symbol.
+          OpenBrokerIconButton(
+            symbol: item.symbol,
+            market: item.market,
+            source: 'watchlist',
+            size: 18,
           ),
         ],
       ),

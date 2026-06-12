@@ -12,6 +12,7 @@ import '../state/explore_filter_store.dart';
 import '../theme_tradewizz.dart';
 import '../widgets/category_badge.dart';
 import '../widgets/connection_pill.dart';
+import '../widgets/broker_open_sheet.dart';
 import '../widgets/ds/ds.dart';
 import 'ai_analysis_page.dart';
 import 'order_ticket_page.dart';
@@ -473,6 +474,7 @@ class _ScreenerPageState extends State<ScreenerPage> {
               ),
               child: _MatchCard(
                 match: match,
+                market: _market,
                 onTap: () => _openAnalysis(match),
               ),
             );
@@ -913,8 +915,9 @@ class _FiltersSheetState extends State<_FiltersSheet> {
 }
 
 class _MatchCard extends StatelessWidget {
-  const _MatchCard({required this.match, this.onTap});
+  const _MatchCard({required this.match, required this.market, this.onTap});
   final ScreenerMatch match;
+  final Market market;
   final VoidCallback? onTap;
 
   @override
@@ -962,6 +965,13 @@ class _MatchCard extends StatelessWidget {
                 // Phase 9A: the pill shows the FINAL Explore Score (what the
                 // list is sorted by), not the Base Score.
                 _ScorePill(score: match.effectiveFinalScore),
+                // Read-only broker hand-off (tap = quick open / picker;
+                // long-press = Choose Broker / Change Preferred Broker).
+                OpenBrokerIconButton(
+                  symbol: match.symbol,
+                  market: market,
+                  source: 'screener',
+                ),
               ],
             ),
             // Phase 9A: Explore score breakdown (Final = Base + Bonus +

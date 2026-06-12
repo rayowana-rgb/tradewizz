@@ -76,7 +76,25 @@ class BrokerService {
   final BrokerLauncher _launcher;
   final BrokerAnalyticsSink? analytics;
 
-  static const String openEvent = 'broker_open_clicked';
+  static const String clickedEvent = 'broker_open_clicked';
+  static const String confirmedEvent = 'broker_open_confirmed';
+  static const String storeRedirectEvent = 'broker_store_redirect';
+
+  /// Emit `broker_open_clicked` (intent). Call this when the user taps an
+  /// "Open Broker" affordance, before any picker/confirmation is shown.
+  void trackClicked({
+    BrokerApp? broker,
+    required String symbol,
+    required Market market,
+    required String source,
+  }) {
+    _emit(clickedEvent, {
+      if (broker != null) 'broker': broker.id,
+      'symbol': symbol.trim().toUpperCase(),
+      'market': market.code,
+      'source': source,
+    });
+  }
 
   /// Probe whether [broker] appears installed. On iOS this uses the custom URL
   /// scheme; on Android it relies on the app's launch scheme being resolvable
@@ -92,8 +110,10 @@ class BrokerService {
 
   /// Open [broker] for [symbol] in [market].
   ///
-  /// Emits `broker_open_clicked` first (with the resolved outcome added once
-  /// known), then launches the app or the store fallback. Returns the outcome.
+  /// Emits `broker_open_confirmed` when the installed app is launched, or
+  /// `broker_store_redirect` when we fall back to the Play Store. The
+  /// `broker_open_clicked` intent event is emitted separately by the UI via
+  /// [trackClicked]. Returns the outcome.
   Future<BrokerOpenOutcome> open({
     required BrokerApp broker,
     required String symbol,
@@ -148,16 +168,29 @@ class BrokerService {
     bool installed,
     BrokerOpenOutcome outcome,
   ) {
+    final props = {
+      'broker': broker.id,
+      'symbol': symbol.trim().toUpperCase(),
+      'market': market.code,
+      'installed': installed.toString(),
+      'outcome': outcome.name,
+    };
+    switch (outcome) {
+      case BrokerOpenOutcome.launchedApp:
+        _emit(confirmedEvent, props);
+      case BrokerOpenOutcome.openedStore:
+        _emit(storeRedirectEvent, props);
+      case BrokerOpenOutcome.failed:
+        // No success event; nothing was opened.
+        break;
+    }
+  }
+
+  void _emit(String event, Map<String, String> properties) {
     final sink = analytics;
     if (sink == null) return;
     try {
-      sink(openEvent, properties: {
-        'broker': broker.id,
-        'symbol': symbol.trim().toUpperCase(),
-        'market': market.code,
-        'installed': installed.toString(),
-        'outcome': outcome.name,
-      });
+      sink(event, properties: properties);
     } catch (_) {
       // Analytics must never break the hand-off.
     }
