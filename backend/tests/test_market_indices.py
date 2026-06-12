@@ -222,19 +222,83 @@ def test_cache_avoids_repeated_fetches():
         clock=lambda: t["now"],
         now_provider=_closed_now,
     )
-    # One fetch per *fetchable* index. Markets with no working Yahoo symbol
-    # (e.g. Vietnam) skip the fetch entirely and report unavailable.
+    # Each fetchable index triggers a DAILY fetch plus a best-effort INTRADAY
+    # fetch (used to surface today's level when the daily candle lags). Markets
+    # with no working Yahoo symbol (e.g. Vietnam) skip the fetch entirely.
     from app.market.service import INDEX_SPECS
     n_indices = sum(1 for s in INDEX_SPECS if s.fetchable)
+    per_refresh = n_indices * 2  # daily + intraday
     svc.get_indices()
-    assert calls["n"] == n_indices  # one per fetchable index
+    assert calls["n"] == per_refresh
     # Within TTL: served from cache, no new fetches.
     svc.get_indices()
-    assert calls["n"] == n_indices
+    assert calls["n"] == per_refresh
     # After TTL expiry: refetched.
     t["now"] = 1000.0 + 301
     svc.get_indices()
-    assert calls["n"] == n_indices * 2
+    assert calls["n"] == per_refresh * 2
+
+
+def test_intraday_overrides_stale_daily_candle():
+    # The bug: after the session closes, Yahoo's DAILY candle still ends on the
+    # PRIOR day, so Home showed yesterday's close. When a more-recent intraday
+    # tick exists it must win, with change computed vs the last DAILY close.
+    daily_idx = pd.date_range("2026-06-08", periods=3, freq="D")  # ..06-10
+    daily = pd.DataFrame({"Close": [5800.0, 5850.0, 5886.0]}, index=daily_idx)
+    # Intraday tick is on 2026-06-11 (newer than the last daily candle).
+    intra_idx = pd.to_datetime(
+        ["2026-06-11 08:58:00+00:00", "2026-06-11 09:00:00+00:00"]
+    )
+    intraday = pd.DataFrame({"Close": [6005.0, 6007.66]}, index=intra_idx)
+
+    def fetch(ticker, period="5d", interval="1d"):
+        if ticker != "^JKSE":
+            raise ValueError(f"unexpected ticker {ticker}")
+        return intraday if interval == "1m" else daily
+
+    svc = MarketIndicesService(fetcher=fetch, now_provider=_closed_now)
+    spec = INDEX_BY_MARKET[Market.IDX]
+    q = svc._fetch_quote(spec)
+    assert q.available is True
+    assert q.price == 6007.66  # today's intraday level, not 5886 daily
+    assert q.change == round(6007.66 - 5886.0, 2)  # vs last DAILY close
+    assert q.change_percent == round((6007.66 - 5886.0) / 5886.0 * 100, 2)
+
+
+def test_intraday_same_day_does_not_override_daily():
+    # When the daily candle is already up to date (same trading day as the
+    # intraday tick), the daily extraction stands -> no double counting.
+    daily_idx = pd.date_range("2026-06-09", periods=2, freq="D")  # ..06-10
+    daily = pd.DataFrame({"Close": [5850.0, 5886.0]}, index=daily_idx)
+    intra_idx = pd.to_datetime(["2026-06-10 09:00:00+00:00"])  # same day
+    intraday = pd.DataFrame({"Close": [5999.0]}, index=intra_idx)
+
+    def fetch(ticker, period="5d", interval="1d"):
+        return intraday if interval == "1m" else daily
+
+    svc = MarketIndicesService(fetcher=fetch, now_provider=_closed_now)
+    q = svc._fetch_quote(INDEX_BY_MARKET[Market.IDX])
+    assert q.price == 5886.0  # daily last close, intraday ignored (same day)
+    assert q.change == round(5886.0 - 5850.0, 2)
+
+
+def test_intraday_failure_falls_back_to_daily():
+    # Intraday is best-effort: if it raises, the daily quote is still served.
+    daily = pd.DataFrame(
+        {"Close": [5850.0, 5886.0]},
+        index=pd.date_range("2026-06-09", periods=2, freq="D"),
+    )
+
+    def fetch(ticker, period="5d", interval="1d"):
+        if interval == "1m":
+            raise RuntimeError("intraday 429")
+        return daily
+
+    svc = MarketIndicesService(fetcher=fetch, now_provider=_closed_now)
+    q = svc._fetch_quote(INDEX_BY_MARKET[Market.IDX])
+    assert q.available is True
+    assert q.price == 5886.0
+    assert q.change == round(5886.0 - 5850.0, 2)
 
 
 def test_open_status_when_market_in_session():

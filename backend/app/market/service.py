@@ -71,9 +71,18 @@ def _index_fetch(
     df = yf.download(ticker, **kwargs)
     if df is None or df.empty:
         raise ValueError(f"No data for {ticker}")
-    # yfinance may return a column MultiIndex for a single ticker; flatten it.
+    # yfinance may return a column MultiIndex for a single ticker; flatten it
+    # robustly (the level that contains 'Close' is the field level, regardless
+    # of (field,ticker) vs (ticker,field) order) and drop duplicate columns.
     if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
+        field_level = 0
+        for lvl in range(df.columns.nlevels):
+            if "Close" in set(df.columns.get_level_values(lvl)):
+                field_level = lvl
+                break
+        df.columns = df.columns.get_level_values(field_level)
+    if getattr(df.columns, "duplicated", None) is not None and df.columns.duplicated().any():
+        df = df.loc[:, ~df.columns.duplicated()]
     if "Close" not in df.columns:
         raise ValueError(f"Missing Close column for {ticker}: {df.columns}")
     return df
@@ -227,6 +236,28 @@ class MarketIndicesService:
         try:
             df = self._fetch(spec.symbol, "5d", "1d")
             price, change, change_pct = self._extract(df)
+            # Yahoo's DAILY index candle lags: after the session closes, today's
+            # 1d candle often is not published for hours, so _extract returns
+            # YESTERDAY's close (the "Home shows kemarin's close" bug). Pull an
+            # intraday last tick; if it is from a more recent trading day than
+            # the latest daily candle, it is today's real level -> use it and
+            # recompute change against the last DAILY close.
+            intraday = self._intraday_last(spec.symbol)
+            if intraday is not None:
+                intra_date, intra_price = intraday
+                last_daily_date, last_daily_close = self._last_daily(df)
+                if (
+                    last_daily_date is not None
+                    and intra_date > last_daily_date
+                    and intra_price is not None
+                ):
+                    price = intra_price
+                    change = intra_price - last_daily_close
+                    change_pct = (
+                        (change / last_daily_close * 100.0)
+                        if last_daily_close
+                        else None
+                    )
         except Exception:  # noqa: BLE001 - any failure -> safe unavailable
             return self._unavailable(spec, status)
         if price is None:
@@ -276,6 +307,51 @@ class MarketIndicesService:
             change = None
             change_pct = None
         return last, change, change_pct
+
+    @staticmethod
+    def _last_daily(df: pd.DataFrame) -> tuple[Optional[object], Optional[float]]:
+        """(date, close) of the latest valid DAILY candle, or (None, None)."""
+        if df is None or df.empty or "Close" not in df.columns:
+            return None, None
+        close = df["Close"]
+        if isinstance(close, pd.DataFrame):
+            close = close.iloc[:, 0]
+        closes = pd.to_numeric(close, errors="coerce").dropna()
+        if closes.empty:
+            return None, None
+        ts = closes.index[-1]
+        try:
+            day = ts.date()
+        except AttributeError:
+            day = pd.Timestamp(ts).date()
+        return day, float(closes.iloc[-1])
+
+    def _intraday_last(
+        self, symbol: str
+    ) -> Optional[tuple[object, Optional[float]]]:
+        """Latest intraday (1m) close + its trading date, or None.
+
+        Used only to detect/serve TODAY's index level when the daily candle
+        still lags. Any failure is swallowed so the daily path keeps working.
+        """
+        try:
+            df = self._fetch(symbol, "1d", "1m")
+        except Exception:  # noqa: BLE001 - intraday is best-effort
+            return None
+        if df is None or df.empty or "Close" not in df.columns:
+            return None
+        close = df["Close"]
+        if isinstance(close, pd.DataFrame):
+            close = close.iloc[:, 0]
+        closes = pd.to_numeric(close, errors="coerce").dropna()
+        if closes.empty:
+            return None
+        ts = closes.index[-1]
+        try:
+            day = ts.date()
+        except AttributeError:
+            day = pd.Timestamp(ts).date()
+        return day, float(closes.iloc[-1])
 
     @staticmethod
     def _unavailable(spec: MarketIndexSpec, status: str) -> IndexQuote:

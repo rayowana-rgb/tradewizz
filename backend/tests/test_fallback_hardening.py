@@ -171,8 +171,9 @@ def test_vietnam_index_unavailable_without_fetch():
     # Other indices still resolve to available quotes.
     assert quotes[Market.IDX].available is True
     # The VN symbol was never fetched (no 404 spam).
-    # (Only fetchable indices hit the fetcher.)
-    assert calls["n"] == sum(1 for s in INDEX_SPECS if s.fetchable)
+    # Only fetchable indices hit the fetcher, and each does a daily + a
+    # best-effort intraday fetch (to surface today's level when daily lags).
+    assert calls["n"] == sum(1 for s in INDEX_SPECS if s.fetchable) * 2
 
 
 def test_one_failed_index_does_not_affect_others():
