@@ -18,11 +18,11 @@ from app.simulation import router as sim_router
 from app.simulation.service import SimulationService
 from app.simulation.store import SimulationStore
 
-# The sim cash ledger is held in the base accounting currency (IDR). USD orders
-# move cash by value*USD_FX. One billion Rupiah of starting cash gives the small
-# USD-priced API orders ample headroom once FX-scaled.
+# The sim cash ledger is held in the base accounting currency (USD). USD orders
+# move cash by their dollar value directly (fx==1). One million dollars of
+# starting cash gives the small USD-priced API orders ample headroom.
 USD_FX = market_config.idr_per_unit(Market.US)
-INITIAL_CASH = 1_000_000_000.0
+INITIAL_CASH = 1_000_000.0
 
 
 class _Universe:
@@ -69,7 +69,7 @@ def test_account_shows_initial_simulated_cash(client):
     j = r.json()
     assert j["simulated"] is True
     assert j["cash"] == INITIAL_CASH
-    assert j["currency"] == "IDR"
+    assert j["currency"] == "USD"
     assert "simulated portfolio" in j["disclaimer"].lower()
 
 
@@ -92,11 +92,11 @@ def test_order_preview_then_place_and_portfolio(client):
     assert port["simulated"] is True
     assert len(port["positions"]) == 1
     assert port["positions"][0]["symbol"] == "AAPL"
-    # Cash is in the base currency (IDR): a $1000 buy debits 1000*USD_FX.
+    # Cash is in the base currency (USD): a $1000 buy debits $1000.
     assert port["account"]["cash"] == pytest.approx(
-        INITIAL_CASH - 1000.0 * USD_FX
+        INITIAL_CASH - 1000.0
     )
-    assert port["account"]["currency"] == "IDR"
+    assert port["account"]["currency"] == "USD"
 
 
 def test_trades_and_positions_endpoints(client):

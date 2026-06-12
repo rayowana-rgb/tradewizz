@@ -14,7 +14,7 @@ import 'account_page.dart' show formatSimMoney;
 /// Base accounting currency for the simulated cash ledger (see backend
 /// SimulationService.BASE_CURRENCY). Cash / buying power are held in this
 /// currency even when the order itself is priced in a foreign currency.
-const String _simBaseCurrency = 'IDR';
+const String _simBaseCurrency = 'USD';
 
 /// Manual SIMULATED order ticket: quantity/type/price -> preview -> place.
 ///

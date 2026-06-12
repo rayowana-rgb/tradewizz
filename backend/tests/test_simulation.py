@@ -26,11 +26,16 @@ from app.simulation.service import (
 )
 from app.simulation.store import SimulationStore
 
-# The simulated cash ledger is kept in the base accounting currency (IDR). A
-# trade priced in USD therefore moves cash by ``value * USD_FX`` Rupiah. These
-# factors let the tests assert cash/equity deltas in the base currency exactly
-# as the service computes them.
+# The simulated cash ledger is kept in the base accounting currency (USD). A
+# trade priced in USD therefore moves cash by ``value`` directly (fx==1); an
+# IDX (Rupiah) trade moves cash by ``value / USD_FX``. ``_fx(market)`` mirrors
+# the service's conversion so the tests assert deltas exactly as computed.
 USD_FX = market_config.idr_per_unit(Market.US)   # IDR per 1 USD (≈16000)
+
+
+def _fx(market):
+    """Local-currency -> base(USD) multiplier, mirroring the service."""
+    return market_config.idr_per_unit(market) / USD_FX
 
 
 # A universe stub that accepts any symbol (universe validation is exercised
@@ -40,9 +45,8 @@ class _AllSymbolsUniverse:
         return []  # empty -> service does not block (graceful)
 
 
-# Default simulated cash in the BASE currency (IDR). One billion Rupiah is
-# plenty of headroom for the small USD-priced test orders once FX-scaled.
-DEFAULT_TEST_CASH = 1_000_000_000.0
+# Default simulated cash in the BASE currency (USD): one million US dollars.
+DEFAULT_TEST_CASH = 1_000_000.0
 
 
 def _make_service(prices=None, initial_cash=DEFAULT_TEST_CASH):
@@ -93,8 +97,8 @@ def test_buy_creates_position_and_deducts_cash():
     assert res.value == 2000.0
 
     acct = svc.account(UID)
-    # Cash is held in the base currency: a $2000 buy debits 2000*USD_FX IDR.
-    assert acct.cash == pytest.approx(DEFAULT_TEST_CASH - 2000.0 * USD_FX)
+    # Cash is held in the base currency (USD): a $2000 buy debits $2000.
+    assert acct.cash == pytest.approx(DEFAULT_TEST_CASH - 2000.0)
     assert acct.currency == BASE_CURRENCY
     pos = svc.positions(UID)
     assert len(pos) == 1
@@ -147,11 +151,11 @@ def test_realized_pnl_calculated_correctly():
     # (130 - 100) * 10 = 300 realized in LOCAL (USD) currency on the trade.
     assert res.realized_pnl == pytest.approx(300.0)
     acct = svc.account(UID)
-    # The account ledger books realized P/L in the base currency: 300*USD_FX.
-    assert acct.realized_pnl == pytest.approx(300.0 * USD_FX)
-    # Cash: start - (1000 buy) + (1300 sell), all *USD_FX, in base IDR.
+    # The account ledger books realized P/L in the base currency (USD): $300.
+    assert acct.realized_pnl == pytest.approx(300.0)
+    # Cash: start - (1000 buy) + (1300 sell), all in base USD.
     assert acct.cash == pytest.approx(
-        DEFAULT_TEST_CASH + (1300.0 - 1000.0) * USD_FX
+        DEFAULT_TEST_CASH + (1300.0 - 1000.0)
     )
 
 
@@ -244,8 +248,8 @@ def test_preview_does_not_mutate_and_is_marked_simulated():
     assert pv.estimated_value == 1000.0
     assert pv.currency == "USD"
     assert pv.price == 100.0
-    # Cash-after is in the base currency: 1,000,000 - 1000*USD_FX.
-    assert pv.cash_after == pytest.approx(DEFAULT_TEST_CASH - 1000.0 * USD_FX)
+    # Cash-after is in the base currency (USD): 1,000,000 - 1000.
+    assert pv.cash_after == pytest.approx(DEFAULT_TEST_CASH - 1000.0)
     # No position created by a preview.
     assert svc.positions(UID) == []
     assert svc.account(UID).cash == DEFAULT_TEST_CASH

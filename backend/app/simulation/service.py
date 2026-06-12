@@ -33,18 +33,39 @@ from .store import AccountRow, PositionRow, SimulationStore
 # Base accounting currency for the simulated portfolio. Every cross-market
 # aggregate (cash, equity, market value, P/L) is held in this currency so a
 # Rupiah (IDX) position and a US-dollar position can be summed correctly. Per
-# the user base this is IDR; positions still keep their LOCAL price/avg-cost so
-# each row reads naturally in its own currency.
-BASE_CURRENCY = os.environ.get("TRADEWIZZ_SIM_BASE_CURRENCY", "IDR")
+# the user's preference this is USD; positions still keep their LOCAL
+# price/avg-cost so each row reads naturally in its own currency, while cash is
+# debited/credited in USD using an FX conversion at the time of the trade.
+BASE_CURRENCY = os.environ.get("TRADEWIZZ_SIM_BASE_CURRENCY", "USD")
 
-# Default starting cash, expressed in the base currency. Default: Rp1,000,000,000
-# (one billion Rupiah) of simulated buying power.
+# Default starting cash, expressed in the base currency. Default: $1,000,000
+# (one million US dollars) of simulated buying power.
 DEFAULT_INITIAL_CASH = float(
-    os.environ.get("TRADEWIZZ_SIM_INITIAL_CASH", "1000000000")
+    os.environ.get("TRADEWIZZ_SIM_INITIAL_CASH", "1000000")
 )
 
 # A price provider takes (symbol, market) and returns the latest price or None.
 PriceProvider = Callable[[str, Market], Optional[float]]
+
+
+def _base_idr_per_unit() -> float:
+    """IDR value of 1 unit of the BASE_CURRENCY (e.g. ~16000 for USD, 1 for IDR).
+
+    Resolved by finding any configured market whose currency matches
+    BASE_CURRENCY and reading its ``idr_per_unit``. Falls back to 1.0 so an
+    unknown base degrades to an IDR-style (no-op) conversion.
+    """
+    if BASE_CURRENCY == "IDR":
+        return 1.0
+    for mkt in Market:
+        try:
+            if market_config.currency(mkt) == BASE_CURRENCY:
+                rate = market_config.idr_per_unit(mkt)
+                if rate > 0:
+                    return rate
+        except Exception:  # noqa: BLE001
+            continue
+    return 1.0
 
 
 def _now_iso() -> str:
@@ -137,23 +158,25 @@ class SimulationService:
 
     def _fx_to_base(self, market: Market) -> float:
         """Multiplier converting 1 unit of the market's currency into the base
-        accounting currency (IDR).
+        accounting currency.
 
-        ``idr_per_unit`` already expresses "how many IDR is 1 unit of this
-        market's currency" (IDX=1, USD≈16000, ...). When the base currency is
-        IDR this is exactly the factor we need; for any other base we'd divide
-        by the base's own idr_per_unit, but IDR is the configured base.
+        ``idr_per_unit`` expresses "how many IDR is 1 unit of this market's
+        currency" (IDX=1, USD≈16000, ...). We convert any market's local
+        currency into the base by going through IDR::
+
+            fx_to_base(market) = idr_per_unit(market) / idr_per_unit(base)
+
+        With the USD base this yields IDX=1/16000 (≈$0.0000625 per Rupiah) and
+        US=1.0. With an IDR base it collapses to idr_per_unit(market).
         """
         try:
             per_unit_idr = market_config.idr_per_unit(market)
         except Exception:  # noqa: BLE001
             per_unit_idr = 1.0
-        if BASE_CURRENCY == "IDR":
+        base_idr = _base_idr_per_unit()
+        if base_idr <= 0:
             return per_unit_idr
-        # Generic fallback: convert via IDR. base_per_unit = idr_per_unit(mkt) /
-        # idr_per_unit(base_market). We don't have a base Market handle here, so
-        # IDR base is the supported path; default to no-op otherwise.
-        return per_unit_idr
+        return per_unit_idr / base_idr
 
     # -- account / portfolio ---------------------------------------------
     def _account_model(
