@@ -10,12 +10,105 @@ import 'package:tradewiz/models/broker.dart';
 import 'package:tradewiz/models/market.dart';
 import 'package:tradewiz/pages/order_ticket_page.dart';
 import 'package:tradewiz/pages/screener_page.dart';
+import 'package:tradewiz/models/user.dart';
 import 'package:tradewiz/repositories/stock_repository.dart';
 import 'package:tradewiz/services/api_client.dart';
+import 'package:tradewiz/services/auth_scope.dart';
+import 'package:tradewiz/services/auth_store.dart';
 import 'package:tradewiz/state/explore_filter_store.dart';
 import 'package:tradewiz/widgets/category_badge.dart';
 
 import 'helpers.dart';
+
+/// A repository that returns [matchCount] IDX matches and accepts simulated
+/// order placements, recording each placed body so the test can assert that
+/// the bulk-buy fanned out one order per stock. Optionally fails the Nth+ order
+/// with an "insufficient cash" error to exercise the skip path.
+StockRepository _bulkBuyRepo(
+  int matchCount, {
+  List<Map<String, dynamic>>? placed,
+  int? cashRunsOutAfter,
+}) {
+  var placedCount = 0;
+  final live = MockClient((req) async {
+    final path = req.url.path;
+    if (path.endsWith('/sim/order/place')) {
+      placedCount++;
+      final body = jsonDecode(req.body) as Map<String, dynamic>;
+      placed?.add(body);
+      if (cashRunsOutAfter != null && placedCount > cashRunsOutAfter) {
+        return http.Response(
+          jsonEncode({'detail': 'Insufficient simulated cash for this order.'}),
+          400,
+          headers: {'content-type': 'application/json'},
+        );
+      }
+      return http.Response(
+        jsonEncode({
+          'order_id': 'sim-$placedCount',
+          'symbol': body['symbol'],
+          'market': body['market'],
+          'side': body['side'],
+          'quantity': body['quantity'],
+          'price': body['price'] ?? 1000.0,
+          'value': 1000.0,
+          'status': 'FILLED_SIMULATED',
+          'realized_pnl': 0.0,
+          'cash_after': 1000000.0,
+          'simulated': true,
+          'message': 'Simulated order filled. No real broker order was sent.',
+        }),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    }
+    // Default: the /screen response.
+    final matches = List.generate(
+      matchCount,
+      (i) => {
+        'symbol': 'IDX${(i + 1).toString().padLeft(2, '0')}',
+        'name': 'Co $i',
+        'score': (90 - i).toDouble(),
+        'signal': 'BUY',
+        'price': 1000.0 + i,
+        'change_percent': 1.0,
+        'categories': ['bullish'],
+      },
+    );
+    return http.Response(
+      jsonEncode({
+        'market': 'IDX',
+        'matches': matches,
+        'generated_at': '2026-06-10T00:00:00Z',
+        'total_count': matchCount,
+        'returned_count': matchCount,
+        'limit': 50,
+        'min_score': 0,
+        'categories': <String>[],
+      }),
+      200,
+      headers: {'content-type': 'application/json'},
+    );
+  });
+  return StockRepository(
+    client: ApiClient(
+      config: const AppConfig(baseUrl: 'https://test.tradewiz.app/v1'),
+      httpClient: live,
+    ),
+  );
+}
+
+/// Wraps a page with a signed-in AuthScope (so the sim endpoints are reachable)
+/// plus the standard RepositoryScope harness.
+Widget _wrapSignedIn(Widget child, StockRepository repo) {
+  final auth = AuthStore()
+    ..setSession('JWT',
+        const UserProfile(id: 1, email: 'a@b.com', createdAt: '', updatedAt: ''));
+  return AuthScope(
+    store: auth,
+    child: wrapApp(child, repository: repo),
+  );
+}
 
 /// Builds a live repository whose /screen response reports [total] matches but
 /// returns only `min(limit, total)` of them, so Load More is exercisable.
@@ -406,5 +499,87 @@ void main() {
         find.byKey(const Key('screener_liquidity_line')), findsOneWidget);
     expect(find.textContaining('avg 20D'), findsOneWidget);
     expect(find.textContaining('2.4x vol'), findsOneWidget);
+  });
+
+  // --- Bulk buy: buy every filtered match in one go (simulation) --------
+  testWidgets('Buy-all places one simulated order per match', (tester) async {
+    final placed = <Map<String, dynamic>>[];
+    final repo = _bulkBuyRepo(3, placed: placed);
+    await tester.pumpWidget(
+      _wrapSignedIn(
+        ScreenerPage(market: Market.idx, repository: repo),
+        repo,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // The bulk action bar is shown above the list.
+    expect(find.byKey(const Key('screener_buy_all_button')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('screener_buy_all_button')));
+    await tester.pumpAndSettle();
+
+    // Configure: qty 50, Market, confirm.
+    await tester.enterText(find.byKey(const Key('bulk_qty_field')), '50');
+    await tester.tap(find.byKey(const Key('bulk_confirm_button')));
+    await tester.pumpAndSettle();
+
+    // One order per match, all BUY/MARKET with the chosen quantity.
+    expect(placed.length, 3);
+    expect(placed.every((b) => b['side'] == 'BUY'), isTrue);
+    expect(placed.every((b) => b['order_type'] == 'MARKET'), isTrue);
+    expect(placed.every((b) => (b['quantity'] as num) == 50), isTrue);
+    expect(placed.map((b) => b['symbol']).toSet(),
+        {'IDX01', 'IDX02', 'IDX03'});
+
+    // Summary dialog reports 3 filled.
+    expect(find.byKey(const Key('bulk_result_dialog')), findsOneWidget);
+    expect(find.textContaining('3 filled'), findsOneWidget);
+  });
+
+  testWidgets('Buy-all Limit uses each stock\'s last price', (tester) async {
+    final placed = <Map<String, dynamic>>[];
+    final repo = _bulkBuyRepo(2, placed: placed);
+    await tester.pumpWidget(
+      _wrapSignedIn(
+        ScreenerPage(market: Market.idx, repository: repo),
+        repo,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('screener_buy_all_button')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('bulk_qty_field')), '10');
+    await tester.tap(find.byKey(const Key('bulk_type_limit')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('bulk_confirm_button')));
+    await tester.pumpAndSettle();
+
+    expect(placed.length, 2);
+    expect(placed.every((b) => b['order_type'] == 'LIMIT'), isTrue);
+    // IDX01 price 1000, IDX02 price 1001 (from the mock generator).
+    expect(placed[0]['price'], 1000.0);
+    expect(placed[1]['price'], 1001.0);
+  });
+
+  testWidgets('Buy-all skips orders that run out of simulated cash',
+      (tester) async {
+    // 4 matches, but cash runs out after the 2nd fill -> 2 filled, 2 skipped.
+    final repo = _bulkBuyRepo(4, cashRunsOutAfter: 2);
+    await tester.pumpWidget(
+      _wrapSignedIn(
+        ScreenerPage(market: Market.idx, repository: repo),
+        repo,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('screener_buy_all_button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('bulk_confirm_button')));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('2 filled'), findsOneWidget);
+    expect(find.textContaining('2 skipped'), findsOneWidget);
   });
 }

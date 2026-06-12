@@ -6,6 +6,7 @@ import '../models/screener_category.dart';
 import '../models/screener_result.dart';
 import '../repositories/stock_repository.dart';
 import '../services/api_client.dart';
+import '../services/auth_scope.dart';
 import '../services/data_source.dart';
 import '../services/repository_scope.dart';
 import '../state/explore_filter_store.dart';
@@ -283,6 +284,103 @@ class _ScreenerPageState extends State<ScreenerPage> {
     }
   }
 
+  /// Open the bulk-buy sheet for every stock currently in the filtered list.
+  /// The user picks ONE quantity (applied per stock) and Market or Limit (each
+  /// stock limited at its own last price). Simulation only.
+  Future<void> _openBulkBuy() async {
+    final matches = _filtered;
+    if (matches.isEmpty) return;
+    final token = AuthScope.read(context).token;
+    if (token == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please sign in to use the simulation portfolio.'),
+        ),
+      );
+      return;
+    }
+    final config = await showModalBottomSheet<_BulkBuyConfig>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _BulkBuySheet(
+        market: _market,
+        count: matches.length,
+      ),
+    );
+    if (!mounted || config == null) return;
+    await _runBulkBuy(matches, config, token);
+  }
+
+  /// Place a simulated BUY for each match sequentially (no tight loop), then
+  /// report a summary: filled / skipped (insufficient cash) / failed.
+  Future<void> _runBulkBuy(
+    List<ScreenerMatch> matches,
+    _BulkBuyConfig config,
+    String token,
+  ) async {
+    final repo = widget.repository ?? RepositoryScope.of(context);
+    var filled = 0;
+    var skipped = 0;
+    var failed = 0;
+    final failures = <String>[];
+
+    // Progress dialog so the user knows a multi-order run is in flight.
+    final progress = ValueNotifier<int>(0);
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _BulkProgressDialog(
+        total: matches.length,
+        progress: progress,
+      ),
+    );
+
+    for (var i = 0; i < matches.length; i++) {
+      final m = matches[i];
+      final price = config.orderType == OrderTypeKind.limit ? m.price : null;
+      try {
+        await repo.simPlaceOrder(
+          token: token,
+          symbol: m.symbol,
+          market: _market,
+          side: OrderSide.buy,
+          quantity: config.quantity,
+          orderType: config.orderType,
+          price: price,
+        );
+        filled++;
+      } on ApiException catch (e) {
+        // Insufficient cash is an expected, non-fatal outcome: skip & continue.
+        if ((e.message).toLowerCase().contains('cash')) {
+          skipped++;
+        } else {
+          failed++;
+          failures.add('${m.symbol}: ${e.message}');
+        }
+      } catch (e) {
+        failed++;
+        failures.add('${m.symbol}: $e');
+      }
+      progress.value = i + 1;
+    }
+
+    progress.dispose();
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pop(); // close progress dialog
+
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _BulkResultDialog(
+        total: matches.length,
+        filled: filled,
+        skipped: skipped,
+        failed: failed,
+        failures: failures,
+      ),
+    );
+  }
+
   // Server already filters; keep a defensive local pass for fallback data.
   List<ScreenerMatch> get _filtered {
     final matches = _result?.matches ?? [];
@@ -437,6 +535,13 @@ class _ScreenerPageState extends State<ScreenerPage> {
           ),
         ),
         if (_result != null) _CacheBanner(result: _result!),
+        // Bulk action bar: buy every stock currently in the filtered list with
+        // one quantity/order-type. Simulation only — reuses the sim endpoints.
+        if (!_loading && _error == null && _filtered.isNotEmpty)
+          _BulkActionBar(
+            count: _filtered.length,
+            onBuyAll: _openBulkBuy,
+          ),
         const Divider(height: 1, color: TWColors.hairline),
         Expanded(child: _buildBody()),
       ],
@@ -683,6 +788,277 @@ class _ScreenerFooter extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// Immutable result of the bulk-buy sheet: quantity-per-stock + order type.
+class _BulkBuyConfig {
+  const _BulkBuyConfig({required this.quantity, required this.orderType});
+  final double quantity;
+  final OrderTypeKind orderType;
+}
+
+/// Slim action bar above the list: "Buy all (N)" — simulation bulk entry point.
+class _BulkActionBar extends StatelessWidget {
+  const _BulkActionBar({required this.count, required this.onBuyAll});
+  final int count;
+  final VoidCallback onBuyAll;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: SizedBox(
+        width: double.infinity,
+        child: FilledButton.icon(
+          key: const Key('screener_buy_all_button'),
+          onPressed: onBuyAll,
+          style: FilledButton.styleFrom(
+            backgroundColor: TWColors.up,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: TWRadius.rButton),
+          ),
+          icon: const Icon(Icons.shopping_cart_checkout_rounded, size: 18),
+          label: Text('Buy all ($count) · simulated'),
+        ),
+      ),
+    );
+  }
+}
+
+/// Bottom sheet to configure a bulk simulated buy of every filtered match.
+class _BulkBuySheet extends StatefulWidget {
+  const _BulkBuySheet({required this.market, required this.count});
+  final Market market;
+  final int count;
+
+  @override
+  State<_BulkBuySheet> createState() => _BulkBuySheetState();
+}
+
+class _BulkBuySheetState extends State<_BulkBuySheet> {
+  final _qtyController = TextEditingController(text: '100');
+  final _formKey = GlobalKey<FormState>();
+  OrderTypeKind _orderType = OrderTypeKind.market;
+
+  @override
+  void dispose() {
+    _qtyController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          0,
+          16,
+          16 + MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.shopping_cart_checkout_rounded,
+                      color: TWColors.up),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Buy all ${widget.count} matches',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w800, fontSize: 20),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${widget.market.flag} ${widget.market.code} · simulation only. '
+                'The same quantity is bought for every stock in the current '
+                'list. Orders with not enough simulated cash are skipped.',
+                style: const TextStyle(
+                    color: TWColors.textTertiary, fontSize: 12),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                key: const Key('bulk_qty_field'),
+                controller: _qtyController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Quantity per stock',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (v) {
+                  final q = double.tryParse(v?.trim() ?? '');
+                  if (q == null || q <= 0) return 'Enter a positive quantity';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 14),
+              const Text('Order type',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w700, fontSize: 12)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                children: [
+                  ChoiceChip(
+                    key: const Key('bulk_type_market'),
+                    selected: _orderType == OrderTypeKind.market,
+                    label: const Text('Market'),
+                    onSelected: (_) =>
+                        setState(() => _orderType = OrderTypeKind.market),
+                  ),
+                  ChoiceChip(
+                    key: const Key('bulk_type_limit'),
+                    selected: _orderType == OrderTypeKind.limit,
+                    label: const Text('Limit @ last price'),
+                    onSelected: (_) =>
+                        setState(() => _orderType = OrderTypeKind.limit),
+                  ),
+                ],
+              ),
+              if (_orderType == OrderTypeKind.limit) ...[
+                const SizedBox(height: 8),
+                const Text(
+                  'Each stock is limited at its own last traded price.',
+                  style: TextStyle(
+                      color: TWColors.textTertiary, fontSize: 12),
+                ),
+              ],
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  key: const Key('bulk_confirm_button'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: TWColors.up,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  onPressed: () {
+                    if (!_formKey.currentState!.validate()) return;
+                    Navigator.of(context).pop(
+                      _BulkBuyConfig(
+                        quantity:
+                            double.parse(_qtyController.text.trim()),
+                        orderType: _orderType,
+                      ),
+                    );
+                  },
+                  child: Text('Buy all ${widget.count} (simulated)'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Modal progress while the bulk run places one order at a time.
+class _BulkProgressDialog extends StatelessWidget {
+  const _BulkProgressDialog({required this.total, required this.progress});
+  final int total;
+  final ValueNotifier<int> progress;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      content: ValueListenableBuilder<int>(
+        valueListenable: progress,
+        builder: (context, done, _) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 4),
+            LinearProgressIndicator(
+              value: total == 0 ? null : done / total,
+              color: TWColors.up,
+            ),
+            const SizedBox(height: 16),
+            Text('Placing simulated orders…  $done / $total',
+                style: const TextStyle(fontSize: 13)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Summary after a bulk run: filled / skipped (insufficient cash) / failed.
+class _BulkResultDialog extends StatelessWidget {
+  const _BulkResultDialog({
+    required this.total,
+    required this.filled,
+    required this.skipped,
+    required this.failed,
+    required this.failures,
+  });
+  final int total;
+  final int filled;
+  final int skipped;
+  final int failed;
+  final List<String> failures;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget line(IconData icon, Color color, String text) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          child: Row(
+            children: [
+              Icon(icon, size: 18, color: color),
+              const SizedBox(width: 8),
+              Expanded(child: Text(text)),
+            ],
+          ),
+        );
+    return AlertDialog(
+      key: const Key('bulk_result_dialog'),
+      title: const Text('Bulk buy complete'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          line(Icons.check_circle, TWColors.up,
+              '$filled filled (simulated)'),
+          if (skipped > 0)
+            line(Icons.account_balance_wallet_outlined, TWColors.warn,
+                '$skipped skipped — not enough simulated cash'),
+          if (failed > 0)
+            line(Icons.error_outline, TWColors.down, '$failed failed'),
+          if (failures.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 140),
+              child: SingleChildScrollView(
+                child: Text(
+                  failures.take(10).join('\n'),
+                  style: const TextStyle(
+                      fontSize: 12, color: TWColors.textTertiary),
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          const Text(
+            'Simulation only. No real broker orders were sent.',
+            style: TextStyle(fontSize: 12, color: TWColors.textTertiary),
+          ),
+        ],
+      ),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Done'),
+        ),
+      ],
     );
   }
 }
