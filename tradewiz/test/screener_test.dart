@@ -291,6 +291,12 @@ void main() {
     expect(find.byKey(const Key('screener_action_menu')), findsOneWidget);
     expect(find.byKey(const Key('screener_action_buy')), findsOneWidget);
     expect(find.byKey(const Key('screener_action_sell')), findsOneWidget);
+    // Broker hand-off now lives inside this swipe menu (below Buy / Sell),
+    // not on the card next to the score.
+    expect(
+      find.byKey(const Key('screener_action_open_broker')),
+      findsOneWidget,
+    );
     expect(
       find.text('Simulation mode only. No real broker order will be sent.'),
       findsOneWidget,

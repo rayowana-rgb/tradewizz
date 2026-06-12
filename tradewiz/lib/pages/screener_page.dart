@@ -17,6 +17,9 @@ import '../widgets/ds/ds.dart';
 import 'ai_analysis_page.dart';
 import 'order_ticket_page.dart';
 
+/// Non-order action emitted by the swipe-left menu (alongside [OrderSide]).
+enum _ScreenerAction { broker }
+
 /// Screener page: runs `/screen/{market}` and lists tagged matches with
 /// market + category filters. iOS-first UX (pull-to-refresh, clean cards).
 class ScreenerPage extends StatefulWidget {
@@ -213,7 +216,7 @@ class _ScreenerPageState extends State<ScreenerPage> {
 
   /// Swipe-left action sheet: Buy / Sell. Never deletes the row.
   Future<void> _showBuySellMenu(ScreenerMatch match) async {
-    final choice = await showModalBottomSheet<OrderSide>(
+    final choice = await showModalBottomSheet<Object>(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(
@@ -240,6 +243,20 @@ class _ScreenerPageState extends State<ScreenerPage> {
               title: const Text('Sell (simulated)'),
               onTap: () => Navigator.of(ctx).pop(OrderSide.sell),
             ),
+            const Divider(height: 1, color: TWColors.hairline),
+            // Read-only hand-off to the user's real broker app for this symbol.
+            ListTile(
+              key: const Key('screener_action_open_broker'),
+              leading: const Icon(Icons.open_in_new_rounded,
+                  color: TWColors.accent),
+              title: const Text('Open in broker'),
+              subtitle: const Text(
+                'View this symbol in your broker app',
+                style:
+                    TextStyle(color: TWColors.textTertiary, fontSize: 12),
+              ),
+              onTap: () => Navigator.of(ctx).pop(_ScreenerAction.broker),
+            ),
             const Padding(
               padding: EdgeInsets.fromLTRB(16, 4, 16, 12),
               child: Text(
@@ -251,7 +268,19 @@ class _ScreenerPageState extends State<ScreenerPage> {
         ),
       ),
     );
-    if (choice != null && mounted) _openTicket(match, choice);
+    if (!mounted) return;
+    if (choice is OrderSide) {
+      _openTicket(match, choice);
+    } else if (choice == _ScreenerAction.broker) {
+      // Smart read-only hand-off: emits broker_open_clicked, then opens the
+      // preferred broker (or the picker) on this bare symbol.
+      await openBrokerFlow(
+        context,
+        symbol: match.symbol,
+        market: _market,
+        source: 'screener',
+      );
+    }
   }
 
   // Server already filters; keep a defensive local pass for fallback data.
@@ -474,7 +503,6 @@ class _ScreenerPageState extends State<ScreenerPage> {
               ),
               child: _MatchCard(
                 match: match,
-                market: _market,
                 onTap: () => _openAnalysis(match),
               ),
             );
@@ -915,9 +943,8 @@ class _FiltersSheetState extends State<_FiltersSheet> {
 }
 
 class _MatchCard extends StatelessWidget {
-  const _MatchCard({required this.match, required this.market, this.onTap});
+  const _MatchCard({required this.match, this.onTap});
   final ScreenerMatch match;
-  final Market market;
   final VoidCallback? onTap;
 
   @override
@@ -965,13 +992,8 @@ class _MatchCard extends StatelessWidget {
                 // Phase 9A: the pill shows the FINAL Explore Score (what the
                 // list is sorted by), not the Base Score.
                 _ScorePill(score: match.effectiveFinalScore),
-                // Read-only broker hand-off (tap = quick open / picker;
-                // long-press = Choose Broker / Change Preferred Broker).
-                OpenBrokerIconButton(
-                  symbol: match.symbol,
-                  market: market,
-                  source: 'screener',
-                ),
+                // Broker hand-off is offered in the swipe-left action menu
+                // (below Buy / Sell), not on the card itself.
               ],
             ),
             // Phase 9A: Explore score breakdown (Final = Base + Bonus +
