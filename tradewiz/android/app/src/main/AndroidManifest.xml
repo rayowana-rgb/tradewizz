@@ -47,5 +47,35 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- Broker hand-off (read-only): allow canLaunchUrl() to detect whether
+             each broker app is installed via its custom URL scheme, and to open
+             the Play Store listing as a fallback. No trading is performed. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="stockbit"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="moomoo"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="ajaib"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="ipotgo"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="miraehots"/>
+        </intent>
+        <!-- Open the Play Store (https) listing when a broker is not installed. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW"/>
+            <data android:scheme="https"/>
+        </intent>
+        <!-- Query the Play Store package directly for the store fallback. -->
+        <package android:name="com.android.vending"/>
     </queries>
 </manifest>

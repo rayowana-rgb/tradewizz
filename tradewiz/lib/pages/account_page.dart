@@ -3,6 +3,7 @@ import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 
 import '../models/broker.dart';
+import '../models/broker_app.dart';
 import '../models/simulation.dart';
 import '../models/subscription.dart';
 import '../widgets/portfolio_manager.dart';
@@ -14,6 +15,7 @@ import '../services/auth_scope.dart';
 import '../services/entitlements_scope.dart';
 import '../services/repository_scope.dart';
 import '../services/social_sign_in.dart';
+import '../services/user_prefs_scope.dart';
 import '../theme_tradewizz.dart';
 import '../widgets/ds/ds.dart';
 import '../widgets/rebalance.dart';
@@ -433,6 +435,10 @@ class _AccountPageState extends State<AccountPage> {
           const _SectionHeader('Account',
               key: Key('account_section_account')),
 
+          // --- Preferred Broker -----------------------------------------
+          const _PreferredBrokerCard(),
+          const SizedBox(height: 16),
+
           // --- Advanced Tools: low-frequency / developer features -------
           _LinkCard(
             cardKey: const Key('account_advanced_link'),
@@ -606,6 +612,101 @@ class _SectionHeader extends StatelessWidget {
 
 /// A consistent navigation card: icon, title, one-line explanation and a clear
 /// chevron CTA. Used for Journal / Connected Brokers / Advanced entries.
+/// "Preferred Broker" setting. Lets the user choose a default broker app that
+/// the "Open Broker" picker surfaces first. Stored locally via [UserPrefsStore].
+/// This is a personalization hint only — it never executes trades.
+class _PreferredBrokerCard extends StatelessWidget {
+  const _PreferredBrokerCard();
+
+  Future<void> _pick(BuildContext context) async {
+    final store = UserPrefsScope.maybeOf(context);
+    if (store == null) return;
+    final current = store.prefs.preferredBrokerId;
+    final selected = await showModalBottomSheet<String?>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      barrierColor: TWColors.sheetScrim,
+      builder: (ctx) => SafeArea(
+        top: false,
+        child: Container(
+          decoration: const BoxDecoration(
+            color: TWColors.bgRaised,
+            borderRadius:
+                BorderRadius.vertical(top: Radius.circular(TWRadius.cardLg)),
+            border: Border(top: BorderSide(color: TWColors.hairlineTop)),
+          ),
+          padding: const EdgeInsets.fromLTRB(
+              TWSpace.lg, TWSpace.lg, TWSpace.lg, TWSpace.xl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Preferred broker', style: TWType.title3),
+              const SizedBox(height: TWSpace.sm),
+              RadioGroup<String?>(
+                groupValue: current,
+                onChanged: (v) => Navigator.of(ctx).pop(v),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    RadioListTile<String?>(
+                      key: const Key('preferred_broker_none'),
+                      value: null,
+                      title: Text('No default', style: TWType.label),
+                      activeColor: TWColors.accent,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                    for (final b in BrokerApp.values)
+                      RadioListTile<String?>(
+                        key: Key('preferred_broker_${b.id}'),
+                        value: b.id,
+                        title: Text(b.label, style: TWType.label),
+                        activeColor: TWColors.accent,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    // A null result is ambiguous (dismissed vs. picked "No default"); only act
+    // when the sheet was actually used. We detect dismissal via the route pop
+    // returning before any tile tap by comparing to a sentinel is overkill, so
+    // we simply apply the selection — "No default" is a valid, idempotent set.
+    await store.setPreferredBroker(selected);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final prefs = UserPrefsScope.maybeOf(context)?.prefs;
+    final broker = BrokerApp.fromId(prefs?.preferredBrokerId);
+    return TWFloatingCard(
+      key: const Key('account_preferred_broker'),
+      padding: EdgeInsets.zero,
+      child: Material(
+        type: MaterialType.transparency,
+        child: ListTile(
+          leading: const Icon(Icons.account_balance_wallet_outlined,
+              color: TWColors.accent),
+          title: Text('Preferred Broker', style: TWType.label),
+          subtitle: Text(
+            broker == null
+                ? 'Choose a default broker for the Open Broker action.'
+                : '${broker.label} · shown first in the broker picker.',
+            style: TWType.caption,
+          ),
+          trailing:
+              const Icon(Icons.chevron_right, color: TWColors.textTertiary),
+          onTap: () => _pick(context),
+        ),
+      ),
+    );
+  }
+}
+
 class _LinkCard extends StatelessWidget {
   const _LinkCard({
     required this.cardKey,

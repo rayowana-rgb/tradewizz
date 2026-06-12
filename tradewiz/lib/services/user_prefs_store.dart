@@ -83,6 +83,14 @@ class UserPrefsStore extends ChangeNotifier {
   Future<void> setDisplayName(String name) =>
       update(_prefs.copyWith(displayName: name));
 
+  /// Persist the user's preferred broker app (by stable id). Pass null to
+  /// clear the preference (the picker then shows no default).
+  Future<void> setPreferredBroker(String? brokerId) => update(
+        brokerId == null
+            ? _prefs.copyWith(clearPreferredBroker: true)
+            : _prefs.copyWith(preferredBrokerId: brokerId),
+      );
+
   /// Mark onboarding complete (called after the final screen).
   Future<void> completeOnboarding() => update(
         _prefs.copyWith(onboarded: true, completedAt: DateTime.now()),

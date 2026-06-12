@@ -1,5 +1,9 @@
 import 'market.dart';
 
+extension _Let<T> on T {
+  R let<R>(R Function(T) op) => op(this);
+}
+
 /// User investing interests captured during onboarding (Phase A, screen 3).
 ///
 /// These are personalization hints only — they tune ranking/labelling of the
@@ -37,6 +41,7 @@ class UserPrefs {
     this.onboarded = false,
     this.displayName = '',
     this.completedAt,
+    this.preferredBrokerId,
   });
 
   /// Markets the user picked (screen 2). Empty => not yet chosen.
@@ -53,6 +58,11 @@ class UserPrefs {
 
   final DateTime? completedAt;
 
+  /// Stable id of the user's preferred broker app (see [BrokerApp]). Null when
+  /// not yet chosen — the broker picker then shows all options with no default.
+  /// Persisted locally only; it never affects scoring or trading.
+  final String? preferredBrokerId;
+
   /// The market the home screen should lead with (first selected, else IDX).
   Market get primaryMarket => markets.isEmpty ? Market.idx : markets.first;
 
@@ -66,6 +76,8 @@ class UserPrefs {
     bool? onboarded,
     String? displayName,
     DateTime? completedAt,
+    String? preferredBrokerId,
+    bool clearPreferredBroker = false,
   }) =>
       UserPrefs(
         markets: markets ?? this.markets,
@@ -73,6 +85,9 @@ class UserPrefs {
         onboarded: onboarded ?? this.onboarded,
         displayName: displayName ?? this.displayName,
         completedAt: completedAt ?? this.completedAt,
+        preferredBrokerId: clearPreferredBroker
+            ? null
+            : (preferredBrokerId ?? this.preferredBrokerId),
       );
 
   Map<String, dynamic> toJson() => {
@@ -81,6 +96,7 @@ class UserPrefs {
         'onboarded': onboarded,
         'display_name': displayName,
         'completed_at': completedAt?.toIso8601String(),
+        'preferred_broker_id': preferredBrokerId,
       };
 
   factory UserPrefs.fromJson(Map<String, dynamic> j) => UserPrefs(
@@ -96,5 +112,7 @@ class UserPrefs {
         completedAt: j['completed_at'] == null
             ? null
             : DateTime.tryParse(j['completed_at'].toString()),
+        preferredBrokerId: (j['preferred_broker_id'] as String?)
+            ?.let((s) => s.isEmpty ? null : s),
       );
 }

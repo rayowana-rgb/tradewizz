@@ -14,6 +14,7 @@ import '../services/repository_scope.dart';
 import '../services/watchlist_scope.dart';
 import '../theme_tradewizz.dart';
 import '../widgets/ds/ds.dart';
+import '../widgets/broker_open_sheet.dart';
 import '../widgets/connection_pill.dart';
 
 /// Full-screen analysis route with a back button. Used when navigating from a
@@ -228,6 +229,10 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
             market: _market,
             repository: _repo,
           ),
+          const SizedBox(height: 12),
+          // Read-only hand-off: open the user's broker app to research/trade
+          // this symbol. TradeWizz never executes trades itself.
+          OpenBrokerButton(symbol: _result!.symbol, market: _market),
           if (_prediction != null) ...[
             const SizedBox(height: 16),
             _PredictionCard(prediction: _prediction!),
