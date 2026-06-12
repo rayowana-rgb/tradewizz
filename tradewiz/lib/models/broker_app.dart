@@ -18,7 +18,11 @@ enum BrokerApp {
     iosScheme: 'stockbit',
     // Optional deep link template. `{symbol}` is replaced with the bare ticker.
     // Stockbit exposes per-symbol pages via its app links.
-    deepLinkTemplate: 'stockbit://stocks/{symbol}',
+    // Stockbit uses verified HTTPS App Links (not a custom scheme) for symbol
+    // pages. When the app is installed Android opens it directly on the symbol;
+    // otherwise it opens the web page on the same symbol. Verified 200 OK at
+    // https://stockbit.com/symbol/<SYMBOL>. ?source=deeplink marks the origin.
+    deepLinkTemplate: 'https://stockbit.com/symbol/{symbol}?source=deeplink',
     // Home/launch deep link when no symbol deep link is supported/desired.
     launchUrl: 'stockbit://',
   ),
@@ -93,6 +97,13 @@ enum BrokerApp {
 
   /// Whether this broker advertises a per-symbol deep link.
   bool get supportsSymbolDeepLink => deepLinkTemplate != null;
+
+  /// Whether the per-symbol deep link is a verified HTTPS App Link (vs. a
+  /// custom scheme). HTTPS links always launch (opening the app when installed
+  /// and registered, else the web page on the same symbol), so for these we
+  /// open the deep link directly instead of gating on install detection.
+  bool get usesHttpsDeepLink =>
+      deepLinkTemplate != null && deepLinkTemplate!.startsWith('https://');
 
   /// Build the best URI to *open* this broker for [symbol] in [market].
   ///

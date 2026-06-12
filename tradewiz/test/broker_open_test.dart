@@ -50,9 +50,18 @@ void main() {
     });
 
     test('symbol deep link uppercases + encodes the bare ticker', () {
+      final uri = BrokerApp.moomoo
+          .openUri(symbol: 'aapl', market: Market.us);
+      expect(uri.toString(), 'moomoo://quote/AAPL');
+    });
+
+    test('Stockbit uses a verified HTTPS App Link to the symbol page', () {
       final uri = BrokerApp.stockbit
           .openUri(symbol: 'bbca', market: Market.idx);
-      expect(uri.toString(), 'stockbit://stocks/BBCA');
+      expect(uri.toString(),
+          'https://stockbit.com/symbol/BBCA?source=deeplink');
+      expect(BrokerApp.stockbit.usesHttpsDeepLink, isTrue);
+      expect(BrokerApp.moomoo.usesHttpsDeepLink, isFalse);
     });
 
     test('brokers without a deep link fall back to the launch url', () {
@@ -88,8 +97,29 @@ void main() {
   });
 
   group('BrokerService hand-off', () {
+    test('Stockbit HTTPS deep link opens the symbol without an install probe',
+        () async {
+      final fake = _FakeLauncher(installedSchemes: const {});
+      final events = <String>[];
+      final svc = BrokerService(
+        launcher: fake,
+        analytics: (e, {required properties}) => events.add(e),
+      );
+      final outcome = await svc.open(
+        broker: BrokerApp.stockbit,
+        symbol: 'bbca',
+        market: Market.idx,
+      );
+      expect(outcome, BrokerOpenOutcome.launchedApp);
+      expect(fake.openCalls.single.toString(),
+          'https://stockbit.com/symbol/BBCA?source=deeplink');
+      // No custom-scheme install probe for HTTPS App Link brokers.
+      expect(fake.canOpenCalls, isEmpty);
+      expect(events, ['broker_open_confirmed']);
+    });
+
     test('installed broker deep-links + emits broker_open_confirmed', () async {
-      final fake = _FakeLauncher(installedSchemes: {'stockbit'});
+      final fake = _FakeLauncher(installedSchemes: {'moomoo'});
       final events = <String>[];
       Map<String, String>? props;
       final svc = BrokerService(
@@ -101,15 +131,15 @@ void main() {
       );
 
       final outcome = await svc.open(
-        broker: BrokerApp.stockbit,
+        broker: BrokerApp.moomoo,
         symbol: 'bbca',
         market: Market.idx,
       );
 
       expect(outcome, BrokerOpenOutcome.launchedApp);
-      expect(fake.openCalls.single.toString(), 'stockbit://stocks/BBCA');
+      expect(fake.openCalls.single.toString(), 'moomoo://quote/BBCA');
       expect(events, ['broker_open_confirmed']);
-      expect(props?['broker'], 'stockbit');
+      expect(props?['broker'], 'moomoo');
       expect(props?['symbol'], 'BBCA');
       expect(props?['market'], 'IDX');
       expect(props?['installed'], 'true');
@@ -203,7 +233,9 @@ void main() {
       final fake = _FakeLauncher(installedSchemes: {'ajaib'});
       final svc = BrokerService(launcher: fake);
       expect(await svc.isInstalled(BrokerApp.ajaib), isTrue);
-      expect(await svc.isInstalled(BrokerApp.stockbit), isFalse);
+      expect(await svc.isInstalled(BrokerApp.moomoo), isFalse);
+      // HTTPS App Link brokers always resolve, so they report installed.
+      expect(await svc.isInstalled(BrokerApp.stockbit), isTrue);
     });
   });
 

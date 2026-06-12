@@ -100,6 +100,9 @@ class BrokerService {
   /// scheme; on Android it relies on the app's launch scheme being resolvable
   /// (requires the matching `<queries>` entries in AndroidManifest.xml).
   Future<bool> isInstalled(BrokerApp broker) async {
+    // HTTPS App Link brokers always resolve (app when registered, else web on
+    // the same symbol), so the quick "open immediately" path applies to them.
+    if (broker.usesHttpsDeepLink) return true;
     final probe = Uri.parse(broker.launchUrl);
     try {
       return await _launcher.canOpen(probe);
@@ -120,6 +123,18 @@ class BrokerService {
     required Market market,
     bool deepLink = true,
   }) async {
+    // HTTPS App Link brokers (e.g. Stockbit) open straight to the symbol page
+    // and resolve to the installed app when registered, or the web page on the
+    // same symbol otherwise. Open the deep link directly without gating on a
+    // custom-scheme install probe (which these brokers don't expose).
+    if (deepLink && broker.usesHttpsDeepLink) {
+      final ok = await _safeOpen(broker.openUri(symbol: symbol, market: market));
+      final outcome =
+          ok ? BrokerOpenOutcome.launchedApp : BrokerOpenOutcome.failed;
+      _track(broker, symbol, market, ok, outcome);
+      return outcome;
+    }
+
     final installed = await isInstalled(broker);
 
     BrokerOpenOutcome outcome;
