@@ -12,10 +12,17 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app.main as main
+from app import market_config
 from app.models import Market
 from app.simulation import router as sim_router
 from app.simulation.service import SimulationService
 from app.simulation.store import SimulationStore
+
+# The sim cash ledger is held in the base accounting currency (IDR). USD orders
+# move cash by value*USD_FX. One billion Rupiah of starting cash gives the small
+# USD-priced API orders ample headroom once FX-scaled.
+USD_FX = market_config.idr_per_unit(Market.US)
+INITIAL_CASH = 1_000_000_000.0
 
 
 class _Universe:
@@ -29,7 +36,7 @@ def client():
         price_provider=lambda s, m: 100.0,
         store=SimulationStore(":memory:"),
         universe=_Universe(),
-        initial_cash=1_000_000.0,
+        initial_cash=INITIAL_CASH,
     )
     sim_router.set_service(svc)
     c = TestClient(main.app)
@@ -61,7 +68,8 @@ def test_account_shows_initial_simulated_cash(client):
     assert r.status_code == 200, r.text
     j = r.json()
     assert j["simulated"] is True
-    assert j["cash"] == 1_000_000.0
+    assert j["cash"] == INITIAL_CASH
+    assert j["currency"] == "IDR"
     assert "simulated portfolio" in j["disclaimer"].lower()
 
 
@@ -84,7 +92,11 @@ def test_order_preview_then_place_and_portfolio(client):
     assert port["simulated"] is True
     assert len(port["positions"]) == 1
     assert port["positions"][0]["symbol"] == "AAPL"
-    assert port["account"]["cash"] == 1_000_000.0 - 1000.0
+    # Cash is in the base currency (IDR): a $1000 buy debits 1000*USD_FX.
+    assert port["account"]["cash"] == pytest.approx(
+        INITIAL_CASH - 1000.0 * USD_FX
+    )
+    assert port["account"]["currency"] == "IDR"
 
 
 def test_trades_and_positions_endpoints(client):
@@ -119,7 +131,7 @@ def test_reset_endpoint(client):
     client.post("/v1/sim/order/place", json=body, headers=h)
     r = client.post("/v1/sim/reset", headers=h).json()
     assert r["simulated"] is True
-    assert r["cash"] == 1_000_000.0
+    assert r["cash"] == INITIAL_CASH
     assert client.get("/v1/sim/positions", headers=h).json()["positions"] == []
 
 

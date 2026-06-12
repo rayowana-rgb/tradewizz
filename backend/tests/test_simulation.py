@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import pytest
 
+from app import market_config
 from app.models import Market
 from app.simulation.models import (
     SIM_DISCLAIMER,
@@ -18,8 +19,18 @@ from app.simulation.models import (
     SIM_WARNING,
     STATUS_FILLED,
 )
-from app.simulation.service import SimulationError, SimulationService
+from app.simulation.service import (
+    BASE_CURRENCY,
+    SimulationError,
+    SimulationService,
+)
 from app.simulation.store import SimulationStore
+
+# The simulated cash ledger is kept in the base accounting currency (IDR). A
+# trade priced in USD therefore moves cash by ``value * USD_FX`` Rupiah. These
+# factors let the tests assert cash/equity deltas in the base currency exactly
+# as the service computes them.
+USD_FX = market_config.idr_per_unit(Market.US)   # IDR per 1 USD (≈16000)
 
 
 # A universe stub that accepts any symbol (universe validation is exercised
@@ -29,7 +40,12 @@ class _AllSymbolsUniverse:
         return []  # empty -> service does not block (graceful)
 
 
-def _make_service(prices=None, initial_cash=1_000_000.0):
+# Default simulated cash in the BASE currency (IDR). One billion Rupiah is
+# plenty of headroom for the small USD-priced test orders once FX-scaled.
+DEFAULT_TEST_CASH = 1_000_000_000.0
+
+
+def _make_service(prices=None, initial_cash=DEFAULT_TEST_CASH):
     prices = prices or {}
 
     def price_provider(symbol, market):
@@ -77,10 +93,14 @@ def test_buy_creates_position_and_deducts_cash():
     assert res.value == 2000.0
 
     acct = svc.account(UID)
-    assert acct.cash == 1_000_000.0 - 2000.0
+    # Cash is held in the base currency: a $2000 buy debits 2000*USD_FX IDR.
+    assert acct.cash == pytest.approx(DEFAULT_TEST_CASH - 2000.0 * USD_FX)
+    assert acct.currency == BASE_CURRENCY
     pos = svc.positions(UID)
     assert len(pos) == 1
     assert pos[0].symbol == "AAPL"
+    # The position keeps its LOCAL (USD) average cost untouched by FX.
+    assert pos[0].average_cost == 200.0
     assert pos[0].quantity == 10
     assert pos[0].average_cost == 200.0
 
@@ -124,12 +144,15 @@ def test_realized_pnl_calculated_correctly():
     svc = _make_service()
     svc.place(UID, "AAPL", Market.US, "BUY", 10, "LIMIT", 100.0)   # cost 100
     res = svc.place(UID, "AAPL", Market.US, "SELL", 10, "LIMIT", 130.0)
-    # (130 - 100) * 10 = 300 realized.
+    # (130 - 100) * 10 = 300 realized in LOCAL (USD) currency on the trade.
     assert res.realized_pnl == pytest.approx(300.0)
     acct = svc.account(UID)
-    assert acct.realized_pnl == pytest.approx(300.0)
-    # Cash: 1,000,000 - 1000 (buy) + 1300 (sell) = 1,000,300.
-    assert acct.cash == pytest.approx(1_000_300.0)
+    # The account ledger books realized P/L in the base currency: 300*USD_FX.
+    assert acct.realized_pnl == pytest.approx(300.0 * USD_FX)
+    # Cash: start - (1000 buy) + (1300 sell), all *USD_FX, in base IDR.
+    assert acct.cash == pytest.approx(
+        DEFAULT_TEST_CASH + (1300.0 - 1000.0) * USD_FX
+    )
 
 
 def test_partial_sell_keeps_average_cost_and_books_partial_pnl():
@@ -217,11 +240,15 @@ def test_preview_does_not_mutate_and_is_marked_simulated():
     pv = svc.preview(UID, "AAPL", Market.US, "BUY", 10, "MARKET")
     assert pv.simulated is True
     assert pv.warning == SIM_WARNING
+    # Estimated value is shown in the stock's LOCAL (USD) currency on the ticket.
     assert pv.estimated_value == 1000.0
+    assert pv.currency == "USD"
     assert pv.price == 100.0
+    # Cash-after is in the base currency: 1,000,000 - 1000*USD_FX.
+    assert pv.cash_after == pytest.approx(DEFAULT_TEST_CASH - 1000.0 * USD_FX)
     # No position created by a preview.
     assert svc.positions(UID) == []
-    assert svc.account(UID).cash == 1_000_000.0
+    assert svc.account(UID).cash == DEFAULT_TEST_CASH
 
 
 def test_preview_rejects_insufficient_cash():
@@ -234,14 +261,14 @@ def test_preview_rejects_insufficient_cash():
 # Reset                                                                       #
 # --------------------------------------------------------------------------- #
 def test_reset_clears_positions_trades_and_restores_cash():
-    svc = _make_service(initial_cash=1_000_000.0)
+    svc = _make_service(initial_cash=DEFAULT_TEST_CASH)
     svc.place(UID, "AAPL", Market.US, "BUY", 10, "LIMIT", 100.0)
     svc.place(UID, "AAPL", Market.US, "SELL", 5, "LIMIT", 120.0)
     assert svc.positions(UID)
     assert svc.trades(UID)
 
     acct = svc.reset(UID)
-    assert acct.cash == 1_000_000.0
+    assert acct.cash == DEFAULT_TEST_CASH
     assert acct.realized_pnl == 0.0
     assert svc.positions(UID) == []
     assert svc.trades(UID) == []

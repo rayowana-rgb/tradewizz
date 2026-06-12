@@ -27,6 +27,54 @@ import 'auth_pages.dart';
 import 'order_ticket_page.dart';
 import 'upgrade_page.dart';
 
+/// Symbol shown in front of a money amount for a currency code. Falls back to
+/// the bare code (e.g. "KRW 1,500") when there's no common glyph.
+String _currencySymbol(String currency) {
+  switch (currency.toUpperCase()) {
+    case 'IDR':
+      return 'Rp';
+    case 'USD':
+      return '\$';
+    case 'HKD':
+      return 'HK\$';
+    case 'SGD':
+      return 'S\$';
+    case 'JPY':
+      return '\u00a5';
+    case 'INR':
+      return '\u20b9';
+    default:
+      return '$currency ';
+  }
+}
+
+/// Format a money amount with thousands separators and a currency prefix.
+///
+/// IDR-like (no-decimal) currencies are shown without cents; the rest keep two
+/// decimals under 1000. A leading sign is added when [signed] is true. This is
+/// the single money formatter shared by the account hero, the account stats,
+/// the holdings and the trade log so currencies never get mixed up visually.
+String formatSimMoney(double v, String currency, {bool signed = false}) {
+  final neg = v < 0;
+  final a = v.abs();
+  final noDecimals = currency.toUpperCase() == 'IDR' ||
+      currency.toUpperCase() == 'JPY' ||
+      currency.toUpperCase() == 'KRW' ||
+      currency.toUpperCase() == 'VND' ||
+      a >= 1000;
+  final s = noDecimals ? a.toStringAsFixed(0) : a.toStringAsFixed(2);
+  final parts = s.split('.');
+  final intPart = parts[0];
+  final buf = StringBuffer();
+  for (var i = 0; i < intPart.length; i++) {
+    if (i > 0 && (intPart.length - i) % 3 == 0) buf.write(',');
+    buf.write(intPart[i]);
+  }
+  final grouped = parts.length > 1 ? '$buf.${parts[1]}' : buf.toString();
+  final sign = neg ? '-' : (signed ? '+' : '');
+  return '$sign${_currencySymbol(currency)}$grouped';
+}
+
 /// Account tab. Logged out -> Login / Register. Logged in -> profile + a
 /// SIMULATED paper-trading portfolio (cash, equity, buying power, P/L,
 /// holdings, trade history, reset). No broker connection is required or shown.
@@ -528,20 +576,7 @@ class _PortfolioValueHeader extends StatelessWidget {
   const _PortfolioValueHeader({required this.account});
   final SimAccount account;
 
-  String _money(double v, String currency) {
-    final neg = v < 0;
-    final a = v.abs();
-    final s = a >= 1000 ? a.toStringAsFixed(0) : a.toStringAsFixed(2);
-    final parts = s.split('.');
-    final intPart = parts[0];
-    final buf = StringBuffer();
-    for (var i = 0; i < intPart.length; i++) {
-      if (i > 0 && (intPart.length - i) % 3 == 0) buf.write(',');
-      buf.write(intPart[i]);
-    }
-    final grouped = parts.length > 1 ? '$buf.${parts[1]}' : buf.toString();
-    return '${neg ? '-' : ''}$currency $grouped';
-  }
+  String _money(double v, String currency) => formatSimMoney(v, currency);
 
   @override
   Widget build(BuildContext context) {
@@ -751,11 +786,12 @@ class _SummaryCard extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  stat('Simulated Cash', a.cash.toStringAsFixed(2),
+                  stat('Simulated Cash', formatSimMoney(a.cash, a.currency),
                       key: const Key('account_cash')),
-                  stat('Equity', a.equity.toStringAsFixed(2),
+                  stat('Equity', formatSimMoney(a.equity, a.currency),
                       key: const Key('account_total_equity')),
-                  stat('Buying Power', a.buyingPower.toStringAsFixed(2),
+                  stat('Buying Power',
+                      formatSimMoney(a.buyingPower, a.currency),
                       key: const Key('account_buying_power')),
                 ],
               ),
@@ -765,15 +801,13 @@ class _SummaryCard extends StatelessWidget {
                 children: [
                   stat(
                     'Unrealized P/L',
-                    '${a.unrealizedPnl >= 0 ? '+' : ''}'
-                        '${a.unrealizedPnl.toStringAsFixed(2)}',
+                    formatSimMoney(a.unrealizedPnl, a.currency, signed: true),
                     color: a.unrealizedPnl >= 0 ? TWColors.up : TWColors.down,
                     key: const Key('account_unrealized_pnl'),
                   ),
                   stat(
                     'Realized P/L',
-                    '${a.realizedPnl >= 0 ? '+' : ''}'
-                        '${a.realizedPnl.toStringAsFixed(2)}',
+                    formatSimMoney(a.realizedPnl, a.currency, signed: true),
                     color: a.realizedPnl >= 0 ? TWColors.up : TWColors.down,
                     key: const Key('account_realized_pnl'),
                   ),
@@ -845,8 +879,8 @@ class _HoldingsCard extends StatelessWidget {
                   color: TWColors.textPrimary)),
           subtitle: Text(
               '${p.quantity.toStringAsFixed(0)} @ '
-              '${p.averageCost.toStringAsFixed(2)} '
-              '· last ${p.lastPrice.toStringAsFixed(2)}',
+              '${formatSimMoney(p.averageCost, p.market.currency)} '
+              '· last ${formatSimMoney(p.lastPrice, p.market.currency)}',
               style: const TextStyle(color: TWColors.textTertiary)),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
@@ -855,13 +889,13 @@ class _HoldingsCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(p.marketValue.toStringAsFixed(2),
+                  Text(formatSimMoney(p.marketValue, p.market.currency),
                       style: const TextStyle(
                           fontWeight: FontWeight.w700,
                           color: TWColors.textPrimary)),
                   Text(
-                    '${p.unrealizedPnl >= 0 ? '+' : ''}'
-                    '${p.unrealizedPnl.toStringAsFixed(2)}',
+                    formatSimMoney(p.unrealizedPnl, p.market.currency,
+                        signed: true),
                     style: TextStyle(color: pnlColor, fontSize: 12),
                   ),
                 ],
@@ -950,9 +984,10 @@ class _TradesCard extends StatelessWidget {
       title: Text('${t.side} ${t.quantity.toStringAsFixed(0)} ${t.symbol}',
           style: const TextStyle(
               fontWeight: FontWeight.w700, color: TWColors.textPrimary)),
-      subtitle: Text('${t.market.code} @ ${t.price.toStringAsFixed(2)}',
+      subtitle: Text(
+          '${t.market.code} @ ${formatSimMoney(t.price, t.market.currency)}',
           style: const TextStyle(color: TWColors.textTertiary)),
-      trailing: Text(t.value.toStringAsFixed(2),
+      trailing: Text(formatSimMoney(t.value, t.market.currency),
           style: const TextStyle(
               fontWeight: FontWeight.w600, color: TWColors.textPrimary)),
     );

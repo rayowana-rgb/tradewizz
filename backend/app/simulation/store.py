@@ -314,7 +314,8 @@ class SimulationStore:
                 "INSERT INTO sim_accounts (user_id, cash, realized_pnl, "
                 "currency, created_at, updated_at) VALUES (?,?,?,?,?,?) "
                 "ON CONFLICT(user_id) DO UPDATE SET cash=excluded.cash, "
-                "realized_pnl=0, updated_at=excluded.updated_at",
+                "realized_pnl=0, currency=excluded.currency, "
+                "updated_at=excluded.updated_at",
                 (user_id, initial_cash, 0.0, currency, now, now),
             )
             conn.commit()

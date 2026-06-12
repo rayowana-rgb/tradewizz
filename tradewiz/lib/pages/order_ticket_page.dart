@@ -9,6 +9,12 @@ import '../repositories/stock_repository.dart';
 import '../services/api_client.dart';
 import '../services/auth_scope.dart';
 import '../theme.dart';
+import 'account_page.dart' show formatSimMoney;
+
+/// Base accounting currency for the simulated cash ledger (see backend
+/// SimulationService.BASE_CURRENCY). Cash / buying power are held in this
+/// currency even when the order itself is priced in a foreign currency.
+const String _simBaseCurrency = 'IDR';
 
 /// Manual SIMULATED order ticket: quantity/type/price -> preview -> place.
 ///
@@ -348,10 +354,11 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
                 row('Side', pv.side),
                 row('Quantity', pv.quantity.toStringAsFixed(0)),
                 row('Type', pv.orderType),
-                row('Price', pv.price.toStringAsFixed(2)),
+                row('Price', formatSimMoney(pv.price, pv.currency)),
                 row('Est. value',
-                    '${pv.currency} ${pv.estimatedValue.toStringAsFixed(2)}'),
-                row('Cash after', pv.cashAfter.toStringAsFixed(2)),
+                    formatSimMoney(pv.estimatedValue, pv.currency)),
+                row('Cash after',
+                    formatSimMoney(pv.cashAfter, _simBaseCurrency)),
                 const SizedBox(height: 12),
                 Row(children: [
                   const Icon(Icons.info_outline, size: 16, color: Colors.orange),
@@ -414,7 +421,7 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
           ),
           const SizedBox(height: 6),
           Text('${r.side} ${r.quantity.toStringAsFixed(0)} ${r.symbol} '
-              '@ ${r.price.toStringAsFixed(2)}'),
+              '@ ${formatSimMoney(r.price, r.market.currency)}'),
           const SizedBox(height: 4),
           Text('Order ID: ${r.orderId}',
               style: const TextStyle(color: Colors.grey, fontSize: 12)),

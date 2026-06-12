@@ -30,9 +30,17 @@ from .models import (
 )
 from .store import AccountRow, PositionRow, SimulationStore
 
-# Default starting cash: 1,000,000 USD-equivalent (configurable via env).
+# Base accounting currency for the simulated portfolio. Every cross-market
+# aggregate (cash, equity, market value, P/L) is held in this currency so a
+# Rupiah (IDX) position and a US-dollar position can be summed correctly. Per
+# the user base this is IDR; positions still keep their LOCAL price/avg-cost so
+# each row reads naturally in its own currency.
+BASE_CURRENCY = os.environ.get("TRADEWIZZ_SIM_BASE_CURRENCY", "IDR")
+
+# Default starting cash, expressed in the base currency. Default: Rp1,000,000,000
+# (one billion Rupiah) of simulated buying power.
 DEFAULT_INITIAL_CASH = float(
-    os.environ.get("TRADEWIZZ_SIM_INITIAL_CASH", "1000000")
+    os.environ.get("TRADEWIZZ_SIM_INITIAL_CASH", "1000000000")
 )
 
 # A price provider takes (symbol, market) and returns the latest price or None.
@@ -108,15 +116,59 @@ class SimulationService:
         except Exception:  # noqa: BLE001
             return "USD"
 
+    def _account(self, user_id: int) -> AccountRow:
+        """Fetch the account, migrating stale (pre-base-currency) rows once.
+
+        Accounts created before the base-currency fix carry a non-base currency
+        (e.g. "USD") and a balance that had been mixed with Rupiah-priced
+        orders. The first time we see one, reset it to a clean base-currency
+        ledger so cash / equity / P/L are coherent. New accounts are created
+        directly in the base currency and skip this path.
+        """
+        acct = self._store.get_or_create_account(
+            user_id, self._initial_cash, BASE_CURRENCY
+        )
+        if acct.currency != BASE_CURRENCY:
+            self._store.reset(user_id, self._initial_cash, BASE_CURRENCY)
+            acct = self._store.get_or_create_account(
+                user_id, self._initial_cash, BASE_CURRENCY
+            )
+        return acct
+
+    def _fx_to_base(self, market: Market) -> float:
+        """Multiplier converting 1 unit of the market's currency into the base
+        accounting currency (IDR).
+
+        ``idr_per_unit`` already expresses "how many IDR is 1 unit of this
+        market's currency" (IDX=1, USD≈16000, ...). When the base currency is
+        IDR this is exactly the factor we need; for any other base we'd divide
+        by the base's own idr_per_unit, but IDR is the configured base.
+        """
+        try:
+            per_unit_idr = market_config.idr_per_unit(market)
+        except Exception:  # noqa: BLE001
+            per_unit_idr = 1.0
+        if BASE_CURRENCY == "IDR":
+            return per_unit_idr
+        # Generic fallback: convert via IDR. base_per_unit = idr_per_unit(mkt) /
+        # idr_per_unit(base_market). We don't have a base Market handle here, so
+        # IDR base is the supported path; default to no-op otherwise.
+        return per_unit_idr
+
     # -- account / portfolio ---------------------------------------------
     def _account_model(
         self, user_id: int, positions: List[SimulatedPosition]
     ) -> SimulatedAccount:
-        acct: AccountRow = self._store.get_or_create_account(
-            user_id, self._initial_cash
+        acct: AccountRow = self._account(user_id)
+        # Cash and realized P/L are already stored in the base currency. Each
+        # position's market_value / unrealized_pnl are in its LOCAL currency, so
+        # convert them to base before summing across markets.
+        market_value = sum(
+            p.market_value * self._fx_to_base(p.market) for p in positions
         )
-        market_value = sum(p.market_value for p in positions)
-        unrealized = sum(p.unrealized_pnl for p in positions)
+        unrealized = sum(
+            p.unrealized_pnl * self._fx_to_base(p.market) for p in positions
+        )
         equity = acct.cash + market_value
         return SimulatedAccount(
             user_id=user_id,
@@ -126,7 +178,7 @@ class SimulationService:
             market_value=round(market_value, 2),
             unrealized_pnl=round(unrealized, 2),
             realized_pnl=round(acct.realized_pnl, 2),
-            currency=acct.currency,
+            currency=BASE_CURRENCY,
             created_at=acct.created_at,
             updated_at=acct.updated_at,
         )
@@ -155,9 +207,13 @@ class SimulationService:
         return [self._position_model(r) for r in self._store.list_positions(user_id)]
 
     def account(self, user_id: int) -> SimulatedAccount:
+        # Migrate stale accounts first (may clear positions) before snapshotting.
+        self._account(user_id)
         return self._account_model(user_id, self.positions(user_id))
 
     def portfolio(self, user_id: int) -> SimulatedPortfolioSummary:
+        # Migrate stale accounts first so positions reflect the post-reset state.
+        self._account(user_id)
         positions = self.positions(user_id)
         account = self._account_model(user_id, positions)
         return SimulatedPortfolioSummary(account=account, positions=positions)
@@ -195,15 +251,19 @@ class SimulationService:
             raise SimulationError("Quantity must be positive.")
         sym = self._validate_symbol(symbol, market)
         exec_price = self._exec_price(sym, market, order_type, price)
+        # Value in the stock's LOCAL currency (what the user sees on the ticket).
         est_value = quantity * exec_price
-        acct = self._store.get_or_create_account(user_id, self._initial_cash)
+        # Value converted to the base accounting currency for the cash ledger.
+        fx = self._fx_to_base(market)
+        est_value_base = est_value * fx
+        acct = self._account(user_id)
 
         if side == "BUY":
-            if est_value > acct.cash + 1e-9:
+            if est_value_base > acct.cash + 1e-9:
                 raise SimulationError(
                     "Insufficient simulated cash for this order.", 400
                 )
-            cash_after = acct.cash - est_value
+            cash_after = acct.cash - est_value_base
         else:  # SELL
             pos = self._store.get_position(user_id, sym, market.value)
             held = pos.quantity if pos else 0.0
@@ -211,7 +271,7 @@ class SimulationService:
                 raise SimulationError(
                     "Cannot sell more than the simulated quantity held.", 400
                 )
-            cash_after = acct.cash + est_value
+            cash_after = acct.cash + est_value_base
 
         return SimulatedOrderPreview(
             symbol=sym,
@@ -243,13 +303,18 @@ class SimulationService:
             raise SimulationError("Quantity must be positive.")
         sym = self._validate_symbol(symbol, market)
         exec_price = self._exec_price(sym, market, order_type, price)
+        # Trade value in the stock's LOCAL currency (logged as-is on the ticket).
         value = quantity * exec_price
-        acct = self._store.get_or_create_account(user_id, self._initial_cash)
+        # FX factor into the base accounting currency for the cash ledger.
+        fx = self._fx_to_base(market)
+        value_base = value * fx
+        acct = self._account(user_id)
         pos = self._store.get_position(user_id, sym, market.value)
 
-        realized = 0.0
+        realized = 0.0          # in LOCAL currency (for the trade log)
+        realized_base = 0.0     # in BASE currency (for the account ledger)
         if side == "BUY":
-            if value > acct.cash + 1e-9:
+            if value_base > acct.cash + 1e-9:
                 raise SimulationError(
                     "Insufficient simulated cash for this order.", 400
                 )
@@ -265,7 +330,7 @@ class SimulationService:
             self._store.upsert_position(
                 user_id, sym, market.value, new_qty, new_avg, prev_realized
             )
-            new_cash = acct.cash - value
+            new_cash = acct.cash - value_base
         else:  # SELL
             held = pos.quantity if pos else 0.0
             if quantity > held + 1e-9:
@@ -273,7 +338,8 @@ class SimulationService:
                     "Cannot sell more than the simulated quantity held.", 400
                 )
             avg = pos.average_cost if pos else 0.0
-            realized = (exec_price - avg) * quantity
+            realized = (exec_price - avg) * quantity      # local currency
+            realized_base = realized * fx                 # base currency
             remaining = held - quantity
             new_realized = (pos.realized_pnl if pos else 0.0) + realized
             if remaining <= 1e-9:
@@ -282,9 +348,9 @@ class SimulationService:
                 self._store.upsert_position(
                     user_id, sym, market.value, remaining, avg, new_realized
                 )
-            new_cash = acct.cash + value
+            new_cash = acct.cash + value_base
 
-        new_account_realized = acct.realized_pnl + realized
+        new_account_realized = acct.realized_pnl + realized_base
         self._store.update_account(user_id, new_cash, new_account_realized)
 
         order_id = "SIM-" + uuid.uuid4().hex[:12].upper()
@@ -307,5 +373,5 @@ class SimulationService:
         )
 
     def reset(self, user_id: int) -> SimulatedAccount:
-        self._store.reset(user_id, self._initial_cash)
+        self._store.reset(user_id, self._initial_cash, BASE_CURRENCY)
         return self.account(user_id)

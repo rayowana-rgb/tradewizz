@@ -415,7 +415,8 @@ void main() {
     expect(find.byKey(const Key('account_buying_power')), findsOneWidget);
     expect(find.byKey(const Key('account_unrealized_pnl')), findsOneWidget);
     expect(find.byKey(const Key('account_realized_pnl')), findsOneWidget);
-    expect(find.text('150000.00'), findsWidgets);
+    // Money is now currency-formatted (USD mock): "$150,000".
+    expect(find.textContaining('\$150,000'), findsWidgets);
     // Reset button is present.
     await tester.scrollUntilVisible(
       find.byKey(const Key('reset_simulation_button')),
