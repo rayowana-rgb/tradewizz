@@ -290,10 +290,45 @@ def _yf_fetch(ticker: str, period: str = "1y", interval: str = "1d") -> pd.DataF
     df = yf.download(ticker, **kwargs)
     if df is None or df.empty:
         raise ValueError(f"No data for {ticker}")
-    # yfinance may return a column MultiIndex for a single ticker; flatten it.
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
     needed = {"Open", "High", "Low", "Close", "Volume"}
+    # yfinance returns a column MultiIndex even for a single ticker. The level
+    # order varies by version: it can be (field, ticker) OR (ticker, field).
+    # Naively flattening with get_level_values(0) can therefore (a) pick the
+    # ticker level by mistake, or (b) leave DUPLICATE field columns when more
+    # than one ticker leaks into the frame. Either way `df["Close"]` then
+    # returns a 2-D slice and the wrong ticker's price is read (the BBCA/BBRI/
+    # ASII "all 1010" cache-corruption bug). Resolve the field level robustly
+    # and isolate exactly THIS ticker.
+    if isinstance(df.columns, pd.MultiIndex):
+        field_level = None
+        for lvl in range(df.columns.nlevels):
+            values = set(df.columns.get_level_values(lvl))
+            if needed.issubset(values):
+                field_level = lvl
+                break
+        if field_level is None:
+            raise ValueError(f"Missing OHLCV columns for {ticker}: {df.columns}")
+        ticker_level = 1 - field_level if df.columns.nlevels == 2 else None
+        # If a ticker level exists, slice to the requested ticker only so a
+        # multi-ticker frame can never bleed another symbol's prices in.
+        if ticker_level is not None:
+            tickers = list(dict.fromkeys(df.columns.get_level_values(ticker_level)))
+            want = ticker.upper()
+            chosen = next((t for t in tickers if str(t).upper() == want), None)
+            if chosen is None and len(tickers) == 1:
+                chosen = tickers[0]
+            if chosen is None:
+                raise ValueError(
+                    f"{ticker} not found in returned frame {tickers}"
+                )
+            df = df.xs(chosen, axis=1, level=ticker_level)
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
+        else:
+            df.columns = df.columns.get_level_values(field_level)
+    # Guard against any residual duplicate field columns.
+    if df.columns.duplicated().any():
+        df = df.loc[:, ~df.columns.duplicated()]
     if not needed.issubset(set(df.columns)):
         raise ValueError(f"Missing OHLCV columns for {ticker}: {df.columns}")
     return df
@@ -1110,10 +1145,23 @@ class AnalysisEngine:
                 return max(avg, m.value_traded)
             return m.value_traded
 
+        # Hold mock-fallback rows out of the visible results whenever real live
+        # data exists for the run. A symbol that failed its live fetch carries
+        # deterministic *seeded* placeholder price/score/turnover (e.g. GOTO at
+        # a fabricated 776 instead of its real ~80). Letting those rows rank
+        # makes Explore (a) show wrong index/price values and (b) flip between
+        # runs as the live/mock mix shifts with yfinance availability. We only
+        # keep mock rows when the ENTIRE response is mock (no universe / fully
+        # offline demo mode), so that path still returns something.
+        live_present = any(
+            getattr(m, "data_source", "live") != "mock" for m in result.matches
+        )
+
         matches = [
             m
             for m in result.matches
-            if m.score >= min_score
+            if (not live_present or getattr(m, "data_source", "live") != "mock")
+            and m.score >= min_score
             and _durable_value_traded(m) >= min_value_traded
             and (not wanted or wanted.intersection(m.categories))
         ]

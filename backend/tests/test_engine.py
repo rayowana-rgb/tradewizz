@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from app.engine import AnalysisEngine, yf_symbol
+from app.engine import AnalysisEngine, yf_symbol, _yf_fetch
 from app.models import Market, ScreenerCategory
 from app.universe import UniverseRepository
 
@@ -296,8 +296,12 @@ def test_screen_failed_symbol_uses_mock_not_skipped():
         assert m.categories  # non-empty deterministic categories
 
 
-def test_screen_mixed_success_and_failure_all_populated():
-    # GOOD* succeeds (real indicators); BAD* fails -> mock fallback per symbol.
+def test_screen_holds_mock_fallback_out_when_live_data_exists():
+    # GOOD* succeeds (real indicators); BAD* fails -> deterministic mock
+    # fallback per symbol. Mock-fallback rows carry FABRICATED seeded prices
+    # and must NOT appear in Explore when real live data exists for the run,
+    # otherwise they pollute results with wrong values and flip the list
+    # between runs as the live/mock mix shifts.
     def fetch(t, p, i):
         if t.startswith("GOOD"):
             return uptrend()
@@ -307,8 +311,65 @@ def test_screen_mixed_success_and_failure_all_populated():
     res = eng.screen(
         Market.IDX, symbols=["GOOD1", "BAD1", "GOOD2", "BAD2"], limit=50
     )
-    assert {m.symbol for m in res.matches} == {"GOOD1", "BAD1", "GOOD2", "BAD2"}
-    assert res.total_count == 4  # nothing dropped
+    # Only the live GOOD* names survive; the mock BAD* rows are held out.
+    assert {m.symbol for m in res.matches} == {"GOOD1", "GOOD2"}
+    assert all(
+        getattr(m, "data_source", "live") != "mock" for m in res.matches
+    )
+    assert res.total_count == 2
+
+
+def test_screen_fully_mock_still_returns_rows():
+    # When NOTHING fetches live (offline/demo), the fully-mock fallback path
+    # must still return rows so Explore is never empty.
+    def boom(t, p, i):
+        raise ValueError("no data")
+
+    eng = AnalysisEngine(fetcher=boom)
+    res = eng.screen(Market.IDX, symbols=["AAA", "BBB"], limit=50)
+    assert {m.symbol for m in res.matches} == {"AAA", "BBB"}
+
+
+def _multiticker_frame(fields_first: bool):
+    """Build a 2-ticker MultiIndex OHLCV frame like yfinance returns.
+
+    BBCA closes are distinct from BBRI; the bug read the wrong column.
+    """
+    idx = pd.date_range("2026-06-10", periods=3, freq="D")
+    data = {}
+    prices = {"BBCA.JK": 5825.0, "BBRI.JK": 2850.0}
+    for tk, px in prices.items():
+        for fld in ("Open", "High", "Low", "Close", "Volume"):
+            val = 1_000_000.0 if fld == "Volume" else px
+            key = (fld, tk) if fields_first else (tk, fld)
+            data[key] = [val, val, val]
+    cols = pd.MultiIndex.from_tuples(
+        data.keys(),
+        names=(["Price", "Ticker"] if fields_first else ["Ticker", "Price"]),
+    )
+    return pd.DataFrame(list(zip(*data.values())), index=idx, columns=cols)
+
+
+@pytest.mark.parametrize("fields_first", [True, False])
+def test_yf_fetch_isolates_single_ticker_from_multiticker_frame(
+    monkeypatch, fields_first
+):
+    # Regression: a MultiIndex frame carrying >1 ticker must be sliced to the
+    # requested ticker, in EITHER level order. Previously get_level_values(0)
+    # left duplicate 'Close' columns so BBCA/BBRI/ASII all read the same wrong
+    # price (the "all 1010" cache-corruption bug).
+    import app.engine as engine_mod
+
+    frame = _multiticker_frame(fields_first)
+    fake_yf = type("_YF", (), {"download": staticmethod(lambda *a, **k: frame)})()
+    monkeypatch.setitem(__import__("sys").modules, "yfinance", fake_yf)
+
+    df = _yf_fetch("BBCA.JK", "1mo", "1d")
+    close = df["Close"].dropna()
+    assert close.ndim == 1  # not a 2-D slice
+    assert float(close.iloc[-1]) == 5825.0  # BBCA's price, not BBRI's
+    # Single 'Close' column, no duplicate-field bleed.
+    assert list(df.columns).count("Close") == 1
 
 
 def test_screen_failed_symbol_is_deterministic():

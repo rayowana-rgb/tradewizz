@@ -225,13 +225,17 @@ def test_mock_fallback_has_no_overlay():
         return _liquid_uptrend()
 
     eng = AnalysisEngine(fetcher=fetch)
-    res = eng.screen(Market.IDX, symbols=["GOOD1", "BAD1"])
-    bad = {m.symbol: m for m in res.matches}["BAD1"]
+    # A mock-fallback row is held OUT of the filtered screen result when live
+    # data exists, so inspect the raw per-symbol screen output directly.
+    bad = eng._screen_one("BAD1", Market.IDX, {})
     assert bad.data_source == "mock"
     assert bad.category_bonus == 0
     assert bad.conviction_score == 0
     assert bad.final_score == bad.base_score == bad.score
     assert bad.explore_tags == []
+    # And it is indeed excluded from the visible matches.
+    res = eng.screen(Market.IDX, symbols=["GOOD1", "BAD1"])
+    assert "BAD1" not in {m.symbol for m in res.matches}
 
 
 def test_mock_screen_rows_have_no_overlay():

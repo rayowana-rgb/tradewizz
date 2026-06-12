@@ -112,11 +112,14 @@ def test_one_bad_ticker_does_not_fail_whole_screen(tmp_path):
 
     eng = AnalysisEngine(fetcher=fetch)
     res = eng.screen(Market.IDX, symbols=["GOOD1", "BAD1", "GOOD2"])
-    # All three symbols are present; the bad one fell back to a mock row.
-    assert len(res.matches) == 3
+    # The bad ticker doesn't fail the whole screen: the two live names still
+    # come back. The mock-fallback row is held out (it would carry fabricated
+    # seeded prices), so it must NOT appear among the visible matches.
     by_sym = {m.symbol: m for m in res.matches}
-    assert by_sym["BAD1"].data_source == "mock"
+    assert {"GOOD1", "GOOD2"}.issubset(by_sym.keys())
+    assert "BAD1" not in by_sym
     assert by_sym["GOOD1"].data_source == "live"
+    assert all(m.data_source == "live" for m in res.matches)
 
 
 def test_fallback_ticker_never_becomes_buy_or_elite():
@@ -126,10 +129,13 @@ def test_fallback_ticker_never_becomes_buy_or_elite():
         return _uptrend()
 
     eng = AnalysisEngine(fetcher=fetch)
-    res = eng.screen(Market.IDX, symbols=["GOOD1", "BAD1"])
-    bad = {m.symbol: m for m in res.matches}["BAD1"]
+    # The mock row is held out of the screen result; inspect it directly to
+    # confirm it can never read as BUY/elite.
+    bad = eng._screen_one("BAD1", Market.IDX, {})
     assert bad.signal != "BUY"
     assert bad.score < 66
+    res = eng.screen(Market.IDX, symbols=["GOOD1", "BAD1"])
+    assert "BAD1" not in {m.symbol for m in res.matches}
     # And it is excluded from ranked opportunities (radar / best idea).
     from app.radar.service import RadarService
 
