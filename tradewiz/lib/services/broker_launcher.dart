@@ -25,7 +25,15 @@ abstract class BrokerLauncher {
   Future<bool> canOpen(Uri uri);
 
   /// Attempt to open [uri]; returns true on success.
-  Future<bool> open(Uri uri, {bool externalApplication = true});
+  ///
+  /// When [appLink] is true the launcher prefers handing an https link to a
+  /// registered native app (iOS Universal Link / Android App Link) instead of
+  /// a browser, so e.g. Stockbit opens in its app rather than Safari.
+  Future<bool> open(
+    Uri uri, {
+    bool externalApplication = true,
+    bool appLink = false,
+  });
 
   /// Current platform flags (so the service can pick scheme vs package checks).
   bool get isAndroid;
@@ -46,12 +54,34 @@ class UrlLauncherPlatformBridge implements BrokerLauncher {
   Future<bool> canOpen(Uri uri) => canLaunchUrl(uri);
 
   @override
-  Future<bool> open(Uri uri, {bool externalApplication = true}) => launchUrl(
-        uri,
-        mode: externalApplication
-            ? LaunchMode.externalApplication
-            : LaunchMode.platformDefault,
-      );
+  Future<bool> open(
+    Uri uri, {
+    bool externalApplication = true,
+    bool appLink = false,
+  }) async {
+    if (appLink) {
+      // iOS Universal Link / Android App Link: try to hand the https link to
+      // the registered broker app (no Safari bounce). If no app claims it,
+      // fall back to opening the link in the browser on the same symbol so
+      // the user still lands on the right page instead of seeing an error.
+      try {
+        final opened = await launchUrl(
+          uri,
+          mode: LaunchMode.externalNonBrowserApplication,
+        );
+        if (opened) return true;
+      } catch (_) {
+        // No native handler — fall through to the browser launch below.
+      }
+      return launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+    return launchUrl(
+      uri,
+      mode: externalApplication
+          ? LaunchMode.externalApplication
+          : LaunchMode.platformDefault,
+    );
+  }
 }
 
 /// Sink for the `broker_open_clicked` analytics event. Best-effort; a failure
@@ -128,7 +158,10 @@ class BrokerService {
     // same symbol otherwise. Open the deep link directly without gating on a
     // custom-scheme install probe (which these brokers don't expose).
     if (deepLink && broker.usesHttpsDeepLink) {
-      final ok = await _safeOpen(broker.openUri(symbol: symbol, market: market));
+      final ok = await _safeOpen(
+        broker.openUri(symbol: symbol, market: market),
+        appLink: true,
+      );
       final outcome =
           ok ? BrokerOpenOutcome.launchedApp : BrokerOpenOutcome.failed;
       _track(broker, symbol, market, ok, outcome);
@@ -168,9 +201,9 @@ class BrokerService {
     return outcome;
   }
 
-  Future<bool> _safeOpen(Uri uri) async {
+  Future<bool> _safeOpen(Uri uri, {bool appLink = false}) async {
     try {
-      return await _launcher.open(uri);
+      return await _launcher.open(uri, appLink: appLink);
     } catch (_) {
       return false;
     }

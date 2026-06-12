@@ -19,10 +19,11 @@ enum BrokerApp {
     // Optional deep link template. `{symbol}` is replaced with the bare ticker.
     // Stockbit exposes per-symbol pages via its app links.
     // Stockbit uses verified HTTPS App Links (not a custom scheme) for symbol
-    // pages. When the app is installed Android opens it directly on the symbol;
+    // pages. When the app is installed it opens directly on the symbol;
     // otherwise it opens the web page on the same symbol. Verified 200 OK at
-    // https://stockbit.com/symbol/<SYMBOL>. ?source=deeplink marks the origin.
-    deepLinkTemplate: 'https://stockbit.com/symbol/{symbol}?source=deeplink',
+    // https://stockbit.com/symbol/<SYMBOL>. NOTE: the app does not parse a
+    // query string, so no ?source=... — it would corrupt the ticker.
+    deepLinkTemplate: 'https://stockbit.com/symbol/{symbol}',
     // Home/launch deep link when no symbol deep link is supported/desired.
     launchUrl: 'stockbit://',
   ),

@@ -33,7 +33,11 @@ class _FakeLauncher implements BrokerLauncher {
   }
 
   @override
-  Future<bool> open(Uri uri, {bool externalApplication = true}) async {
+  Future<bool> open(
+    Uri uri, {
+    bool externalApplication = true,
+    bool appLink = false,
+  }) async {
     openCalls.add(uri);
     return !failOpenFor.contains(uri.toString());
   }
@@ -59,7 +63,7 @@ void main() {
       final uri = BrokerApp.stockbit
           .openUri(symbol: 'bbca', market: Market.idx);
       expect(uri.toString(),
-          'https://stockbit.com/symbol/BBCA?source=deeplink');
+          'https://stockbit.com/symbol/BBCA');
       expect(BrokerApp.stockbit.usesHttpsDeepLink, isTrue);
       expect(BrokerApp.moomoo.usesHttpsDeepLink, isFalse);
     });
@@ -112,7 +116,7 @@ void main() {
       );
       expect(outcome, BrokerOpenOutcome.launchedApp);
       expect(fake.openCalls.single.toString(),
-          'https://stockbit.com/symbol/BBCA?source=deeplink');
+          'https://stockbit.com/symbol/BBCA');
       // No custom-scheme install probe for HTTPS App Link brokers.
       expect(fake.canOpenCalls, isEmpty);
       expect(events, ['broker_open_confirmed']);
