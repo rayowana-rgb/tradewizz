@@ -1097,11 +1097,24 @@ class AnalysisEngine:
         limit = max(1, min(int(limit), MAX_LIMIT))
         wanted = set(categories or [])
 
+        def _durable_value_traded(m: ScreenerMatch) -> float:
+            """Liquidity-floor anchor: a name's durable daily turnover.
+
+            Uses the 20-day average when available so a genuinely liquid name
+            isn't dropped from Explore on a single quiet session (the IDX
+            liquidity bug); a one-day pump can't sneak in either, because the
+            average barely moves. Falls back to today's turnover otherwise.
+            """
+            avg = getattr(m, "avg_value_traded_20d", None)
+            if avg is not None and avg > 0:
+                return max(avg, m.value_traded)
+            return m.value_traded
+
         matches = [
             m
             for m in result.matches
             if m.score >= min_score
-            and m.value_traded >= min_value_traded
+            and _durable_value_traded(m) >= min_value_traded
             and (not wanted or wanted.intersection(m.categories))
         ]
 

@@ -84,6 +84,44 @@ def test_one_day_spike_does_not_become_elite():
 
 
 # --------------------------------------------------------------------------- #
+# 3b. A durably-liquid name with ONE quiet session is not penalized (IDX bug). #
+# --------------------------------------------------------------------------- #
+def test_quiet_day_on_a_liquid_name_is_not_capped():
+    """Regression for the IDX liquidity-scoring bug.
+
+    A name that durably trades heavy turnover (high 20-day average) but has a
+    single thin session must keep its liquidity standing. Anchoring on
+    ``min(today, avg)`` used to cap such names (e.g. GOTO on a Rp2.5B day vs a
+    Rp19B average). The durable-average anchor fixes it.
+    """
+    n = 300
+    close = 100 + np.arange(n) * 1.0
+    # Heavy, consistent turnover -> durably liquid (well above every IDX cap).
+    vol = np.full(n, 50_000_000.0)
+    # Today is unusually quiet (1/40th of normal) but still a real session.
+    vol[-1] = 1_250_000.0
+    df = pd.DataFrame({"Open": close, "High": close + 1, "Low": close - 1,
+                       "Close": close, "Volume": vol})
+    ind = _ind(df)
+
+    today = ind.get("value_traded")
+    avg = ind.get("avg_value_traded_20d") or ind.get("avg_value_traded")
+    assert today < avg  # genuinely a lull, not a pump
+
+    # The liquidity cap must NOT fire: the durable average is far above the
+    # top IDX tier, so an 80 BUY stays an 80 BUY.
+    capped, signal, illiquid, reason = scoring.apply_liquidity_cap(
+        80.0, "BUY", ind, Market.IDX
+    )
+    assert reason is None
+    assert capped == 80.0
+    assert signal == "BUY"
+    assert not illiquid
+    # Participation stays strong despite the quiet day.
+    assert scoring.participation_score(ind, Market.IDX) >= 75.0
+
+
+# --------------------------------------------------------------------------- #
 # 4. Strong, consistent value traded improves ranking vs the thin name.        #
 # --------------------------------------------------------------------------- #
 def test_strong_value_traded_improves_ranking():

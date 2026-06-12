@@ -528,6 +528,16 @@ def participation_score(ind: dict, market: Optional[Market]) -> float:
     today_pts = _value_tier_points(vt_today, tiers)
     avg_pts = _value_tier_points(avt_20d, tiers)
 
+    # Durable-liquidity anchor: the 20-day average is the truth about how liquid
+    # the name is. Today's turnover can only *add* to it (a strong session
+    # earns extra credit); a single quiet session must NOT drag a durably
+    # liquid name down (this was the IDX liquidity-scoring bug). When there's
+    # no average yet (data-light), fall back to today's band.
+    if avt_20d is not None and avt_20d > 0:
+        liq_pts = max(avg_pts, 0.5 * (today_pts + avg_pts))
+    else:
+        liq_pts = today_pts
+
     # Volume presence: today's volume relative to its 20-day average. A name
     # trading near/above its average volume earns the full volume slice.
     vol_ratio = ind.get("volume_ratio_20d")
@@ -542,8 +552,7 @@ def participation_score(ind: dict, market: Optional[Market]) -> float:
     avgvol_pts = 100.0 if (avg_vol is not None and avg_vol > 0) else 0.0
 
     score = (
-        0.40 * today_pts
-        + 0.40 * avg_pts
+        0.80 * liq_pts
         + 0.10 * vol_pts
         + 0.10 * avgvol_pts
     )
@@ -746,13 +755,21 @@ def signal_for_score(score: float) -> str:
 # Phase F: liquidity cap (applied AFTER the final calibrated/ML score).         #
 # --------------------------------------------------------------------------- #
 def _value_traded(ind: dict) -> Optional[float]:
-    """Liquidity-cap anchor: the STRICTER of today vs 20-day-avg value traded.
+    """Liquidity-cap anchor: a name's *durable* daily value traded.
 
-    Phase 11B (Phase E): ``liquidity_metric = min(value_traded_today,
-    avg_value_traded_20d)`` so a single-day pump can never bypass the cap by
-    lifting today's turnover while the durable 20-day average stays low. When
-    only one of the two is available it is used directly; when neither is
-    available the name is treated as fully illiquid (None -> cap).
+    Anchors on the **20-day average** turnover, which captures how liquid the
+    name really is and resists single-day noise in BOTH directions:
+
+    * A single-day *pump* lifts today's turnover but barely moves the 20-day
+      average, so it can't bypass the cap (the original Phase 11B concern).
+    * A single-day *lull* (a genuinely liquid name having one thin session)
+      no longer drags the anchor down to that quiet day. This was the IDX bug:
+      a name like GOTO (≈Rp19B/day average) was being capped on a Rp2.5B day
+      because the anchor used ``min(today, avg)``.
+
+    Falls back to today's turnover only when no 20-day average is available
+    (data-light rows). When neither is available the name is treated as fully
+    illiquid (None -> cap).
     """
     def _f(v) -> Optional[float]:
         try:
@@ -765,10 +782,11 @@ def _value_traded(ind: dict) -> Optional[float]:
     if avg is None:
         avg = _f(ind.get("avg_value_traded"))
 
-    candidates = [v for v in (today, avg) if v is not None]
-    if not candidates:
-        return None
-    return min(candidates)
+    # Prefer the durable 20-day average; fall back to today when it's the only
+    # turnover figure we have.
+    if avg is not None:
+        return avg
+    return today
 
 
 def liquidity_cap_for(
