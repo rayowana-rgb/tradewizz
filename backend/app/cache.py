@@ -353,6 +353,30 @@ class OhlcvCache:
         df = pd.read_csv(csv_path, index_col=0, parse_dates=True)
         if df.empty:
             raise ValueError("empty cached frame")
+        # Defense-in-depth against a poisoned cache file. A frame that ever got
+        # written from a multi-ticker yfinance response carries DUPLICATE field
+        # columns (e.g. several 'Close' columns) or has lost the canonical OHLCV
+        # names. Reading it back would let df['Close'] resolve to a 2-D slice
+        # and serve another symbol's price (the "prices change after a while"
+        # bug). Treat such a file as corrupt so the caller re-fetches cleanly.
+        needed = {"Open", "High", "Low", "Close", "Volume"}
+        # Known optional columns some providers add (kept; everything else is a
+        # red flag for a multi-ticker bleed).
+        allowed_extra = {"Adj Close", "Dividends", "Stock Splits", "Capital Gains"}
+        cols = [str(c) for c in df.columns]
+        # pandas renames literal duplicate headers on read (Close -> Close.1),
+        # so the multi-ticker bleed shows up as both a '.N' suffix AND as an
+        # unexpected column outside the OHLCV/allowed set.
+        if len(set(cols)) != len(cols):
+            raise ValueError(f"corrupt cached frame (duplicate columns): {cols}")
+        if not needed.issubset(set(cols)):
+            raise ValueError(f"corrupt cached frame (missing OHLCV): {cols}")
+        unexpected = set(cols) - needed - allowed_extra
+        if unexpected:
+            # e.g. {'Close.1'} from a flattened multi-ticker frame.
+            raise ValueError(
+                f"corrupt cached frame (unexpected columns {unexpected}): {cols}"
+            )
         return df
 
     def _write(self, csv_path: Path, meta_path: Path, df: pd.DataFrame,

@@ -194,3 +194,34 @@ def test_engine_dynamic_ttl_open_is_short_closed_is_long():
     # candle refreshes while a session is live.
     assert engine._CACHE_TTL_OPEN < engine._CACHE_TTL_CLOSED
     assert engine._CACHE_TTL_OPEN <= 600  # <= 10 min
+
+
+def test_corrupt_duplicate_column_cache_is_rejected_and_refetched(tmp_path):
+    # Regression: a poisoned cache file written from a multi-ticker yfinance
+    # response carries DUPLICATE 'Close' columns. Reading it back must be
+    # treated as a miss (not served), so the wrong price never leaks and the
+    # cache self-heals on the next request. This is the durable defense for the
+    # "screener prices drift back to wrong after a while" bug.
+    fetcher = CountingFetcher()
+    clock = FakeClock()
+    cache = OhlcvCache(fetcher, cache_dir=tmp_path, ttl_seconds=3600, clock=clock)
+
+    df1 = cache.get("BBCA.JK", "1y", "1d")
+    assert fetcher.calls == 1
+
+    # Overwrite the on-disk CSV with a corrupted multi-ticker frame whose
+    # header has LITERALLY duplicate 'Close' columns (exactly what a flattened
+    # multi-ticker yfinance frame writes to disk in production).
+    key = cache._key("BBCA.JK", "1y", "1d")
+    csv_path, _ = cache._paths(key)
+    csv_path.write_text(
+        "Date,Open,High,Low,Close,Close,Volume\n"
+        "2026-06-11,970,970,940,1010,5825,7660300\n"
+        "2026-06-12,1010,1020,970,1010,5925,5680900\n"
+    )
+
+    # The corrupt file must NOT be served; the cache re-fetches clean data.
+    df2 = cache.get("BBCA.JK", "1y", "1d")
+    assert fetcher.calls == 2  # corrupt entry rejected -> refetch
+    assert list(df2.columns).count("Close") == 1
+    assert df2["Close"].ndim == 1
