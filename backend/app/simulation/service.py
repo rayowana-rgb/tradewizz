@@ -227,6 +227,12 @@ class SimulationService:
         )
 
     def positions(self, user_id: int) -> List[SimulatedPosition]:
+        # Run the stale-account migration FIRST (it may clear positions) so every
+        # consumer of positions() -- AI Portfolio Manager, Rebalancing, Health --
+        # sees the same post-migration holdings as the Portfolio page. Without
+        # this, a stale pre-base-currency account would show phantom positions in
+        # those features even though portfolio() had already wiped them.
+        self._account(user_id)
         return [self._position_model(r) for r in self._store.list_positions(user_id)]
 
     def account(self, user_id: int) -> SimulatedAccount:

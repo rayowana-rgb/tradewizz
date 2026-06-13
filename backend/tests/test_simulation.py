@@ -264,6 +264,25 @@ def test_preview_rejects_insufficient_cash():
 # --------------------------------------------------------------------------- #
 # Reset                                                                       #
 # --------------------------------------------------------------------------- #
+def test_positions_consistent_with_portfolio_for_stale_account():
+    """A stale pre-base-currency account is migrated (positions wiped) the first
+    time it is read. positions() must apply the SAME migration as portfolio(),
+    so the AI Portfolio Manager / Rebalancing / Health never show phantom
+    holdings that the Portfolio page has already cleared.
+    """
+    svc = _make_service(initial_cash=DEFAULT_TEST_CASH)
+    store = svc._store
+    # Seed a stale account (non-base currency) with a leftover position, exactly
+    # like an account created before the base-currency fix.
+    store.get_or_create_account(UID, DEFAULT_TEST_CASH, "JPY")
+    store.upsert_position(UID, "AAPL", Market.US.value, 10, 100.0, 0.0)
+    assert store.list_positions(UID)  # raw store still holds the stale row
+
+    # Both consumers must agree: migration clears the stale holdings.
+    assert svc.positions(UID) == []
+    assert svc.portfolio(UID).positions == []
+
+
 def test_reset_clears_positions_trades_and_restores_cash():
     svc = _make_service(initial_cash=DEFAULT_TEST_CASH)
     svc.place(UID, "AAPL", Market.US, "BUY", 10, "LIMIT", 100.0)
