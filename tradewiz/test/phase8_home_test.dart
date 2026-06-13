@@ -210,4 +210,94 @@ void main() {
     // No CTA when there is no idea yet.
     expect(find.byKey(const Key('home_hero_cta')), findsNothing);
   });
+
+  testWidgets('Today\'s Ideas shows the best index (Global Rotation) ABOVE '
+      'the best stock', (tester) async {
+    final dash = _dashboard();
+    // Add Global Rotation data: US is the top-ranked market today.
+    dash['rotation'] = {
+      'generated_at': '2026-06-09T08:00:00Z',
+      'session_date': '2026-06-09',
+      'best_market': 'US',
+      'rotation_summary': 'US leads global rotation.',
+      'markets': [
+        {
+          'market': 'US',
+          'rotation_score': 88.0,
+          'rank': 1,
+          'regime': 'BULL',
+          'recommendation': 'OVERWEIGHT',
+        },
+        {
+          'market': 'IDX',
+          'rotation_score': 64.0,
+          'rank': 2,
+          'regime': 'NEUTRAL',
+          'recommendation': 'NEUTRAL',
+        },
+      ],
+    };
+
+    final cache = CacheService.inMemory();
+    await cache.write(SnapshotKeys.dashboard(Market.idx), dash,
+        ttl: SnapshotKeys.dashboardTtl);
+
+    final repo = StockRepository();
+    final snap = SnapshotRepository(repo, cache: cache);
+    final prefs = UserPrefsStore(
+      persistence: _MemPrefs(const UserPrefs(onboarded: true)),
+    );
+    await prefs.load();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AuthScope(
+            store: AuthStore(),
+            child: WatchlistScope(
+              store: WatchlistStore(),
+              child: UserPrefsScope(
+                store: prefs,
+                child: ActivationScope(
+                  metrics: ActivationMetrics(),
+                  child: RepositoryScope(
+                    repository: repo,
+                    snapshot: snap,
+                    child: const HomePage(market: Market.idx),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final list = find.byKey(const Key('home_list'));
+    final scrollable =
+        find.descendant(of: list, matching: find.byType(Scrollable));
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('home_best_index')),
+      300,
+      scrollable: scrollable,
+    );
+
+    // The best-index card exists and names the top-ranked market (US).
+    expect(find.byKey(const Key('home_best_index')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('home_best_index')),
+        matching: find.text('Best Index'),
+      ),
+      findsOneWidget,
+    );
+
+    // It sits ABOVE the first best-stock idea: index card's top < stock's top.
+    final indexTop =
+        tester.getTopLeft(find.byKey(const Key('home_best_index'))).dy;
+    final firstStockTop =
+        tester.getTopLeft(find.byKey(const Key('home_idea_BBCA'))).dy;
+    expect(indexTop, lessThan(firstStockTop));
+  });
 }

@@ -335,6 +335,24 @@ class GlobalRotation {
   final String rotationSummary;
   final List<MarketRotation> markets;
 
+  /// The single best market/index to be in right now. Prefers the entry whose
+  /// code matches [bestMarket]; otherwise falls back to rank 1, then to the
+  /// highest rotation score. Returns null when there is no rotation data.
+  MarketRotation? get bestEntry {
+    if (markets.isEmpty) return null;
+    if (bestMarket.isNotEmpty) {
+      for (final m in markets) {
+        if (m.market.code.toUpperCase() == bestMarket.toUpperCase()) return m;
+      }
+    }
+    final ranked = markets.where((m) => m.rank > 0).toList()
+      ..sort((a, b) => a.rank.compareTo(b.rank));
+    if (ranked.isNotEmpty) return ranked.first;
+    final byScore = [...markets]
+      ..sort((a, b) => b.rotationScore.compareTo(a.rotationScore));
+    return byScore.first;
+  }
+
   factory GlobalRotation.fromJson(Map<String, dynamic> j) {
     return GlobalRotation(
       generatedAt: (j['generated_at'] ?? '').toString(),

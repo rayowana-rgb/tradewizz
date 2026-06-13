@@ -8,6 +8,7 @@ import '../models/market.dart';
 import '../models/market_index.dart';
 import '../models/market_overview.dart';
 import '../models/phase2.dart';
+import '../models/phase3.dart';
 import '../models/simulation.dart';
 import '../models/user_profile_prefs.dart';
 import '../models/watchlist_item.dart';
@@ -18,6 +19,7 @@ import '../services/user_prefs_scope.dart';
 import '../services/watchlist_scope.dart';
 import '../snapshot/snapshot_models.dart';
 import '../snapshot/snapshot_repository.dart';
+import '../widgets/global_rotation.dart';
 import '../theme_tradewizz.dart';
 import '../widgets/ds/ds.dart';
 import 'account_page.dart';
@@ -202,7 +204,12 @@ class _HomePageState extends State<HomePage> {
             // and varies the rhythm before the ranked ideas list.
             _WatchlistStrip(market: widget.market),
             const SizedBox(height: TWSpace.lg),
-            _IdeasSection(ideas: ideas, onTap: _openIdea),
+            _IdeasSection(
+              ideas: ideas,
+              rotation: _dashboard?.rotation,
+              onTap: _openIdea,
+              onTapIndex: _openIndex,
+            ),
           ],
         ),
       ),
@@ -225,6 +232,20 @@ class _HomePageState extends State<HomePage> {
         symbol: idea.symbol,
         market: idea.market,
         repository: _repo,
+      ),
+    ));
+  }
+
+  // Tapping the best-index card opens the Global Rotation detail so the user
+  // can see why this market ranks first and how the others compare.
+  void _openIndex(MarketRotation entry) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => Theme(
+        data: buildTradeWizzTheme(),
+        child: GlobalRotationDetailPage(
+          repository: _repo,
+          data: _dashboard?.rotation,
+        ),
       ),
     ));
   }
@@ -1610,12 +1631,20 @@ class _WatchlistStrip extends StatelessWidget {
 // 5) Today's Ideas
 // =========================================================================
 class _IdeasSection extends StatelessWidget {
-  const _IdeasSection({required this.ideas, required this.onTap});
+  const _IdeasSection({
+    required this.ideas,
+    required this.onTap,
+    this.rotation,
+    this.onTapIndex,
+  });
   final TodaysIdeas ideas;
+  final GlobalRotation? rotation;
   final ValueChanged<TradeIdea> onTap;
+  final ValueChanged<MarketRotation>? onTapIndex;
 
   @override
   Widget build(BuildContext context) {
+    final bestIndex = rotation?.bestEntry;
     return Column(
       key: const Key('home_ideas'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1624,6 +1653,15 @@ class _IdeasSection extends StatelessWidget {
           padding: EdgeInsets.only(top: TWSpace.xs, bottom: TWSpace.md),
           child: TWSectionHeader(title: "Today's Ideas", eyebrow: 'Ranked'),
         ),
+        // Best index first (Global Rotation), then the best stocks: "where to
+        // be" before "what to buy".
+        if (bestIndex != null) ...[
+          _BestIndexCard(
+            entry: bestIndex,
+            onTap: onTapIndex == null ? null : () => onTapIndex!(bestIndex),
+          ),
+          const SizedBox(height: TWSpace.md),
+        ],
         if (ideas.isEmpty)
           TWEmptyState(
             title: 'No ideas yet',
@@ -1687,6 +1725,75 @@ class _Source extends StatelessWidget {
       child: Text(label,
           style: TWType.overline
               .copyWith(color: TWColors.accentBright, letterSpacing: 0.4)),
+    );
+  }
+}
+
+/// The best market/index to be in right now (Global Rotation), shown ABOVE the
+/// best-stock ideas: "where to be" before "what to buy". Tapping opens the full
+/// Global Rotation breakdown.
+class _BestIndexCard extends StatelessWidget {
+  const _BestIndexCard({required this.entry, this.onTap});
+  final MarketRotation entry;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final rec = entry.recommendation.toUpperCase();
+    final color = recColor(rec);
+    return TWFloatingCard(
+      key: const Key('home_best_index'),
+      onTap: onTap,
+      padding: const EdgeInsets.all(TWSpace.lg),
+      child: Row(
+        children: [
+          TWScoreRing(score: entry.rotationScore, size: 50, stroke: 4),
+          const SizedBox(width: TWSpace.lg),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        '${entry.market.flag} ${entry.market.name}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TWType.title3,
+                      ),
+                    ),
+                    const SizedBox(width: TWSpace.sm),
+                    const _Source(label: 'Best Index'),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'Top-ranked market in today\u2019s Global Rotation.',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TWType.caption
+                      .copyWith(color: TWColors.textTertiary),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: TWSpace.md),
+          Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: TWSpace.sm, vertical: 4),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.16),
+              borderRadius: TWRadius.rChip,
+            ),
+            child: Text(
+              rec.isEmpty ? 'NEUTRAL' : rec,
+              style: TWType.overline
+                  .copyWith(color: color, letterSpacing: 0.4),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
