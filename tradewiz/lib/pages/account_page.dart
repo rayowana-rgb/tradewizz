@@ -108,6 +108,10 @@ class _AccountPageState extends State<AccountPage> {
   // Portfolio Health (best-effort; never blocks the page).
   PortfolioHealth? _health;
   bool _healthLoading = false;
+  // Bumped on every successful portfolio (re)load so dependent cards that keep
+  // their own state (e.g. the AI Portfolio Manager) re-fetch and reflect the
+  // CURRENT holdings after a buy/sell/reset instead of stale analysis.
+  int _portfolioRev = 0;
 
   StockRepository get _repo =>
       widget.repository ?? RepositoryScope.of(context);
@@ -151,6 +155,7 @@ class _AccountPageState extends State<AccountPage> {
       setState(() {
         _portfolio = p;
         _trades = t;
+        _portfolioRev++;
       });
     } on ApiException {
       if (mounted) setState(() => _failed = true);
@@ -477,7 +482,8 @@ class _AccountPageState extends State<AccountPage> {
                     fontSize: 15,
                     color: TWColors.textPrimary)),
           ),
-          PortfolioManagerCard(repository: widget.repository),
+          PortfolioManagerCard(
+              repository: widget.repository, refreshToken: _portfolioRev),
           const SizedBox(height: 16),
 
           // --- Portfolio Rebalancing AI ---------------------------------

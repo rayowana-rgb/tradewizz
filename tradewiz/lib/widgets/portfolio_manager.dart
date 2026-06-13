@@ -13,9 +13,18 @@ import 'ds/ds.dart';
 /// portfolio (risk level, scores, and plain-language recommendations).
 /// Research/simulation only.
 class PortfolioManagerCard extends StatefulWidget {
-  const PortfolioManagerCard({super.key, this.repository});
+  const PortfolioManagerCard({
+    super.key,
+    this.repository,
+    this.refreshToken = 0,
+  });
 
   final StockRepository? repository;
+
+  /// Bump this from the parent whenever the underlying portfolio changes
+  /// (buy / sell / reset) so the manager re-fetches and reflects the CURRENT
+  /// holdings instead of a stale, first-load snapshot.
+  final int refreshToken;
 
   @override
   State<PortfolioManagerCard> createState() => _PortfolioManagerCardState();
@@ -39,6 +48,14 @@ class _PortfolioManagerCardState extends State<PortfolioManagerCard> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_loading && _report == null) _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant PortfolioManagerCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Holdings changed upstream -> re-fetch so the analysis matches what the
+    // user actually holds right now.
+    if (oldWidget.refreshToken != widget.refreshToken) _load();
   }
 
   Future<void> _load() async {

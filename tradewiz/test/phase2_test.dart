@@ -168,6 +168,7 @@ Map<String, dynamic> _notificationsBody({bool read = false}) => {
 StockRepository _repo({
   bool briefUnavailable = false,
   List<String>? markReadCalls,
+  List<String>? pmCalls,
 }) {
   final fake = MockClient((req) async {
     final path = req.url.path;
@@ -180,6 +181,7 @@ StockRepository _repo({
       }
       body = _briefBody();
     } else if (path.endsWith('/portfolio/manager')) {
+      pmCalls?.add('manager');
       body = _managerBody();
     } else if (path.endsWith('/journal/stats')) {
       body = _journalStatsBody();
@@ -280,6 +282,34 @@ void main() {
         findsOneWidget);
     expect(find.byKey(const Key('pm_rec_concentration')), findsOneWidget);
     expect(find.byKey(const Key('pm_rec_cash_allocation')), findsOneWidget);
+  });
+
+  testWidgets('Portfolio Manager re-fetches when refreshToken changes',
+      (tester) async {
+    final calls = <String>[];
+    final repo = _repo(pmCalls: calls);
+    var token = 0;
+    late StateSetter setOuter;
+
+    await tester.pumpWidget(_wrap(
+      StatefulBuilder(builder: (context, setState) {
+        setOuter = setState;
+        return PortfolioManagerCard(refreshToken: token);
+      }),
+      repo,
+    ));
+    await tester.pumpAndSettle();
+    expect(calls.length, 1); // initial load
+
+    // Simulate a buy/sell upstream: parent bumps the refresh token.
+    setOuter(() => token = 1);
+    await tester.pumpAndSettle();
+    expect(calls.length, 2); // re-fetched to reflect current holdings
+
+    // Same token -> no extra fetch.
+    setOuter(() {});
+    await tester.pumpAndSettle();
+    expect(calls.length, 2);
   });
 
   // === Portfolio Journal ===================================================
