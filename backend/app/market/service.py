@@ -35,6 +35,7 @@ from ..engine import (
     _impersonating_session,
     _is_market_open,
     _market_now,
+    _with_yf_retry,
 )
 from ..models import Market
 
@@ -68,9 +69,16 @@ def _index_fetch(
     session = _impersonating_session()
     if session is not None:
         kwargs["session"] = session
-    df = yf.download(ticker, **kwargs)
-    if df is None or df.empty:
-        raise ValueError(f"No data for {ticker}")
+
+    def _download() -> pd.DataFrame:
+        df = yf.download(ticker, **kwargs)
+        if df is None or df.empty:
+            raise ValueError(f"No data for {ticker}")
+        return df
+
+    # Same anti-429 retry/backoff as the screener fetch so a throttled index
+    # request is recovered instead of falling back to a stale daily candle.
+    df = _with_yf_retry(_download, label=ticker)
     # yfinance may return a column MultiIndex for a single ticker; flatten it
     # robustly (the level that contains 'Close' is the field level, regardless
     # of (field,ticker) vs (ticker,field) order) and drop duplicate columns.

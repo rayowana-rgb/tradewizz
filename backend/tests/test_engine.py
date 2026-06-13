@@ -398,3 +398,127 @@ def test_screen_failed_symbol_keeps_universe_name(tmp_path):
     res = eng.screen(Market.IDX)
     assert res.matches[0].symbol == "BBCA"
     assert res.matches[0].name == "Bank Central Asia"  # name preserved
+
+
+# --- Anti-rate-limit (429) retry/backoff -----------------------------------
+
+class _Fake429(Exception):
+    """Mimics a yfinance rate-limit error (class-name sniffed by classifier)."""
+    def __init__(self, msg="Too Many Requests", status=429, retry_after=None):
+        super().__init__(msg)
+        class _Resp:
+            pass
+        resp = _Resp()
+        resp.status_code = status
+        resp.headers = {"Retry-After": str(retry_after)} if retry_after else {}
+        self.response = resp
+
+
+class _RateLimitError(Exception):
+    """Name contains 'ratelimit' so _is_rate_limited keys off the class name."""
+
+
+def test_is_rate_limited_classifies_429_shapes():
+    from app.engine import _is_rate_limited
+    assert _is_rate_limited(_Fake429()) is True
+    assert _is_rate_limited(_RateLimitError("nope")) is True
+    assert _is_rate_limited(Exception("HTTP 429 Too Many Requests")) is True
+    assert _is_rate_limited(ValueError("delisted; no data")) is False
+
+
+def _good_frame():
+    idx = pd.date_range("2026-06-10", periods=3, freq="D")
+    cols = pd.MultiIndex.from_tuples(
+        [(f, "BBCA.JK") for f in ("Open", "High", "Low", "Close", "Volume")],
+        names=["Price", "Ticker"],
+    )
+    return pd.DataFrame(
+        [[10, 11, 9, 10, 1e6]] * 3, index=idx, columns=cols
+    )
+
+
+def test_yf_fetch_retries_on_429_then_succeeds(monkeypatch):
+    """A symbol that 429s once must be RECOVERED, not dropped to mock."""
+    import app.engine as engine_mod
+
+    monkeypatch.setattr(engine_mod.time, "sleep", lambda *_a, **_k: None)
+    monkeypatch.setattr(engine_mod.random, "uniform", lambda *_a, **_k: 0.0)
+
+    calls = {"n": 0}
+
+    def flaky(ticker, period, interval):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise _Fake429()
+        return _good_frame()
+
+    monkeypatch.setattr(engine_mod, "_yf_download", flaky)
+    df = _yf_fetch("BBCA.JK", "1mo", "1d")
+    assert calls["n"] == 2  # one 429, one success
+    assert float(df["Close"].iloc[-1]) == 10.0
+
+
+def test_yf_fetch_does_not_retry_non_429(monkeypatch):
+    """Non-rate-limit errors (e.g. delisted) must fail fast, no retry storm."""
+    import app.engine as engine_mod
+
+    monkeypatch.setattr(engine_mod.time, "sleep", lambda *_a, **_k: None)
+    monkeypatch.setattr(engine_mod.random, "uniform", lambda *_a, **_k: 0.0)
+
+    calls = {"n": 0}
+
+    def fails(ticker, period, interval):
+        calls["n"] += 1
+        raise ValueError("possibly delisted; no price data")
+
+    monkeypatch.setattr(engine_mod, "_yf_download", fails)
+    with pytest.raises(ValueError):
+        _yf_fetch("DEAD.JK", "1mo", "1d")
+    assert calls["n"] == 1  # exactly one attempt, no retries
+
+
+def test_yf_fetch_gives_up_after_max_retries(monkeypatch):
+    """Persistent 429 raises after exhausting retries (caller falls back)."""
+    import app.engine as engine_mod
+
+    monkeypatch.setattr(engine_mod.time, "sleep", lambda *_a, **_k: None)
+    monkeypatch.setattr(engine_mod.random, "uniform", lambda *_a, **_k: 0.0)
+    monkeypatch.setattr(engine_mod, "_YF_MAX_RETRIES", 2)
+
+    calls = {"n": 0}
+
+    def always429(ticker, period, interval):
+        calls["n"] += 1
+        raise _Fake429()
+
+    monkeypatch.setattr(engine_mod, "_yf_download", always429)
+    with pytest.raises(_Fake429):
+        _yf_fetch("BBCA.JK", "1mo", "1d")
+    assert calls["n"] == 3  # initial + 2 retries
+
+
+def test_yf_fetch_honors_retry_after_header(monkeypatch):
+    """A Retry-After header bounds the backoff delay we actually sleep."""
+    import app.engine as engine_mod
+
+    slept = []
+    monkeypatch.setattr(engine_mod.time, "sleep", lambda s: slept.append(s))
+    monkeypatch.setattr(engine_mod.random, "uniform", lambda *_a, **_k: 0.0)
+    monkeypatch.setattr(engine_mod, "_YF_MAX_RETRIES", 1)
+    monkeypatch.setattr(engine_mod, "_YF_BACKOFF_BASE", 0.5)
+    monkeypatch.setattr(engine_mod, "_YF_BACKOFF_MAX", 8.0)
+
+    calls = {"n": 0}
+
+    def once(ticker, period, interval):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise _Fake429(retry_after=3)
+        return _good_frame()
+
+    monkeypatch.setattr(engine_mod, "_yf_download", once)
+    _yf_fetch("BBCA.JK", "1mo", "1d")
+    # The single backoff sleep should be >= the Retry-After (3s), not the
+    # smaller exponential base (0.5s).
+    backoffs = [s for s in slept if s >= 3]
+    assert backoffs, f"expected a >=3s backoff, got {slept}"

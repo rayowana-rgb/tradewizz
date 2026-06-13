@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import logging
 import os
+import random
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Callable, List, Optional
@@ -57,7 +59,26 @@ def default_min_value_traded(market: Market) -> float:
     return DEFAULT_MIN_VALUE_TRADED_IDR / _idr_per_unit(market)
 
 # Max concurrent per-symbol fetches during /screen (override via env).
-_SCREEN_WORKERS = int(os.environ.get("TRADEWIZ_SCREEN_WORKERS", "8"))
+#
+# Lowered from 8 -> 4. Eight workers with no pacing fired hundreds of Yahoo
+# requests within seconds during a snapshot rebuild and tripped Yahoo's per-IP
+# 429 throttle, so a chunk of the universe failed every rebuild and total_count
+# shrank (e.g. 288 -> 113). Since the market-close snapshot is now built only
+# ONCE per trading day, a slightly slower-but-complete rebuild is the right
+# trade-off. Tune via TRADEWIZ_SCREEN_WORKERS.
+_SCREEN_WORKERS = int(os.environ.get("TRADEWIZ_SCREEN_WORKERS", "4"))
+
+# --- Anti-rate-limit (HTTP 429) controls for yfinance fetches. ---
+# Retries on a 429 / transient fetch failure, with exponential backoff +
+# jitter (and honoring a Retry-After header when Yahoo sends one). A symbol
+# that merely got throttled is recovered instead of being dropped to mock.
+_YF_MAX_RETRIES = int(os.environ.get("TRADEWIZ_YF_MAX_RETRIES", "3"))
+# Base backoff seconds; delay = base * 2**attempt, capped, plus jitter.
+_YF_BACKOFF_BASE = float(os.environ.get("TRADEWIZ_YF_BACKOFF_BASE", "0.75"))
+_YF_BACKOFF_MAX = float(os.environ.get("TRADEWIZ_YF_BACKOFF_MAX", "8.0"))
+# Small random pre-request pause (seconds, 0..N) spreads concurrent worker
+# bursts so they don't hit Yahoo in lockstep. Set 0 to disable.
+_YF_JITTER_MAX = float(os.environ.get("TRADEWIZ_YF_JITTER_MAX", "0.35"))
 
 # Phase 3: blend the optional RandomForest win-probability into the headline
 # score (final = 0.7*technical + 0.3*100*win_prob). OFF by default because a
@@ -273,7 +294,41 @@ def _impersonating_session():
         return None
 
 
-def _yf_fetch(ticker: str, period: str = "1y", interval: str = "1d") -> pd.DataFrame:
+def _is_rate_limited(exc: BaseException) -> bool:
+    """True if an exception looks like a Yahoo rate-limit / transient throttle.
+
+    yfinance surfaces 429s in different shapes across versions (a custom
+    ``YFRateLimitError``, an HTTPError with status 429, or just a message), so
+    we sniff both the class name and the text rather than importing a specific
+    exception type.
+    """
+    name = type(exc).__name__.lower()
+    if "ratelimit" in name or "toomanyrequests" in name:
+        return True
+    status = getattr(getattr(exc, "response", None), "status_code", None)
+    if status == 429:
+        return True
+    text = str(exc).lower()
+    return ("429" in text) or ("too many requests" in text) or ("rate limit" in text)
+
+
+def _retry_after_seconds(exc: BaseException) -> Optional[float]:
+    """Honor a server ``Retry-After`` header (seconds) when present."""
+    resp = getattr(exc, "response", None)
+    headers = getattr(resp, "headers", None)
+    if not headers:
+        return None
+    try:
+        raw = headers.get("Retry-After")
+        if raw is None:
+            return None
+        return float(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _yf_download(ticker: str, period: str, interval: str) -> pd.DataFrame:
+    """Single raw yfinance download (no retry). Raises on empty/failure."""
     import yfinance as yf
 
     kwargs = dict(
@@ -290,6 +345,49 @@ def _yf_fetch(ticker: str, period: str = "1y", interval: str = "1d") -> pd.DataF
     df = yf.download(ticker, **kwargs)
     if df is None or df.empty:
         raise ValueError(f"No data for {ticker}")
+    return df
+
+
+def _with_yf_retry(fetch_one, *, label: str):
+    """Run ``fetch_one()`` with jitter + retry/backoff on Yahoo rate limits.
+
+    Shared by the screener's strict OHLCV fetch and the market-index fetch so
+    both recover from a transient 429 instead of dropping the symbol. A small
+    pre-request jitter spreads concurrent worker bursts; on a 429 we back off
+    exponentially (with jitter, honoring ``Retry-After``) and retry. Non-429
+    errors (e.g. delisted) are NOT retried and propagate immediately to the
+    caller's fallback.
+    """
+    if _YF_JITTER_MAX > 0:
+        time.sleep(random.uniform(0, _YF_JITTER_MAX))
+
+    last_exc: Optional[BaseException] = None
+    for attempt in range(_YF_MAX_RETRIES + 1):
+        try:
+            return fetch_one()
+        except Exception as exc:  # noqa: BLE001 - classify then maybe retry
+            last_exc = exc
+            if attempt >= _YF_MAX_RETRIES or not _is_rate_limited(exc):
+                raise
+            delay = min(_YF_BACKOFF_BASE * (2 ** attempt), _YF_BACKOFF_MAX)
+            retry_after = _retry_after_seconds(exc)
+            if retry_after is not None:
+                delay = max(delay, min(retry_after, _YF_BACKOFF_MAX))
+            delay += random.uniform(0, _YF_BACKOFF_BASE)
+            logger.info(
+                "yfinance 429/throttle for %s (attempt %d/%d); backing off %.2fs",
+                label, attempt + 1, _YF_MAX_RETRIES, delay,
+            )
+            time.sleep(delay)
+    # pragma: no cover - loop always returns or raises
+    raise last_exc if last_exc else ValueError(f"No data for {label}")
+
+
+def _yf_fetch(ticker: str, period: str = "1y", interval: str = "1d") -> pd.DataFrame:
+    df = _with_yf_retry(
+        lambda: _yf_download(ticker, period, interval), label=ticker
+    )
+
     needed = {"Open", "High", "Low", "Close", "Volume"}
     # yfinance returns a column MultiIndex even for a single ticker. The level
     # order varies by version: it can be (field, ticker) OR (ticker, field).
