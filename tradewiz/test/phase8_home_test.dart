@@ -115,8 +115,33 @@ void main() {
     // Greeting includes the user's name (time-of-day prefix varies).
     expect(find.textContaining('Bayu'), findsWidgets);
     expect(find.text("Today's Best Idea"), findsOneWidget);
-    expect(find.text('BBCA'), findsWidgets);
+    // Best idea now shows the FULL company name (truncated only when it does
+    // not fit), with the ticker as a subtitle.
+    expect(find.byKey(const Key('home_hero_name')), findsOneWidget);
+    expect(
+      tester
+          .widget<Text>(find.byKey(const Key('home_hero_name')))
+          .data,
+      'Bank Central Asia',
+    );
+    expect(find.text('BBCA'), findsWidgets); // ticker subtitle
     expect(find.text('92'), findsWidgets); // confidence
+    // The old "Score N" pill was removed from the HERO; only Confidence
+    // remains there. (Other surfaces like Today's Ideas may still show a score.)
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('home_hero')),
+        matching: find.textContaining('Score '),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('home_hero')),
+        matching: find.text('Confidence'),
+      ),
+      findsOneWidget,
+    );
     expect(
         find.text('Strong momentum and accumulation detected.'), findsWidgets);
     expect(find.byKey(const Key('home_hero_cta')), findsOneWidget);

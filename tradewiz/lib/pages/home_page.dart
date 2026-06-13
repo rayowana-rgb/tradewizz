@@ -290,6 +290,7 @@ class _HeroCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final symbol = idea?.symbol ?? fallback?.symbol;
+    final name = idea?.name ?? fallback?.name ?? '';
     final signal = idea?.signal ?? fallback?.signal ?? 'WATCH';
     final score = idea?.score ?? fallback?.score ?? 0;
     final reason = idea?.reason ??
@@ -338,49 +339,65 @@ class _HeroCard extends StatelessWidget {
                   ],
                 ),
               ),
-              if (hasIdea) _Confidence(score: score),
             ],
           ),
           if (hasIdea) ...[
+            // Non-null ticker inside the hasIdea branch (hasIdea => symbol!=null).
             const SizedBox(height: TWSpace.lg),
-            // Identity line: ticker + signal chip + compact score pill.
+            // Identity line: full company name (truncated with "..." only when
+            // it does not fit) + signal chip. Ticker shown as a subtitle.
+            // The Score pill was removed; confidence lives on the tags row.
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Flexible(
-                  child: Text(symbol,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TWType.title1.copyWith(
-                          fontWeight: FontWeight.w800, fontSize: 28)),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name.isNotEmpty ? name : symbol,
+                        key: const Key('home_hero_name'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TWType.title1.copyWith(
+                            fontWeight: FontWeight.w800, fontSize: 26),
+                      ),
+                      if (name.isNotEmpty)
+                        Text(symbol,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TWType.label.copyWith(
+                                color: TWColors.textSecondary,
+                                fontWeight: FontWeight.w700)),
+                    ],
+                  ),
                 ),
                 const SizedBox(width: TWSpace.md),
                 TWSignalPill(signal: signal),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: TWSpace.sm, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: TWColors.bgElevated,
-                    borderRadius: TWRadius.rChip,
-                    border:
-                        Border.all(color: TWColors.hairlineTop, width: 1),
-                  ),
-                  child: Text('Score ${score.toStringAsFixed(0)}',
-                      style: TWType.tabular(TWType.label)
-                          .copyWith(color: TWColors.textSecondary)),
-                ),
               ],
             ),
-            if (tags.isNotEmpty) ...[
-              const SizedBox(height: TWSpace.md),
-              Wrap(
-                key: const Key('home_hero_tags'),
-                spacing: TWSpace.sm,
-                runSpacing: TWSpace.sm,
-                children: [for (final t in tags) TWTagChip(label: t)],
-              ),
-            ],
+            const SizedBox(height: TWSpace.md),
+            // Tags row (Momentum / Strong Liquidity / ...) with the Confidence
+            // indicator moved here from the top-right of the card.
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: tags.isNotEmpty
+                      ? Wrap(
+                          key: const Key('home_hero_tags'),
+                          spacing: TWSpace.sm,
+                          runSpacing: TWSpace.sm,
+                          children: [
+                            for (final t in tags) TWTagChip(label: t)
+                          ],
+                        )
+                      : const SizedBox.shrink(),
+                ),
+                const SizedBox(width: TWSpace.md),
+                _Confidence(score: score),
+              ],
+            ),
             const SizedBox(height: TWSpace.md),
             Text(reason,
                 key: const Key('home_hero_reason'),
