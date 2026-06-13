@@ -274,6 +274,15 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // The Morning Brief ("Good Morning") also leads with a Best Index column.
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('home_brief')),
+        matching: find.text('BEST INDEX'),
+      ),
+      findsOneWidget,
+    );
+
     final list = find.byKey(const Key('home_list'));
     final scrollable =
         find.descendant(of: list, matching: find.byType(Scrollable));

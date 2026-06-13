@@ -192,7 +192,7 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: TWSpace.lg),
             // Morning Brief — inline section (no card) below Market Pulse.
-            _BriefCard(brief: brief),
+            _BriefCard(brief: brief, rotation: _dashboard?.rotation),
             const SizedBox(height: TWSpace.md),
             _PortfolioCard(
               account: _account,
@@ -512,9 +512,10 @@ class _Confidence extends StatelessWidget {
 // 2a) Morning Brief — inline section (no card) shown below Market Pulse.
 // =========================================================================
 class _BriefCard extends StatelessWidget {
-  const _BriefCard({required this.brief});
+  const _BriefCard({required this.brief, this.rotation});
 
   final MorningBrief? brief;
+  final GlobalRotation? rotation;
 
   @override
   Widget build(BuildContext context) {
@@ -584,6 +585,21 @@ class _BriefCard extends StatelessWidget {
     final b = brief;
     if (b == null) return const [];
     final out = <_BriefInsight>[];
+
+    // 0) Best Index — the top market to be in today (Global Rotation). Shown
+    // FIRST so "where to be" leads the brief, mirroring Today's Ideas.
+    final best = rotation?.bestEntry;
+    if (best != null) {
+      out.add(_BriefInsight(
+        title: 'Best Index',
+        ticker: '${best.market.flag} ${best.market.name}',
+        body: best.recommendation.isNotEmpty
+            ? '${best.recommendation[0].toUpperCase()}'
+                '${best.recommendation.substring(1).toLowerCase()} today'
+            : 'Top-ranked market today',
+        tickerStyle: _TickerStyle.heroSector,
+      ));
+    }
 
     // 1) Market Outlook — headline + "Top opportunity: TICKER (Score N)".
     final o = b.topOpportunity;
