@@ -62,6 +62,16 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
   SimOrderPreview? _preview;
   SimOrderResult? _result;
 
+  /// Whether this ticket is selling a known holding (we then know the max and
+  /// can show the holdings summary + a drag-to-set-amount slider).
+  bool get _isSellWithHolding =>
+      widget.side == OrderSide.sell &&
+      (widget.maxQuantity ?? 0) > 0;
+
+  /// Shares per lot for the market. IDX trades in lots of 100 shares; the other
+  /// supported markets are effectively 1 share per "lot" for our purposes.
+  int get _sharesPerLot => widget.market.code == 'IDX' ? 100 : 1;
+
   @override
   void initState() {
     super.initState();
@@ -69,6 +79,28 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
     if (initial != null && initial > 0) {
       _qtyController.text = initial.toStringAsFixed(0);
     }
+  }
+
+  /// Current quantity parsed from the text field (0 when empty/invalid).
+  double get _currentQty {
+    final q = double.tryParse(_qtyController.text.trim());
+    return (q == null || q < 0) ? 0 : q;
+  }
+
+  /// Set the quantity from the slider / quick-pick chips. Snaps to whole lots
+  /// for IDX and clamps to the holding, keeping the text field in sync.
+  void _setQty(double value) {
+    final max = widget.maxQuantity ?? value;
+    var q = value.clamp(0, max).toDouble();
+    final lot = _sharesPerLot;
+    if (lot > 1) {
+      // Snap to a whole number of lots, but never exceed what is held.
+      q = (q / lot).round() * lot.toDouble();
+      if (q > max) q = (max / lot).floor() * lot.toDouble();
+    } else {
+      q = q.roundToDouble();
+    }
+    setState(() => _qtyController.text = q.toStringAsFixed(0));
   }
 
   @override
@@ -240,14 +272,24 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
                     const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
               ),
               const SizedBox(height: 16),
+              if (_isSellWithHolding) ...[
+                _holdingSummary(),
+                const SizedBox(height: 12),
+                _quantitySlider(sideColor),
+                const SizedBox(height: 12),
+              ],
               TextFormField(
                 key: const Key('qty_field'),
                 controller: _qtyController,
                 keyboardType: TextInputType.number,
+                // Keep the slider / chips in sync while the user types.
+                onChanged: (_) => setState(() {}),
                 decoration: InputDecoration(
-                  labelText: 'Quantity',
+                  labelText: _sharesPerLot > 1
+                      ? 'Quantity (shares)'
+                      : 'Quantity',
                   helperText: widget.maxQuantity != null
-                      ? 'You hold ${widget.maxQuantity!.toStringAsFixed(0)} '
+                      ? 'You hold ${_sharesLotsLabel(widget.maxQuantity!)} '
                           '(simulated)'
                       : null,
                   border: const OutlineInputBorder(),
@@ -320,6 +362,114 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
           ),
         ),
       ),
+    );
+  }
+
+  /// "1,200 shares (12 lots)" for IDX, or just "10 shares" elsewhere.
+  String _sharesLotsLabel(double shares) {
+    final s = shares.toStringAsFixed(0);
+    if (_sharesPerLot > 1) {
+      final lots = (shares / _sharesPerLot).floor();
+      return '$s shares ($lots lot${lots == 1 ? '' : 's'})';
+    }
+    return '$s share${shares == 1 ? '' : 's'}';
+  }
+
+  /// Big readout of what is currently held, so the user sees their position
+  /// before deciding how much to sell.
+  Widget _holdingSummary() {
+    final max = widget.maxQuantity!;
+    return Container(
+      key: const Key('sell_holding_summary'),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.down.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.down.withValues(alpha: 0.25)),
+      ),
+      child: Row(children: [
+        const Icon(Icons.account_balance_wallet_outlined,
+            size: 18, color: AppColors.down),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('You currently hold',
+                  style: TextStyle(color: Colors.grey, fontSize: 12)),
+              const SizedBox(height: 2),
+              Text(
+                _sharesLotsLabel(max),
+                style: const TextStyle(
+                    fontWeight: FontWeight.w800, fontSize: 16),
+              ),
+            ],
+          ),
+        ),
+      ]),
+    );
+  }
+
+  /// Drag-from-left-to-right slider (plus quick-pick chips) to choose how many
+  /// shares/lots to sell, from 0 up to the full holding.
+  Widget _quantitySlider(Color sideColor) {
+    final max = widget.maxQuantity!;
+    final qty = _currentQty.clamp(0, max).toDouble();
+    final lot = _sharesPerLot;
+    // Slider divisions snap to whole lots (or whole shares when lot == 1).
+    final steps = lot > 1 ? (max / lot).floor() : max.floor();
+    final divisions = steps > 0 ? steps : null;
+
+    Widget chip(String label, double value) => Padding(
+          padding: const EdgeInsets.only(right: 8),
+          child: ActionChip(
+            label: Text(label),
+            visualDensity: VisualDensity.compact,
+            onPressed: () => _setQty(value),
+          ),
+        );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          const Text('Amount to sell',
+              style: TextStyle(color: Colors.grey, fontSize: 12)),
+          const Spacer(),
+          Text(
+            _sharesLotsLabel(qty),
+            key: const Key('sell_slider_value'),
+            style:
+                const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+          ),
+        ]),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            activeTrackColor: sideColor,
+            thumbColor: sideColor,
+            overlayColor: sideColor.withValues(alpha: 0.15),
+          ),
+          child: Slider(
+            key: const Key('sell_qty_slider'),
+            value: qty,
+            min: 0,
+            max: max,
+            divisions: divisions,
+            label: _sharesLotsLabel(qty),
+            onChanged: (v) => _setQty(v),
+          ),
+        ),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [
+            chip('25%', max * 0.25),
+            chip('50%', max * 0.5),
+            chip('75%', max * 0.75),
+            chip('Max', max),
+          ]),
+        ),
+      ],
     );
   }
 

@@ -240,4 +240,58 @@ void main() {
 
     expect(find.text(msg), findsOneWidget);
   });
+
+  testWidgets(
+      'Sell ticket shows holdings + slider; dragging/chips set the quantity',
+      (tester) async {
+    final sim = _FakeSim();
+    // IDX: 1,200 shares held == 12 lots of 100.
+    await tester.pumpWidget(_wrap(OrderTicketPage(
+      symbol: 'BBCA',
+      market: Market.idx,
+      side: OrderSide.sell,
+      initialQuantity: 1200,
+      maxQuantity: 1200,
+      repository: _repo(sim),
+    )));
+    await tester.pumpAndSettle();
+
+    // Holdings summary is shown in shares + lots.
+    expect(find.byKey(const Key('sell_holding_summary')), findsOneWidget);
+    expect(find.text('1200 shares (12 lots)'), findsWidgets);
+
+    // The slider exists and the qty field was prefilled to the full holding.
+    expect(find.byKey(const Key('sell_qty_slider')), findsOneWidget);
+    String qtyText() => tester
+        .widget<EditableText>(
+          find.descendant(
+            of: find.byKey(const Key('qty_field')),
+            matching: find.byType(EditableText),
+          ),
+        )
+        .controller
+        .text;
+    expect(qtyText(), '1200');
+
+    // Quick-pick 50% -> 600 shares (6 lots), snapped to whole lots.
+    await tester.tap(find.text('50%'));
+    await tester.pumpAndSettle();
+    expect(qtyText(), '600');
+    expect(find.byKey(const Key('sell_slider_value')), findsOneWidget);
+    expect(find.text('600 shares (6 lots)'), findsWidgets);
+  });
+
+  testWidgets('Buy ticket does NOT show the sell slider / holdings summary',
+      (tester) async {
+    final sim = _FakeSim();
+    await tester.pumpWidget(_wrap(OrderTicketPage(
+      symbol: 'AAPL',
+      market: Market.us,
+      side: OrderSide.buy,
+      repository: _repo(sim),
+    )));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('sell_qty_slider')), findsNothing);
+    expect(find.byKey(const Key('sell_holding_summary')), findsNothing);
+  });
 }
