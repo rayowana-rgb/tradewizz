@@ -28,6 +28,7 @@ class PortfolioInsightFeature {
   static const health = 'health';
   static const manager = 'manager';
   static const rebalance = 'rebalance';
+  static const journal = 'journal';
 }
 
 /// SharedPreferences-backed implementation.

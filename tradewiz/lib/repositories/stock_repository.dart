@@ -472,6 +472,22 @@ class StockRepository {
     return JournalStats.fromJson(j);
   }
 
+  /// Raw journal bundle (entries + stats) for the stale-while-revalidate cache.
+  /// Returns `{ 'entries': [...], 'stats': {...} }` — the same shapes
+  /// `JournalEntry.fromJson` / `JournalStats.fromJson` already consume.
+  Future<Map<String, dynamic>> rawJournalBundle(String token) async {
+    final results = await Future.wait([
+      _client.authGet('/journal', bearer: token),
+      _client.authGet('/journal/stats', bearer: token),
+    ]);
+    final journal = results[0];
+    final stats = results[1];
+    return {
+      'entries': journal['entries'] as List<dynamic>? ?? const [],
+      'stats': stats,
+    };
+  }
+
   // --- Phase 2: In-app Notifications ---------------------------------------
 
   /// List in-app notifications + unread count. Backs `GET /v1/notifications`.

@@ -1,9 +1,12 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 
 import '../models/phase2.dart';
 import '../repositories/stock_repository.dart';
 import '../services/api_client.dart';
 import '../services/auth_scope.dart';
+import '../services/portfolio_health_cache.dart';
 import '../services/repository_scope.dart';
 import '../theme.dart';
 import '../theme_tradewizz.dart';
@@ -15,9 +18,13 @@ import 'ai_analysis_page.dart';
 /// snapshot (score / signal / radar rank / portfolio health) at purchase, plus
 /// aggregate stats. Also hosts the AI Portfolio Manager card. Simulation only.
 class JournalPage extends StatefulWidget {
-  const JournalPage({super.key, this.repository});
+  const JournalPage({super.key, this.repository, this.journalCache});
 
   final StockRepository? repository;
+
+  /// Optional injectable cache (defaults to SharedPreferences-backed). Used by
+  /// tests to provide an in-memory cache.
+  final PortfolioInsightCache? journalCache;
 
   @override
   State<JournalPage> createState() => _JournalPageState();
@@ -33,8 +40,13 @@ class _JournalPageState extends State<JournalPage> {
     return notifier?.token;
   }
 
+  late final PortfolioInsightCache _cache =
+      widget.journalCache ?? SharedPrefsPortfolioInsightCache();
+  bool _cacheSeeded = false;
+
   bool _loading = true;
   bool _error = false;
+  bool _loaded = false;
   List<JournalEntry> _entries = const [];
   JournalStats _stats = const JournalStats();
 
@@ -54,26 +66,63 @@ class _JournalPageState extends State<JournalPage> {
       });
       return;
     }
-    setState(() => _loading = true);
+    // Stale-while-revalidate: seed from the local cache once WITHOUT blocking
+    // the fresh fetch, so reopening the journal shows the last known entries +
+    // stats instantly instead of a spinner. The fetch below runs in parallel
+    // and overwrites with fresh data when it lands.
+    if (!_cacheSeeded) {
+      _cacheSeeded = true;
+      unawaited(() async {
+        try {
+          final cached =
+              await _cache.read(PortfolioInsightFeature.journal, token);
+          if (cached != null && mounted && !_loaded) {
+            setState(() {
+              _entries = _entriesFromRaw(cached);
+              _stats = _statsFromRaw(cached);
+            });
+          }
+        } catch (_) {
+          // Ignore a bad/unavailable cache; the fresh fetch covers it.
+        }
+      }());
+    }
+    // Only block with a spinner when we have nothing to show yet.
+    setState(() => _loading = !_loaded);
     try {
-      final results = await Future.wait([
-        _repo.journal(token),
-        _repo.journalStats(token),
-      ]);
+      final raw = await _repo.rawJournalBundle(token);
       if (!mounted) return;
       setState(() {
-        _entries = results[0] as List<JournalEntry>;
-        _stats = results[1] as JournalStats;
+        _entries = _entriesFromRaw(raw);
+        _stats = _statsFromRaw(raw);
         _loading = false;
+        _loaded = true;
         _error = false;
       });
+      // Persist for the next open (best-effort, fire-and-forget).
+      unawaited(
+          _cache.write(PortfolioInsightFeature.journal, token, raw));
     } on ApiException {
       if (!mounted) return;
+      // Keep showing cached data if we have it; only surface an error state
+      // when there is nothing (no fresh load AND no cached entries) to show.
       setState(() {
         _loading = false;
-        _error = true;
+        _error = !_loaded && _entries.isEmpty;
       });
     }
+  }
+
+  List<JournalEntry> _entriesFromRaw(Map<String, dynamic> raw) =>
+      (raw['entries'] as List<dynamic>? ?? const [])
+          .whereType<Map<String, dynamic>>()
+          .map(JournalEntry.fromJson)
+          .toList();
+
+  JournalStats _statsFromRaw(Map<String, dynamic> raw) {
+    final stats = raw['stats'];
+    if (stats is Map<String, dynamic>) return JournalStats.fromJson(stats);
+    return const JournalStats();
   }
 
   @override
@@ -116,7 +165,7 @@ class _JournalPageState extends State<JournalPage> {
               padding: EdgeInsets.symmetric(vertical: 32),
               child: Center(child: CircularProgressIndicator()),
             )
-          else if (_error)
+          else if (_error && _entries.isEmpty)
             const Card(
               child: Padding(
                 padding: EdgeInsets.all(16),
