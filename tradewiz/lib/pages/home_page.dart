@@ -230,8 +230,29 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _openPortfolio() {
+    // AccountPage is designed to live INSIDE the bottom-nav shell (which
+    // supplies the Theme + Scaffold + SafeArea). Pushing it bare gave it no
+    // width constraints and no Material ancestor -> RenderFlex overflow (the
+    // yellow/black stripes) and Chip "no Material" errors. Wrap it the same
+    // way AnalysisDetailPage does, and add an AppBar so there is a back button.
     Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => AccountPage(repository: _repo),
+      builder: (_) => Theme(
+        data: buildTradeWizzTheme(),
+        child: Scaffold(
+          backgroundColor: TWColors.bgBase,
+          appBar: AppBar(
+            backgroundColor: TWColors.bgBase,
+            surfaceTintColor: Colors.transparent,
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            title: Text('Account', style: TWType.title3),
+          ),
+          body: SafeArea(
+            bottom: false,
+            child: AccountPage(repository: _repo),
+          ),
+        ),
+      ),
     ));
   }
 

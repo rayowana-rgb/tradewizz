@@ -836,20 +836,30 @@ class _SummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final a = account;
+    // Each stat takes an equal share of the row so wide money strings (e.g.
+    // "$998,000.00" on a narrow phone) shrink/ellipsize instead of overflowing
+    // the Row (the yellow/black stripes).
     Widget stat(String label, String value, {Color? color, Key? key}) =>
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label,
-                style: const TextStyle(color: TWColors.textTertiary, fontSize: 12)),
-            const SizedBox(height: 2),
-            Text(value,
-                key: key,
-                style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 15,
-                    color: color ?? TWColors.textPrimary)),
-          ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      color: TWColors.textTertiary, fontSize: 12)),
+              const SizedBox(height: 2),
+              Text(value,
+                  key: key,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                      color: color ?? TWColors.textPrimary)),
+            ],
+          ),
         );
 
     return TWFloatingCard(
@@ -1424,12 +1434,16 @@ class _EarlyAccessCard extends StatelessWidget {
             Row(children: [
               const Icon(Icons.workspace_premium, color: Color(0xFFFFD54F)),
               const SizedBox(width: 8),
-              const Text('Early Access Program',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 15)),
-              const Spacer(),
+              const Expanded(
+                child: Text('Early Access Program',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15)),
+              ),
+              const SizedBox(width: 8),
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
