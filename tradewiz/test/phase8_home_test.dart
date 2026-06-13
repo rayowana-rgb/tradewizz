@@ -274,14 +274,22 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // The Morning Brief ("Good Morning") also leads with a Best Index column.
+    // The Home hero ("Good Morning") leads with a Best Index strip at the very
+    // top, above the best stock.
+    expect(find.byKey(const Key('home_hero_best_index')), findsOneWidget);
     expect(
       find.descendant(
-        of: find.byKey(const Key('home_brief')),
+        of: find.byKey(const Key('home_hero')),
         matching: find.text('BEST INDEX'),
       ),
       findsOneWidget,
     );
+    // It sits above the best-stock idea inside the hero region.
+    final heroIndexTop =
+        tester.getTopLeft(find.byKey(const Key('home_hero_best_index'))).dy;
+    final heroNameTop =
+        tester.getTopLeft(find.byKey(const Key('home_hero_name'))).dy;
+    expect(heroIndexTop, lessThan(heroNameTop));
 
     final list = find.byKey(const Key('home_list'));
     final scrollable =

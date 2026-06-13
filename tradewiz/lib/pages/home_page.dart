@@ -179,7 +179,9 @@ class _HomePageState extends State<HomePage> {
               greeting: _greeting(),
               idea: ideas.ideas.isNotEmpty ? ideas.ideas.first : null,
               fallback: brief?.topOpportunity,
+              bestIndex: _dashboard?.rotation?.bestEntry,
               onView: _openAnalysis,
+              onViewIndex: _openIndex,
             ),
             const SizedBox(height: TWSpace.md),
             // Market Pulse card first.
@@ -192,7 +194,7 @@ class _HomePageState extends State<HomePage> {
             ),
             const SizedBox(height: TWSpace.lg),
             // Morning Brief — inline section (no card) below Market Pulse.
-            _BriefCard(brief: brief, rotation: _dashboard?.rotation),
+            _BriefCard(brief: brief),
             const SizedBox(height: TWSpace.md),
             _PortfolioCard(
               account: _account,
@@ -302,11 +304,15 @@ class _HeroCard extends StatelessWidget {
     required this.idea,
     required this.fallback,
     required this.onView,
+    this.bestIndex,
+    this.onViewIndex,
   });
   final String greeting;
   final TradeIdea? idea;
   final BriefPick? fallback;
+  final MarketRotation? bestIndex;
   final VoidCallback onView;
+  final ValueChanged<MarketRotation>? onViewIndex;
 
   @override
   Widget build(BuildContext context) {
@@ -362,6 +368,17 @@ class _HeroCard extends StatelessWidget {
               ),
             ],
           ),
+          // Best Index first (Global Rotation): the top market to be in right
+          // now, shown above the best stock at the very top of Home.
+          if (bestIndex != null) ...[
+            const SizedBox(height: TWSpace.md),
+            _HeroBestIndex(
+              entry: bestIndex!,
+              onTap: onViewIndex == null
+                  ? null
+                  : () => onViewIndex!(bestIndex!),
+            ),
+          ],
           if (hasIdea) ...[
             // Non-null ticker inside the hasIdea branch (hasIdea => symbol!=null).
             const SizedBox(height: TWSpace.lg),
@@ -470,6 +487,71 @@ class _HeroCard extends StatelessWidget {
   }
 }
 
+/// Compact "best index to be in" strip at the very top of the Home hero
+/// (Global Rotation). Sits above the best-stock idea: "where to be" before
+/// "what to buy". Tappable to open the full Global Rotation breakdown.
+class _HeroBestIndex extends StatelessWidget {
+  const _HeroBestIndex({required this.entry, this.onTap});
+  final MarketRotation entry;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final rec = entry.recommendation.toUpperCase();
+    final color = recColor(rec);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: TWRadius.rChip,
+        child: Container(
+          key: const Key('home_hero_best_index'),
+          padding: const EdgeInsets.symmetric(
+              horizontal: TWSpace.md, vertical: TWSpace.sm),
+          decoration: BoxDecoration(
+            color: TWColors.accent.withValues(alpha: 0.10),
+            borderRadius: TWRadius.rChip,
+            border: Border.all(
+                color: TWColors.accent.withValues(alpha: 0.30), width: 1),
+          ),
+          child: Row(
+            children: [
+              Text('BEST INDEX',
+                  style: TWType.overline.copyWith(
+                      color: TWColors.accentBright, letterSpacing: 0.6)),
+              const SizedBox(width: TWSpace.sm),
+              Flexible(
+                child: Text(
+                  '${entry.market.flag} ${entry.market.name}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TWType.label.copyWith(
+                      color: TWColors.textPrimary,
+                      fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(width: TWSpace.sm),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: TWSpace.sm, vertical: 2),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.16),
+                  borderRadius: TWRadius.rChip,
+                ),
+                child: Text(
+                  rec.isEmpty ? 'NEUTRAL' : rec,
+                  style: TWType.overline
+                      .copyWith(color: color, letterSpacing: 0.4),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _Confidence extends StatelessWidget {
   const _Confidence({required this.score});
   final double score;
@@ -512,10 +594,9 @@ class _Confidence extends StatelessWidget {
 // 2a) Morning Brief — inline section (no card) shown below Market Pulse.
 // =========================================================================
 class _BriefCard extends StatelessWidget {
-  const _BriefCard({required this.brief, this.rotation});
+  const _BriefCard({required this.brief});
 
   final MorningBrief? brief;
-  final GlobalRotation? rotation;
 
   @override
   Widget build(BuildContext context) {
@@ -585,21 +666,6 @@ class _BriefCard extends StatelessWidget {
     final b = brief;
     if (b == null) return const [];
     final out = <_BriefInsight>[];
-
-    // 0) Best Index — the top market to be in today (Global Rotation). Shown
-    // FIRST so "where to be" leads the brief, mirroring Today's Ideas.
-    final best = rotation?.bestEntry;
-    if (best != null) {
-      out.add(_BriefInsight(
-        title: 'Best Index',
-        ticker: '${best.market.flag} ${best.market.name}',
-        body: best.recommendation.isNotEmpty
-            ? '${best.recommendation[0].toUpperCase()}'
-                '${best.recommendation.substring(1).toLowerCase()} today'
-            : 'Top-ranked market today',
-        tickerStyle: _TickerStyle.heroSector,
-      ));
-    }
 
     // 1) Market Outlook — headline + "Top opportunity: TICKER (Score N)".
     final o = b.topOpportunity;
