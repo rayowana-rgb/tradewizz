@@ -102,6 +102,9 @@ class _AccountPageState extends State<AccountPage> {
   // Trade History to save vertical space on the Account page.
   bool _holdingsExpanded = true;
   bool _tradesExpanded = true;
+  // Seed the collapse state from persisted prefs exactly once, so later
+  // dependency rebuilds don't clobber the user's in-session toggles.
+  bool _collapseSeeded = false;
   // Portfolio Health (best-effort; never blocks the page).
   PortfolioHealth? _health;
   bool _healthLoading = false;
@@ -113,6 +116,15 @@ class _AccountPageState extends State<AccountPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    // Restore the persisted Holdings / Trade History collapsed state once.
+    if (!_collapseSeeded) {
+      final prefs = UserPrefsScope.maybeOf(context)?.prefs;
+      if (prefs != null) {
+        _collapseSeeded = true;
+        _holdingsExpanded = !prefs.holdingsCollapsed;
+        _tradesExpanded = !prefs.tradesCollapsed;
+      }
+    }
     final token = _token;
     if (token != null && token != _loadedForToken && !_loading) {
       _load();
@@ -379,8 +391,11 @@ class _AccountPageState extends State<AccountPage> {
             expanded: _holdingsExpanded,
             count: (port?.positions ?? const []).length,
             headerKey: const Key('account_holdings_header'),
-            onToggle: () =>
-                setState(() => _holdingsExpanded = !_holdingsExpanded),
+            onToggle: () {
+              setState(() => _holdingsExpanded = !_holdingsExpanded);
+              UserPrefsScope.maybeOf(context)
+                  ?.setHoldingsCollapsed(!_holdingsExpanded);
+            },
           ),
           if (_holdingsExpanded) ...[
             _HoldingsCard(
@@ -398,7 +413,11 @@ class _AccountPageState extends State<AccountPage> {
             expanded: _tradesExpanded,
             count: _trades.length,
             headerKey: const Key('account_trades_header'),
-            onToggle: () => setState(() => _tradesExpanded = !_tradesExpanded),
+            onToggle: () {
+              setState(() => _tradesExpanded = !_tradesExpanded);
+              UserPrefsScope.maybeOf(context)
+                  ?.setTradesCollapsed(!_tradesExpanded);
+            },
           ),
           if (_tradesExpanded) ...[
             _TradesCard(trades: _trades),

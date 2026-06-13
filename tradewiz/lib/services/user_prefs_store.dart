@@ -91,6 +91,14 @@ class UserPrefsStore extends ChangeNotifier {
             : _prefs.copyWith(preferredBrokerId: brokerId),
       );
 
+  /// Persist the Account page Holdings section collapsed state (space saver).
+  Future<void> setHoldingsCollapsed(bool collapsed) =>
+      update(_prefs.copyWith(holdingsCollapsed: collapsed));
+
+  /// Persist the Account page Trade History section collapsed state.
+  Future<void> setTradesCollapsed(bool collapsed) =>
+      update(_prefs.copyWith(tradesCollapsed: collapsed));
+
   /// Mark onboarding complete (called after the final screen).
   Future<void> completeOnboarding() => update(
         _prefs.copyWith(onboarded: true, completedAt: DateTime.now()),

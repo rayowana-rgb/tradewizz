@@ -42,6 +42,31 @@ void main() {
       expect(reloaded.prefs.interests, contains(Interest.growth));
     });
 
+    test('persists Account section collapsed state across reloads', () async {
+      final mem = _MemPrefs();
+      final store = UserPrefsStore(persistence: mem);
+      await store.load();
+      // Default: expanded (not collapsed).
+      expect(store.prefs.holdingsCollapsed, isFalse);
+      expect(store.prefs.tradesCollapsed, isFalse);
+
+      await store.setHoldingsCollapsed(true);
+      await store.setTradesCollapsed(true);
+
+      // Reload from the same persistence -> the collapsed state survives.
+      final reloaded = UserPrefsStore(persistence: mem);
+      await reloaded.load();
+      expect(reloaded.prefs.holdingsCollapsed, isTrue);
+      expect(reloaded.prefs.tradesCollapsed, isTrue);
+
+      // Expanding again is also persisted.
+      await reloaded.setHoldingsCollapsed(false);
+      final reloaded2 = UserPrefsStore(persistence: mem);
+      await reloaded2.load();
+      expect(reloaded2.prefs.holdingsCollapsed, isFalse);
+      expect(reloaded2.prefs.tradesCollapsed, isTrue);
+    });
+
     test('best-effort backend sync never throws', () async {
       var synced = 0;
       final store = UserPrefsStore(

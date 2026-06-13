@@ -42,6 +42,8 @@ class UserPrefs {
     this.displayName = '',
     this.completedAt,
     this.preferredBrokerId,
+    this.holdingsCollapsed = false,
+    this.tradesCollapsed = false,
   });
 
   /// Markets the user picked (screen 2). Empty => not yet chosen.
@@ -63,6 +65,12 @@ class UserPrefs {
   /// Persisted locally only; it never affects scoring or trading.
   final String? preferredBrokerId;
 
+  /// Whether the Account page Holdings / Trade History sections are collapsed.
+  /// User-facing space-saving toggle; persisted locally only. Default false
+  /// (expanded). They never affect data, scoring, or trading.
+  final bool holdingsCollapsed;
+  final bool tradesCollapsed;
+
   /// The market the home screen should lead with (first selected, else IDX).
   Market get primaryMarket => markets.isEmpty ? Market.idx : markets.first;
 
@@ -78,6 +86,8 @@ class UserPrefs {
     DateTime? completedAt,
     String? preferredBrokerId,
     bool clearPreferredBroker = false,
+    bool? holdingsCollapsed,
+    bool? tradesCollapsed,
   }) =>
       UserPrefs(
         markets: markets ?? this.markets,
@@ -88,6 +98,8 @@ class UserPrefs {
         preferredBrokerId: clearPreferredBroker
             ? null
             : (preferredBrokerId ?? this.preferredBrokerId),
+        holdingsCollapsed: holdingsCollapsed ?? this.holdingsCollapsed,
+        tradesCollapsed: tradesCollapsed ?? this.tradesCollapsed,
       );
 
   Map<String, dynamic> toJson() => {
@@ -97,6 +109,8 @@ class UserPrefs {
         'display_name': displayName,
         'completed_at': completedAt?.toIso8601String(),
         'preferred_broker_id': preferredBrokerId,
+        'holdings_collapsed': holdingsCollapsed,
+        'trades_collapsed': tradesCollapsed,
       };
 
   factory UserPrefs.fromJson(Map<String, dynamic> j) => UserPrefs(
@@ -114,5 +128,7 @@ class UserPrefs {
             : DateTime.tryParse(j['completed_at'].toString()),
         preferredBrokerId: (j['preferred_broker_id'] as String?)
             ?.let((s) => s.isEmpty ? null : s),
+        holdingsCollapsed: j['holdings_collapsed'] == true,
+        tradesCollapsed: j['trades_collapsed'] == true,
       );
 }
