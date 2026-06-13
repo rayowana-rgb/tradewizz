@@ -14,6 +14,7 @@ import '../repositories/stock_repository.dart';
 import '../services/api_client.dart';
 import '../services/auth_scope.dart';
 import '../services/entitlements_scope.dart';
+import '../services/portfolio_health_cache.dart';
 import '../services/repository_scope.dart';
 import '../services/social_sign_in.dart';
 import '../services/user_prefs_scope.dart';
@@ -79,9 +80,15 @@ String formatSimMoney(double v, String currency, {bool signed = false}) {
 /// SIMULATED paper-trading portfolio (cash, equity, buying power, P/L,
 /// holdings, trade history, reset). No broker connection is required or shown.
 class AccountPage extends StatefulWidget {
-  const AccountPage({super.key, this.repository, this.socialSignIn});
+  const AccountPage(
+      {super.key, this.repository, this.socialSignIn, this.healthCache});
 
   final StockRepository? repository;
+
+  /// Injectable local cache for Portfolio Health so reopening the page renders
+  /// the last known health immediately (no loading spinner) while it
+  /// revalidates in the background. Tests pass an in-memory implementation.
+  final PortfolioHealthCache? healthCache;
 
   /// Injectable social sign-in (Google/Apple). Defaults to the plugin-backed
   /// implementation; tests pass a fake.
@@ -108,6 +115,11 @@ class _AccountPageState extends State<AccountPage> {
   // Portfolio Health (best-effort; never blocks the page).
   PortfolioHealth? _health;
   bool _healthLoading = false;
+  // Seed the health card from the local cache exactly once so reopening the
+  // page shows the last known health instantly instead of a spinner.
+  bool _healthCacheSeeded = false;
+  late final PortfolioHealthCache _healthCacheStore =
+      widget.healthCache ?? SharedPrefsPortfolioHealthCache();
   // Bumped on every successful portfolio (re)load so dependent cards that keep
   // their own state (e.g. the AI Portfolio Manager) re-fetch and reflect the
   // CURRENT holdings after a buy/sell/reset instead of stale analysis.
@@ -171,12 +183,33 @@ class _AccountPageState extends State<AccountPage> {
 
   Future<void> _loadHealth(String token) async {
     if (!mounted) return;
-    setState(() => _healthLoading = true);
+    // Seed from the local cache (once) WITHOUT blocking the fresh fetch: render
+    // the last known health as soon as the cache resolves, so reopening the
+    // page shows data instantly instead of a spinner. The fetch below runs in
+    // parallel and overwrites with fresh data when it lands.
+    if (!_healthCacheSeeded) {
+      _healthCacheSeeded = true;
+      unawaited(() async {
+        try {
+          final cached = await _healthCacheStore.read(token);
+          if (cached != null && mounted && _health == null) {
+            setState(() => _health = PortfolioHealth.fromJson(cached));
+          }
+        } catch (_) {
+          // Ignore a bad/unavailable cache; the fresh fetch covers it.
+        }
+      }());
+    }
+    // Only block with a spinner when we have nothing to show yet.
+    setState(() => _healthLoading = _health == null);
     try {
-      final h = await _repo.portfolioHealth(token);
-      if (mounted) setState(() => _health = h);
+      final raw = await _repo.rawPortfolioHealth(token);
+      if (!mounted) return;
+      setState(() => _health = PortfolioHealth.fromJson(raw));
+      // Persist for the next open (best-effort, fire-and-forget).
+      unawaited(_healthCacheStore.write(token, raw));
     } catch (_) {
-      // Swallowed: the card renders an unavailable state.
+      // Swallowed: the card keeps showing cached data, or an unavailable state.
     } finally {
       if (mounted) setState(() => _healthLoading = false);
     }
