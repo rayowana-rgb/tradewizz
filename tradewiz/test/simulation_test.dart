@@ -147,6 +147,43 @@ void main() {
     expect(find.text('BUY 10 AAPL'), findsOneWidget);
   });
 
+  testWidgets('Holdings and Trade History can be collapsed and expanded',
+      (tester) async {
+    final repo = _simRepo();
+    await tester.pumpWidget(_wrap(AccountPage(repository: repo), repo));
+    await tester.pumpAndSettle();
+
+    // Both sections start expanded -> their cards are present.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('account_holdings_header')),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.byKey(const Key('account_holdings_card')), findsOneWidget);
+
+    // Tapping the Holdings header collapses it -> card is removed.
+    await tester.tap(find.byKey(const Key('account_holdings_header')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('account_holdings_card')), findsNothing);
+    // The header itself stays so the user can expand it again.
+    expect(find.byKey(const Key('account_holdings_header')), findsOneWidget);
+
+    // Tapping again expands it back.
+    await tester.tap(find.byKey(const Key('account_holdings_header')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('account_holdings_card')), findsOneWidget);
+
+    // Same for Trade History.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('account_trades_header')),
+      120,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.byKey(const Key('account_trades_header')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('account_trades_card')), findsNothing);
+  });
+
   testWidgets('Buying power + simulated cash are shown (no broker UI)',
       (tester) async {
     final repo = _simRepo();

@@ -98,6 +98,10 @@ class _AccountPageState extends State<AccountPage> {
   List<SimTrade> _trades = const [];
   String? _loadedForToken;
   bool _joiningWaitlist = false;
+  // Collapsible sections (default expanded). Lets the user hide Holdings /
+  // Trade History to save vertical space on the Account page.
+  bool _holdingsExpanded = true;
+  bool _tradesExpanded = true;
   // Portfolio Health (best-effort; never blocks the page).
   PortfolioHealth? _health;
   bool _healthLoading = false;
@@ -369,34 +373,37 @@ class _AccountPageState extends State<AccountPage> {
           ),
           const SizedBox(height: 16),
 
-          // --- Holdings --------------------------------------------------
-          const Padding(
-            padding: EdgeInsets.only(left: 4, bottom: 8),
-            child: Text('Holdings',
-                style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 15,
-                    color: TWColors.textPrimary)),
+          // --- Holdings (collapsible) ------------------------------------
+          _CollapsibleHeader(
+            title: 'Holdings',
+            expanded: _holdingsExpanded,
+            count: (port?.positions ?? const []).length,
+            headerKey: const Key('account_holdings_header'),
+            onToggle: () =>
+                setState(() => _holdingsExpanded = !_holdingsExpanded),
           ),
-          _HoldingsCard(
-            positions: port?.positions ?? const [],
-            onOpen: _openDetail,
-            onBuy: (p) => _openTicket(p, OrderSide.buy),
-            onSell: (p) => _openTicket(p, OrderSide.sell),
-          ),
-          const SizedBox(height: 16),
+          if (_holdingsExpanded) ...[
+            _HoldingsCard(
+              positions: port?.positions ?? const [],
+              onOpen: _openDetail,
+              onBuy: (p) => _openTicket(p, OrderSide.buy),
+              onSell: (p) => _openTicket(p, OrderSide.sell),
+            ),
+            const SizedBox(height: 16),
+          ],
 
-          // --- Trade history ---------------------------------------------
-          const Padding(
-            padding: EdgeInsets.only(left: 4, bottom: 8),
-            child: Text('Trade History',
-                style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 15,
-                    color: TWColors.textPrimary)),
+          // --- Trade history (collapsible) ------------------------------
+          _CollapsibleHeader(
+            title: 'Trade History',
+            expanded: _tradesExpanded,
+            count: _trades.length,
+            headerKey: const Key('account_trades_header'),
+            onToggle: () => setState(() => _tradesExpanded = !_tradesExpanded),
           ),
-          _TradesCard(trades: _trades),
-          const SizedBox(height: 16),
+          if (_tradesExpanded) ...[
+            _TradesCard(trades: _trades),
+            const SizedBox(height: 16),
+          ],
 
           // ============================================================
           // SECTION: Insights (journal, health, AI manager)
@@ -625,6 +632,84 @@ class _PortfolioValueHeader extends StatelessWidget {
 
 /// A bold section header used to group Account into Portfolio / Insights /
 /// Connections / Account. Keeps the page scannable instead of a long list.
+/// A tappable subsection header that collapses/expands its content to save
+/// vertical space (used for Holdings and Trade History). Shows the title, an
+/// optional item count, and a chevron that rotates with the expanded state.
+class _CollapsibleHeader extends StatelessWidget {
+  const _CollapsibleHeader({
+    required this.title,
+    required this.expanded,
+    required this.onToggle,
+    this.count,
+    this.headerKey,
+  });
+
+  final String title;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final int? count;
+  final Key? headerKey;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          key: headerKey,
+          borderRadius: BorderRadius.circular(8),
+          onTap: onToggle,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+            child: Row(
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                    color: TWColors.textPrimary,
+                  ),
+                ),
+                if (count != null && count! > 0) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 7, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: TWColors.accent.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '$count',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                        color: TWColors.accent,
+                      ),
+                    ),
+                  ),
+                ],
+                const Spacer(),
+                AnimatedRotation(
+                  duration: const Duration(milliseconds: 180),
+                  turns: expanded ? 0.5 : 0.0,
+                  child: const Icon(
+                    Icons.expand_more,
+                    size: 22,
+                    color: TWColors.textTertiary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader(this.title, {super.key});
   final String title;
