@@ -55,7 +55,8 @@ class AnalysisDetailPage extends StatelessWidget {
   }
 }
 
-/// AI Analysis: enter a symbol + market, fetch a (placeholder) analysis result.
+/// AI Analysis: enter a symbol + market, fetch a live analysis result from the
+/// backend (real market data). Falls back to sample data only when offline.
 class AiAnalysisPage extends StatefulWidget {
   const AiAnalysisPage({
     super.key,
@@ -197,7 +198,7 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
             onRetry: _submit,
             retrying: _loading,
           ),
-          _ResultCard(result: _result!),
+          _ResultCard(result: _result!, source: _source),
           if (_result!.recommendation != null ||
               _result!.profitProbability != null ||
               _result!.buyReasons.isNotEmpty) ...[
@@ -516,8 +517,9 @@ class _SaveToWatchlistButton extends StatelessWidget {
 }
 
 class _ResultCard extends StatelessWidget {
-  const _ResultCard({required this.result});
+  const _ResultCard({required this.result, this.source});
   final AnalysisResult result;
+  final DataSource? source;
 
   Color get _signalColor => switch (result.signal) {
         'BUY' => TWColors.up,
@@ -609,7 +611,7 @@ class _ResultCard extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'Placeholder result · generated ${_time(result.generatedAt)}',
+              '${_sourceLabel(source)} · generated ${_time(result.generatedAt)}',
               style: const TextStyle(color: TWColors.textTertiary, fontSize: 12),
             ),
           ],
@@ -617,6 +619,16 @@ class _ResultCard extends StatelessWidget {
       ),
     );
   }
+
+  /// Honest provenance label. Live backend analysis is real market data, so we
+  /// must NOT call it a "placeholder". Only genuine offline/fallback data is
+  /// labelled as sample data.
+  static String _sourceLabel(DataSource? source) => switch (source) {
+        DataSource.fallback => 'Sample data (backend unreachable)',
+        DataSource.offline => 'Sample data (offline)',
+        DataSource.error => 'Sample data (backend error)',
+        _ => 'Live analysis',
+      };
 
   String _time(DateTime t) =>
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
@@ -983,7 +995,7 @@ class _EmptyHint extends StatelessWidget {
               color: TWColors.textTertiary),
           SizedBox(height: 12),
           Text(
-            'Enter a symbol and market to get a placeholder analysis.',
+            'Enter a symbol and market to get a live analysis.',
             textAlign: TextAlign.center,
             style: TextStyle(color: TWColors.textTertiary),
           ),

@@ -12,7 +12,8 @@ import 'package:tradewiz/services/watchlist_store.dart';
 import 'helpers.dart';
 
 void main() {
-  testWidgets('AI Analysis form produces a placeholder result', (tester) async {
+  testWidgets('AI Analysis offline result is labelled sample data, not placeholder',
+      (tester) async {
     await tester.pumpWidget(
       wrapApp(
         AiAnalysisPage(market: Market.idx, repository: offlineRepository()),
@@ -38,6 +39,17 @@ void main() {
       scrollable: find.byType(Scrollable).first,
     );
     expect(find.textContaining('Weekly forecast'), findsOneWidget);
+
+    // The offline mock path must be honestly labelled as sample data, and must
+    // NOT use the misleading word "Placeholder" anywhere in the result tree.
+    // The footer sits inside the result card, so scroll it back into view.
+    await tester.scrollUntilVisible(
+      find.textContaining('Sample data'),
+      -120,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.textContaining('Sample data'), findsWidgets);
+    expect(find.textContaining('Placeholder'), findsNothing);
   });
 
   testWidgets('autoRun analyzes the prefilled symbol on open', (tester) async {
