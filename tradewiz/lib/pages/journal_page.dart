@@ -6,6 +6,8 @@ import '../services/api_client.dart';
 import '../services/auth_scope.dart';
 import '../services/repository_scope.dart';
 import '../theme.dart';
+import '../theme_tradewizz.dart';
+import '../widgets/ds/ds.dart';
 import '../widgets/portfolio_manager.dart';
 import 'ai_analysis_page.dart';
 
@@ -76,6 +78,21 @@ class _JournalPageState extends State<JournalPage> {
 
   @override
   Widget build(BuildContext context) {
+    return Theme(
+      data: buildTradeWizzTheme(),
+      child: Scaffold(
+        backgroundColor: TWColors.bgBase,
+        appBar: AppBar(title: Text('Trade Journal', style: TWType.title3)),
+        body: TWScaffoldBackground(
+          child: SafeArea(
+            child: _buildBody(context),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
@@ -258,35 +275,53 @@ class _JournalCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Text('${entry.market.flag} ${entry.symbol}',
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w800, fontSize: 15)),
-                const SizedBox(width: 8),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: entry.isClosed
-                        ? Colors.grey.withValues(alpha: 0.15)
-                        : AppColors.up.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text('${entry.market.flag} ${entry.symbol}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w800, fontSize: 15)),
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: entry.isClosed
+                                ? Colors.grey.withValues(alpha: 0.15)
+                                : AppColors.up.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(entry.status,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  color: entry.isClosed
+                                      ? Colors.grey
+                                      : AppColors.up,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12)),
+                        ),
+                      ),
+                    ],
                   ),
-                  child: Text(entry.status,
-                      style: TextStyle(
-                          color:
-                              entry.isClosed ? Colors.grey : AppColors.up,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12)),
                 ),
-                const Spacer(),
-                if (ret != null)
+                if (ret != null) ...[
+                  const SizedBox(width: 8),
                   Text(
                     '${ret >= 0 ? '+' : ''}${ret.toStringAsFixed(1)}%',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                         color: retColor,
                         fontWeight: FontWeight.w800,
                         fontSize: 15),
                   ),
+                ],
               ],
             ),
             const SizedBox(height: 8),

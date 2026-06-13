@@ -102,12 +102,16 @@ class _PortfolioManagerCardState extends State<PortfolioManagerCard> {
             const Icon(Icons.smart_toy_outlined,
                 color: AppColors.seed, size: 20),
             const SizedBox(width: 8),
-            const Text('AI Portfolio Manager',
-                key: Key('portfolio_manager_title'),
-                style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 15,
-                    color: TWColors.textPrimary)),
+            const Flexible(
+              child: Text('AI Portfolio Manager',
+                  key: Key('portfolio_manager_title'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                      color: TWColors.textPrimary)),
+            ),
           ],
         ),
         const SizedBox(height: 8),
