@@ -110,7 +110,7 @@ void main() {
     expect(find.text('78'), findsOneWidget);
 
     // The fetched health was persisted to the cache for next time.
-    final cached = await cache.read('TOKEN');
+    final cached = await cache.read(PortfolioInsightFeature.health, 'TOKEN');
     expect(cached, isNotNull);
     expect(cached!['rating'], 'Healthy');
   });
@@ -121,7 +121,8 @@ void main() {
     final repo = _repo();
     // Pre-seed the cache as if a previous session had saved it.
     final cache = InMemoryPortfolioHealthCache();
-    await cache.write('TOKEN', Map<String, dynamic>.from(_healthJson));
+    await cache.write(PortfolioInsightFeature.health, 'TOKEN',
+        Map<String, dynamic>.from(_healthJson));
 
     await tester.pumpWidget(_wrap(
         AccountPage(repository: repo, healthCache: cache), auth, repo));

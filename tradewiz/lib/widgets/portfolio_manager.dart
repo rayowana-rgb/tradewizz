@@ -1,9 +1,12 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 
 import '../models/phase2.dart';
 import '../repositories/stock_repository.dart';
 import '../services/api_client.dart';
 import '../services/auth_scope.dart';
+import '../services/portfolio_health_cache.dart';
 import '../services/repository_scope.dart';
 import '../theme.dart';
 import '../theme_tradewizz.dart';
@@ -17,6 +20,7 @@ class PortfolioManagerCard extends StatefulWidget {
     super.key,
     this.repository,
     this.refreshToken = 0,
+    this.cache,
   });
 
   final StockRepository? repository;
@@ -25,6 +29,10 @@ class PortfolioManagerCard extends StatefulWidget {
   /// (buy / sell / reset) so the manager re-fetches and reflects the CURRENT
   /// holdings instead of a stale, first-load snapshot.
   final int refreshToken;
+
+  /// Injectable local cache so reopening the page renders the last known
+  /// report immediately (no spinner) while it revalidates in the background.
+  final PortfolioInsightCache? cache;
 
   @override
   State<PortfolioManagerCard> createState() => _PortfolioManagerCardState();
@@ -43,6 +51,9 @@ class _PortfolioManagerCardState extends State<PortfolioManagerCard> {
   bool _loading = true;
   bool _error = false;
   PortfolioManagerReport? _report;
+  bool _cacheSeeded = false;
+  late final PortfolioInsightCache _cache =
+      widget.cache ?? SharedPrefsPortfolioInsightCache();
 
   @override
   void didChangeDependencies() {
@@ -67,20 +78,43 @@ class _PortfolioManagerCardState extends State<PortfolioManagerCard> {
       });
       return;
     }
-    setState(() => _loading = true);
+    // Seed from cache once (non-blocking) so a reopen shows the last report
+    // instantly; the fresh fetch below runs in parallel and overwrites it.
+    if (!_cacheSeeded) {
+      _cacheSeeded = true;
+      unawaited(() async {
+        try {
+          final cached =
+              await _cache.read(PortfolioInsightFeature.manager, token);
+          if (cached != null && mounted && _report == null) {
+            setState(() {
+              _report = PortfolioManagerReport.fromJson(cached);
+              _loading = false;
+              _error = false;
+            });
+          }
+        } catch (_) {
+          // Ignore a bad/unavailable cache; the fresh fetch covers it.
+        }
+      }());
+    }
+    // Only show the spinner when there is nothing cached to display yet.
+    setState(() => _loading = _report == null);
     try {
-      final r = await _repo.portfolioManager(token);
+      final raw = await _repo.rawPortfolioManager(token);
       if (!mounted) return;
       setState(() {
-        _report = r;
+        _report = PortfolioManagerReport.fromJson(raw);
         _loading = false;
         _error = false;
       });
+      unawaited(_cache.write(PortfolioInsightFeature.manager, token, raw));
     } on ApiException {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = true;
+        // Keep showing cached data if we have it; only flag error when empty.
+        _error = _report == null;
       });
     }
   }

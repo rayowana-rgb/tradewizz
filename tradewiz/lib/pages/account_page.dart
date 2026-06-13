@@ -118,8 +118,8 @@ class _AccountPageState extends State<AccountPage> {
   // Seed the health card from the local cache exactly once so reopening the
   // page shows the last known health instantly instead of a spinner.
   bool _healthCacheSeeded = false;
-  late final PortfolioHealthCache _healthCacheStore =
-      widget.healthCache ?? SharedPrefsPortfolioHealthCache();
+  late final PortfolioInsightCache _healthCacheStore =
+      widget.healthCache ?? SharedPrefsPortfolioInsightCache();
   // Bumped on every successful portfolio (re)load so dependent cards that keep
   // their own state (e.g. the AI Portfolio Manager) re-fetch and reflect the
   // CURRENT holdings after a buy/sell/reset instead of stale analysis.
@@ -191,7 +191,8 @@ class _AccountPageState extends State<AccountPage> {
       _healthCacheSeeded = true;
       unawaited(() async {
         try {
-          final cached = await _healthCacheStore.read(token);
+          final cached = await _healthCacheStore
+              .read(PortfolioInsightFeature.health, token);
           if (cached != null && mounted && _health == null) {
             setState(() => _health = PortfolioHealth.fromJson(cached));
           }
@@ -207,7 +208,8 @@ class _AccountPageState extends State<AccountPage> {
       if (!mounted) return;
       setState(() => _health = PortfolioHealth.fromJson(raw));
       // Persist for the next open (best-effort, fire-and-forget).
-      unawaited(_healthCacheStore.write(token, raw));
+      unawaited(_healthCacheStore
+          .write(PortfolioInsightFeature.health, token, raw));
     } catch (_) {
       // Swallowed: the card keeps showing cached data, or an unavailable state.
     } finally {

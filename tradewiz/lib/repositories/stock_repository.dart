@@ -52,6 +52,17 @@ class StockRepository {
   Future<Map<String, dynamic>> rawRadarMultibagger(String token) =>
       _client.authGet('/radar/multibagger', bearer: token);
 
+  Future<Map<String, dynamic>> rawPortfolioManager(String token) =>
+      _client.authGet('/portfolio/manager', bearer: token);
+
+  Future<Map<String, dynamic>> rawRebalance(String token, {String? profile}) {
+    var path = '/portfolio/rebalance';
+    if (profile != null && profile.isNotEmpty) {
+      path = '$path?profile=${Uri.encodeQueryComponent(profile)}';
+    }
+    return _client.authGet(path, bearer: token);
+  }
+
   Future<Map<String, dynamic>> rawPortfolioHealth(String token) =>
       _client.authGet('/portfolio/health', bearer: token);
 

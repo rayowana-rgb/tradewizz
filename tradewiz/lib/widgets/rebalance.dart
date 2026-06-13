@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 
 import '../models/broker.dart';
@@ -7,6 +9,7 @@ import '../pages/order_ticket_page.dart';
 import '../repositories/stock_repository.dart';
 import '../services/api_client.dart';
 import '../services/auth_scope.dart';
+import '../services/portfolio_health_cache.dart';
 import '../services/repository_scope.dart';
 import '../theme.dart';
 import '../theme_tradewizz.dart';
@@ -31,9 +34,13 @@ IconData actionIcon(String action) => {
 /// HIGH-priority count, and an estimated portfolio-score improvement, with a
 /// tap-through to the detail page.
 class RebalanceCard extends StatefulWidget {
-  const RebalanceCard({super.key, this.repository});
+  const RebalanceCard({super.key, this.repository, this.cache});
 
   final StockRepository? repository;
+
+  /// Injectable local cache so reopening the page renders the last known
+  /// report immediately (no spinner) while it revalidates in the background.
+  final PortfolioInsightCache? cache;
 
   @override
   State<RebalanceCard> createState() => _RebalanceCardState();
@@ -52,6 +59,9 @@ class _RebalanceCardState extends State<RebalanceCard> {
   bool _loading = true;
   bool _error = false;
   RebalanceReport? _data;
+  bool _cacheSeeded = false;
+  late final PortfolioInsightCache _cache =
+      widget.cache ?? SharedPrefsPortfolioInsightCache();
 
   @override
   void didChangeDependencies() {
@@ -68,20 +78,43 @@ class _RebalanceCardState extends State<RebalanceCard> {
       });
       return;
     }
-    setState(() => _loading = true);
+    // Seed from cache once (non-blocking) so a reopen shows the last report
+    // instantly; the fresh fetch below runs in parallel and overwrites it.
+    if (!_cacheSeeded) {
+      _cacheSeeded = true;
+      unawaited(() async {
+        try {
+          final cached =
+              await _cache.read(PortfolioInsightFeature.rebalance, token);
+          if (cached != null && mounted && _data == null) {
+            setState(() {
+              _data = RebalanceReport.fromJson(cached);
+              _loading = false;
+              _error = false;
+            });
+          }
+        } catch (_) {
+          // Ignore a bad/unavailable cache; the fresh fetch covers it.
+        }
+      }());
+    }
+    // Only show the spinner when there is nothing cached to display yet.
+    setState(() => _loading = _data == null);
     try {
-      final r = await _repo.rebalance(token);
+      final raw = await _repo.rawRebalance(token);
       if (!mounted) return;
       setState(() {
-        _data = r;
+        _data = RebalanceReport.fromJson(raw);
         _loading = false;
         _error = false;
       });
+      unawaited(_cache.write(PortfolioInsightFeature.rebalance, token, raw));
     } on ApiException {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = true;
+        // Keep showing cached data if we have it; only flag error when empty.
+        _error = _data == null;
       });
     }
   }
