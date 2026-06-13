@@ -92,6 +92,16 @@ class TWColors {
     colors: [premiumIndigo, premiumViolet, accent],
   );
 
+  // Same indigo->violet->electric-blue family as the portfolio card, but with
+  // the blue corner mirrored to the TOP-LEFT (portfolio puts it bottom-right).
+  // Used by the Home hero so the two signature cards share a palette while
+  // reading as distinct surfaces.
+  static const Gradient heroBlueGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [accent, premiumViolet, premiumIndigo],
+  );
+
   // Softer variant for dense content cards (metrics, news, reasoning) where the
   // electric-blue corner would distract. Same violet-indigo family, no blue.
   static const Gradient premiumGradient = LinearGradient(

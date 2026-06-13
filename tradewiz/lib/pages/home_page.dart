@@ -332,11 +332,9 @@ class _HeroCard extends StatelessWidget {
       padding: const EdgeInsets.all(TWSpace.xl),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(TWRadius.cardLg),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [TWColors.bgElevated, TWColors.bgRaised],
-        ),
+        // Same indigo/violet/electric-blue family as the My Portfolio card, but
+        // with the blue corner mirrored to the TOP-LEFT.
+        gradient: TWColors.heroBlueGradient,
         border: Border.all(color: TWColors.hairlineTop, width: 1),
         boxShadow: const [...TWShadow.ambient, ...TWShadow.accentGlow],
       ),
