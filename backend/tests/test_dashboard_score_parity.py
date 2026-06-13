@@ -39,8 +39,8 @@ CLOSED = datetime(2026, 6, 8, 18, 0, tzinfo=HK)  # Monday, after close
 SYMS = ["0700.HK", "0005.HK", "0939.HK"]
 
 
-def _mkdf(close: float, vol: float, n: int = 160) -> pd.DataFrame:
-    idx = pd.date_range(end="2026-06-08", periods=n, freq="D")
+def _mkdf(close: float, vol: float, n: int = 160, end: str = "2026-06-08") -> pd.DataFrame:
+    idx = pd.date_range(end=end, periods=n, freq="D")
     c = np.linspace(close - 8, close, n)
     return pd.DataFrame(
         {"Open": c, "High": c + 1, "Low": c - 1, "Close": c,
@@ -49,8 +49,15 @@ def _mkdf(close: float, vol: float, n: int = 160) -> pd.DataFrame:
     )
 
 
-def _wire(state):
-    """Build the real engine -> OHLCV cache -> screener -> overview stack."""
+def _wire(state, data_ts_holder=None):
+    """Build the real engine -> OHLCV cache -> screener -> overview stack.
+
+    ``data_ts_holder`` (optional ``{"ts": <iso str or None>}``) is the injected
+    data-freshness probe. It models the production rule: a CLOSED snapshot is
+    rebuilt only when a NEWER trading day's candle exists. A same-date cache
+    rewrite leaves ``ts`` unchanged, so the snapshot stays frozen (the
+    "results keep changing while closed" fix).
+    """
     def fetch(ticker, period, interval):
         key = ticker.split(".")[0] + ".HK"
         s = state[key]
@@ -66,8 +73,12 @@ def _wire(state):
     def run_screen():
         return engine.screen(Market.HKEX, symbols=SYMS, limit=50)
 
+    probe = None
+    if data_ts_holder is not None:
+        probe = lambda _m: data_ts_holder["ts"]  # noqa: E731
     svc = ScreenerCacheService(
-        store, run_screen, now_provider=lambda _m: CLOSED
+        store, run_screen, now_provider=lambda _m: CLOSED,
+        latest_data_timestamp=probe,
     )
     screen_key = make_cache_key(
         category="", limit=50, min_score=0.0, min_value_traded=0.0
@@ -76,7 +87,9 @@ def _wire(state):
     def overview_universe(_market):
         return svc.get(Market.HKEX, screen_key)
 
-    overview = MarketOverviewService(overview_universe, ttl_seconds=300)
+    overview = MarketOverviewService(
+        overview_universe, ttl_seconds=300, latest_data_timestamp=probe
+    )
     return cache, engine, svc, overview, screen_key
 
 
@@ -90,7 +103,11 @@ def test_all_dashboard_surfaces_match_analyze_after_refresh():
         "0005.HK": {"c": 60.0, "v": 3e6},
         "0939.HK": {"c": 30.0, "v": 8e6},
     }
-    cache, engine, svc, overview, screen_key = _wire(state)
+    from datetime import timezone
+    # Probe initially reports OLD data (older than the snapshot's generated_at)
+    # so the cold build is not immediately re-run.
+    data = {"ts": datetime(2000, 1, 1, tzinfo=timezone.utc).isoformat()}
+    cache, engine, svc, overview, screen_key = _wire(state, data_ts_holder=data)
 
     # Cold build: prime OHLCV + build snapshot + overview.
     for s in SYMS:
@@ -98,12 +115,17 @@ def test_all_dashboard_surfaces_match_analyze_after_refresh():
     svc.get(Market.HKEX, screen_key)
     overview.get(Market.HKEX)
 
-    # --- Same trading date: OHLCV/analyze refreshes (close + volume move). ---
+    # --- NEW trading day: OHLCV/analyze refreshes (close + volume move) AND a
+    # newer candle appears (probe reports a timestamp past generated_at). This
+    # is the legitimate trigger for the CLOSED snapshot to rebuild; a same-date
+    # cache rewrite (probe unchanged) must NOT rebuild -- see
+    # test_real_registry_probe_keeps_snapshot_on_same_day_cache_rewrite. ---
     time.sleep(1.1)
     state["0700.HK"] = {"c": 130.0, "v": 9e6}   # becomes the gainer
     state["0005.HK"] = {"c": 45.0, "v": 2e6}    # becomes the loser
     state["0939.HK"] = {"c": 33.0, "v": 8e6}
     cache.clear()
+    data["ts"] = datetime.now(timezone.utc).isoformat()  # newer candle
     for s in SYMS:
         engine.analyze(s, Market.HKEX)  # Detail page is now fresh.
 

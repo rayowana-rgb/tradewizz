@@ -181,12 +181,16 @@ def test_indeterminate_probe_keeps_existing_snapshot():
     assert second.matches[0].price == 100.0
 
 
-def test_real_registry_probe_detects_same_day_ohlcv_refresh(tmp_path):
+def test_real_registry_probe_keeps_snapshot_on_same_day_cache_rewrite(tmp_path):
     """End-to-end with the default cache-registry probe + a real OHLCV cache.
 
-    Proves the production path: the screener rebuilds when the same OHLCV cache
-    that ``/analyze`` reads is refreshed on the same trading date, without any
-    injected probe.
+    Regression for "screener results keep changing while the market is closed":
+    a CLOSED-session snapshot must STAY frozen when the OHLCV cache is merely
+    re-written on the SAME trading date (cache write-time / fetched_at moves but
+    the candle date does not). Previously the probe also considered fetched_at,
+    so any cache rewrite -- e.g. opening a stock detail page -- rebuilt the
+    snapshot, and each rebuild re-screened the universe with whatever yfinance
+    availability existed at that instant, shifting the result set/ranking.
     """
     import time
 
@@ -197,6 +201,8 @@ def test_real_registry_probe_detects_same_day_ohlcv_refresh(tmp_path):
     from app.engine import AnalysisEngine
 
     def mkdf(close: float, n: int = 120) -> pd.DataFrame:
+        # Candle date is FIXED (same trading day); only the value/write-time
+        # changes below.
         idx = pd.date_range(end="2026-06-08", periods=n, freq="D")
         c = np.linspace(close - 5, close, n)
         return pd.DataFrame(
@@ -231,18 +237,17 @@ def test_real_registry_probe_detects_same_day_ohlcv_refresh(tmp_path):
     assert first.cached is False
     p0 = first.matches[0].price
 
-    # Same trading date: provider revises close to 110; clear so analyze
-    # refetches and rewrites the cache (advancing fetched_at).
+    # Same trading date: cache is cleared + rewritten (fetched_at advances),
+    # but the candle DATE is unchanged.
     time.sleep(1.1)
     state["close"] = 110.0
     cache.clear(symbol="0700")
-    analysis = engine.analyze("0700.HK", Market.HKEX)
-    assert analysis.support_resistance.major_resistance > p0
+    engine.analyze("0700.HK", Market.HKEX)
 
-    # Screener must now rebuild (not serve the frozen snapshot).
+    # The CLOSED snapshot must be served unchanged (frozen), not rebuilt.
     second = svc.get(Market.HKEX, KEY)
-    assert second.cached is False
-    assert second.matches[0].price > p0
+    assert second.cached is True
+    assert second.matches[0].price == p0
 
 
 def test_force_refresh_while_closed_rebuilds_regardless():
@@ -260,3 +265,38 @@ def test_force_refresh_while_closed_rebuilds_regardless():
     assert engine.calls == 2
     assert forced.cached is False
     assert forced.matches[0].price == 110.0
+
+
+def test_closed_screen_is_stable_across_requests_despite_engine_variance():
+    """User-facing regression: while CLOSED, /screen must NOT keep changing.
+
+    The engine can return a different result set on each run (yfinance
+    availability varies -> different symbols succeed/skip -> different
+    total_count + ranking). The market-close cache must freeze the FIRST
+    snapshot and serve it identically on every subsequent request, as long as
+    no newer trading-day candle appears. Previously the default probe also
+    reacted to cache WRITE-TIME, so any cache rewrite rebuilt the snapshot and
+    the list visibly changed between runs even though the market was equally
+    closed.
+    """
+    store = InMemoryScreenerSnapshotStore()
+    engine = _Engine()
+    # Probe reports data OLDER than the snapshot -> never "newer" -> no rebuild.
+    svc = _service(store, engine, data_ts=lambda _m: _iso(-3600))
+
+    first = svc.get(Market.HKEX, KEY)
+    assert first.cached is False
+    assert engine.calls == 1
+
+    # The engine would now produce a DIFFERENT result if re-run...
+    engine.price = 137.0
+    # ...but repeated CLOSED requests must return the identical frozen snapshot.
+    for _ in range(5):
+        again = svc.get(Market.HKEX, KEY)
+        assert again.cached is True
+        assert again.total_count == first.total_count
+        assert [m.symbol for m in again.matches] == [
+            m.symbol for m in first.matches
+        ]
+        assert again.matches[0].price == first.matches[0].price
+    assert engine.calls == 1  # never re-screened

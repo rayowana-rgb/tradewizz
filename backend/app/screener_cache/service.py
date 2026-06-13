@@ -37,24 +37,33 @@ from ..market_session import trading_date_str  # noqa: E402
 LatestDataTimestamp = Callable[[str], Optional[str]]
 
 
-def latest_market_candle_ts(market_code: str) -> Optional[str]:
+def latest_market_candle_ts(
+    market_code: str, *, include_write_time: bool = False
+) -> Optional[str]:
     """Newest "data freshness" timestamp for a market (cache-only, no fetch).
 
     Reads the same on-disk OHLCV cache that ``/analyze`` uses, via the live
     cache registry, inspecting only already-cached metadata (never triggers a
-    network fetch). For each cached symbol in the market it takes the more
-    recent of:
+    network fetch).
 
-      * the latest candle timestamp (``latest_ts``) -- catches a new trading
-        day / a brand-new daily candle, and
-      * the cache write time (``fetched_at``) -- catches a same-day refresh
-        where only the latest close moved (the candle date is unchanged).
+    The freshness signal is the latest **candle timestamp** (``latest_ts``),
+    i.e. the trading day the data is FOR. This is what should invalidate a
+    saved snapshot: a new trading day's candle means new data to screen.
 
-    Both are normalized to ISO-8601 UTC so they can be compared against a
-    snapshot's ``generated_at``. In production these and ``generated_at`` all
-    derive from the same wall clock, so the comparison is consistent. Returns
-    the maximum across all cached symbols for the market, or ``None`` when
-    nothing is cached yet.
+    The cache **write time** (``fetched_at``) is deliberately NOT used by
+    default. It changes every time ANY symbol's cache file is (re)written --
+    e.g. someone opening a stock detail page, or the screen run itself writing
+    fresh cache -- even though the underlying trading day has not changed. Using
+    it made a CLOSED-session snapshot rebuild on almost every request, and each
+    rebuild re-screened the universe with whatever yfinance availability
+    existed at that instant, so the result set (which symbols succeed vs. get
+    skipped) and the ranking kept shifting between runs even though the market
+    was equally closed. That is the "screener results keep changing" bug.
+    ``include_write_time=True`` restores the old behavior for callers that
+    explicitly want intraday write-time sensitivity.
+
+    Returns the maximum across all cached symbols for the market (normalized to
+    ISO-8601 UTC), or ``None`` when nothing is cached yet.
     """
     # Imported lazily to avoid an import cycle (cache <-> engine <-> service).
     from ..cache import all_caches  # noqa: WPS433
@@ -70,10 +79,10 @@ def latest_market_candle_ts(market_code: str) -> Optional[str]:
             mkt = str(entry.get("market") or "").upper()
             if want and mkt != want:
                 continue
-            for raw in (
-                entry.get("latest_candle_ts"),
-                _epoch_to_iso_utc(entry.get("fetched_at")),
-            ):
+            candidates = [entry.get("latest_candle_ts")]
+            if include_write_time:
+                candidates.append(_epoch_to_iso_utc(entry.get("fetched_at")))
+            for raw in candidates:
                 norm = _to_iso_utc(raw)
                 if norm and (best is None or norm > best):
                     best = norm
