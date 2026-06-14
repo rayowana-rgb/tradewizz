@@ -134,6 +134,41 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets(
+      'Rebalance detail page: keeps the cached report (no "unavailable") when '
+      'the refresh fails', (tester) async {
+    final auth = await _auth();
+    // Backend always errors -> without cache this page shows "unavailable".
+    final failing = StockRepository(
+      client: ApiClient(
+        config: const AppConfig(baseUrl: 'https://test.tradewiz.app/v1'),
+        httpClient: MockClient((req) async => http.Response(
+            '{"detail":"down"}', 503,
+            headers: {'content-type': 'application/json'})),
+      ),
+    );
+    final seeded = InMemoryPortfolioInsightCache();
+    await seeded.write(PortfolioInsightFeature.rebalance, 'TOKEN',
+        Map<String, dynamic>.from(_rebalanceJson));
+
+    // The detail page is its own Scaffold; mount it as a route body (not inside
+    // a scroll view) so it gets bounded constraints.
+    await tester.pumpWidget(RepositoryScope(
+      repository: failing,
+      child: AuthScope(
+        store: auth,
+        child: MaterialApp(
+          home: RebalanceDetailPage(repository: failing, cache: seeded),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // The cached report renders; the failed refresh must NOT blank it out.
+    expect(find.byKey(const Key('rebalance_detail_list')), findsOneWidget);
+    expect(find.text('Rebalancing unavailable.'), findsNothing);
+  });
+
   testWidgets('AI Portfolio Manager: recommendations can be hidden and shown',
       (tester) async {
     final auth = await _auth();

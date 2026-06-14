@@ -7,7 +7,6 @@ import '../models/phase3.dart';
 import '../pages/ai_analysis_page.dart';
 import '../pages/order_ticket_page.dart';
 import '../repositories/stock_repository.dart';
-import '../services/api_client.dart';
 import '../services/auth_scope.dart';
 import '../services/portfolio_health_cache.dart';
 import '../services/repository_scope.dart';
@@ -109,11 +108,12 @@ class _RebalanceCardState extends State<RebalanceCard> {
         _error = false;
       });
       unawaited(_cache.write(PortfolioInsightFeature.rebalance, token, raw));
-    } on ApiException {
+    } catch (_) {
+      // Any failure (ApiException, timeout, socket, parse): keep showing cached
+      // data if we have it; only flag error when there is nothing to show.
       if (!mounted) return;
       setState(() {
         _loading = false;
-        // Keep showing cached data if we have it; only flag error when empty.
         _error = _data == null;
       });
     }
@@ -241,9 +241,14 @@ class _RebalanceCardState extends State<RebalanceCard> {
 /// Rebalance detail page — list of ADD / HOLD / REDUCE / EXIT actions, each
 /// with Buy More / Sell / View Analysis (all simulation-only).
 class RebalanceDetailPage extends StatefulWidget {
-  const RebalanceDetailPage({super.key, this.repository});
+  const RebalanceDetailPage({super.key, this.repository, this.cache});
 
   final StockRepository? repository;
+
+  /// Injectable local cache so the detail page renders the last known report
+  /// instantly and survives a failing refresh (no more "unavailable" when the
+  /// backend hiccups but we already have a cached report).
+  final PortfolioInsightCache? cache;
 
   @override
   State<RebalanceDetailPage> createState() => _RebalanceDetailPageState();
@@ -252,6 +257,8 @@ class RebalanceDetailPage extends StatefulWidget {
 class _RebalanceDetailPageState extends State<RebalanceDetailPage> {
   StockRepository get _repo =>
       widget.repository ?? RepositoryScope.of(context);
+  late final PortfolioInsightCache _cache =
+      widget.cache ?? SharedPrefsPortfolioInsightCache();
 
   String? get _token {
     final notifier =
@@ -260,6 +267,7 @@ class _RebalanceDetailPageState extends State<RebalanceDetailPage> {
   }
 
   bool _loading = true;
+  bool _cacheSeeded = false;
   RebalanceReport? _data;
 
   @override
@@ -274,15 +282,36 @@ class _RebalanceDetailPageState extends State<RebalanceDetailPage> {
       setState(() => _loading = false);
       return;
     }
-    setState(() => _loading = true);
+    // Seed from the shared rebalance cache once (non-blocking) so a reopen /
+    // refresh shows the last report instantly while the fresh fetch runs.
+    if (!_cacheSeeded) {
+      _cacheSeeded = true;
+      unawaited(() async {
+        try {
+          final cached =
+              await _cache.read(PortfolioInsightFeature.rebalance, token);
+          if (cached != null && mounted && _data == null) {
+            setState(() {
+              _data = RebalanceReport.fromJson(cached);
+              _loading = false;
+            });
+          }
+        } catch (_) {/* bad/empty cache: the fresh fetch covers it */}
+      }());
+    }
+    // Only spin when there is nothing cached to show yet.
+    setState(() => _loading = _data == null);
     try {
-      final r = await _repo.rebalance(token);
+      final raw = await _repo.rawRebalance(token);
       if (!mounted) return;
       setState(() {
-        _data = r;
+        _data = RebalanceReport.fromJson(raw);
         _loading = false;
       });
-    } on ApiException {
+      unawaited(_cache.write(PortfolioInsightFeature.rebalance, token, raw));
+    } catch (_) {
+      // Any failure: keep the cached report if we have one; only fall through to
+      // "unavailable" when there is nothing to show.
       if (!mounted) return;
       setState(() => _loading = false);
     }
