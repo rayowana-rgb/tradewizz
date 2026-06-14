@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../cache/cache_entry.dart';
 import '../home/activation_scope.dart';
 import '../home/todays_ideas.dart';
 import '../models/market.dart';
@@ -66,6 +68,14 @@ class _HomePageState extends State<HomePage> {
   MarketOverview? _overview;
   MarketCondition _condition = MarketCondition.unknown;
 
+  // Live dashboard SWR subscription. Held so it can be cancelled on dispose /
+  // before re-subscribing, instead of leaking a new listener on every
+  // didChangeDependencies (theme / MediaQuery / scope change), which used to
+  // stack listeners and intermittently blank Home.
+  StreamSubscription<Cached<DashboardSnapshot>>? _dashboardSub;
+  // Guards the initial load so dependency churn does not re-fire it.
+  bool _loadStarted = false;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -77,7 +87,18 @@ class _HomePageState extends State<HomePage> {
       WidgetsBinding.instance
           .addPostFrameCallback((_) => metrics?.homeViewed());
     }
-    _load();
+    // Only kick off the initial load once; pull-to-refresh and market changes
+    // call _load() explicitly.
+    if (!_loadStarted) {
+      _loadStarted = true;
+      _load();
+    }
+  }
+
+  @override
+  void dispose() {
+    _dashboardSub?.cancel();
+    super.dispose();
   }
 
   @override
@@ -105,16 +126,27 @@ class _HomePageState extends State<HomePage> {
     // Capture the metrics object before any async gap.
     final metrics = ActivationScope.maybeOf(context);
 
-    // 2) Background refresh (SWR) — never blocks the UI.
-    try {
-      _snap?.dashboardSwr(token, widget.market).listen((c) {
-        if (mounted) setState(() => _dashboard = c.value);
-        if (!_briefCounted && c.value.morningBrief != null) {
-          _briefCounted = true;
-          metrics?.morningBriefOpened();
-        }
-      });
-    } catch (_) {/* offline-first */}
+    // 2) Background refresh (SWR) — never blocks the UI. Cancel any previous
+    //    subscription first so refreshes/market changes don't stack listeners,
+    //    and handle async stream errors so an uncaught error never blanks Home.
+    await _dashboardSub?.cancel();
+    final stream = _snap?.dashboardSwr(token, widget.market);
+    if (stream != null) {
+      _dashboardSub = stream.listen(
+        (c) {
+          if (!mounted) return;
+          setState(() => _dashboard = c.value);
+          if (!_briefCounted && c.value.morningBrief != null) {
+            _briefCounted = true;
+            metrics?.morningBriefOpened();
+          }
+        },
+        // Offline-first: a transport/parse error must not crash the page; keep
+        // whatever snapshot is already on screen.
+        onError: (_) {/* keep cached/empty UI */},
+        cancelOnError: false,
+      );
+    }
 
     // 3) Portfolio (best-effort).
     try {

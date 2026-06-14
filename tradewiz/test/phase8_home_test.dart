@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
+import 'package:tradewiz/config/app_config.dart';
+import 'package:tradewiz/models/user.dart';
+import 'package:tradewiz/services/api_client.dart';
 import 'package:tradewiz/cache/cache_service.dart';
 import 'package:tradewiz/home/activation_metrics.dart';
 import 'package:tradewiz/home/activation_scope.dart';
@@ -209,6 +214,70 @@ void main() {
     expect(find.byKey(const Key('home_hero')), findsOneWidget);
     // No CTA when there is no idea yet.
     expect(find.byKey(const Key('home_hero_cta')), findsNothing);
+  });
+
+  testWidgets(
+      'Home stays rendered (never blanks) when the dashboard refresh errors '
+      'with no cache, even across dependency churn', (tester) async {
+    // Backend always errors -> the SWR stream emits an async error with no
+    // cached snapshot to fall back on. This used to surface as an uncaught
+    // error / blank Home; the page must keep rendering its list instead.
+    final fake = MockClient((req) async =>
+        http.Response('{"detail":"boom"}', 503,
+            headers: {'content-type': 'application/json'}));
+    final repo = StockRepository(
+      client: ApiClient(
+        config: const AppConfig(baseUrl: 'https://test.tradewiz.app/v1'),
+        httpClient: fake,
+      ),
+    );
+    final cache = CacheService.inMemory(); // empty -> no fallback snapshot
+    final snap = SnapshotRepository(repo, cache: cache);
+    final prefs = UserPrefsStore(
+      persistence: _MemPrefs(const UserPrefs(onboarded: true)),
+    );
+    await prefs.load();
+
+    final auth = AuthStore();
+    await auth.setSession('TOKEN',
+        const UserProfile(id: 1, email: 'a@b.com', createdAt: '', updatedAt: ''));
+
+    Widget tree() => MaterialApp(
+          home: Scaffold(
+            body: AuthScope(
+              store: auth,
+              child: WatchlistScope(
+                store: WatchlistStore(),
+                child: UserPrefsScope(
+                  store: prefs,
+                  child: ActivationScope(
+                    metrics: ActivationMetrics(),
+                    child: RepositoryScope(
+                      repository: repo,
+                      snapshot: snap,
+                      child: const HomePage(market: Market.idx),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+
+    await tester.pumpWidget(tree());
+    await tester.pumpAndSettle();
+
+    // Home is still on screen despite the failing refresh.
+    expect(find.byKey(const Key('home_list')), findsOneWidget);
+    expect(find.byKey(const Key('home_hero')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    // Re-pump the same tree to force another didChangeDependencies. The load
+    // must NOT re-fire / stack a new subscription, and nothing should throw.
+    await tester.pumpWidget(tree());
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('home_list')), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('Today\'s Ideas shows the best index (Global Rotation) ABOVE '
