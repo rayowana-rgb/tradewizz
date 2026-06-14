@@ -175,13 +175,24 @@ class _PortfolioManagerCardState extends State<PortfolioManagerCard> {
   }
 }
 
-class _ReportCard extends StatelessWidget {
+class _ReportCard extends StatefulWidget {
   const _ReportCard({required this.report, required this.riskColor});
   final PortfolioManagerReport report;
   final Color Function(String) riskColor;
 
   @override
+  State<_ReportCard> createState() => _ReportCardState();
+}
+
+class _ReportCardState extends State<_ReportCard> {
+  // Recommendations can be hidden/shown via the section header. Default shown.
+  bool _recsExpanded = true;
+
+  @override
   Widget build(BuildContext context) {
+    final report = widget.report;
+    final riskColor = widget.riskColor;
+    final recCount = report.recommendations.length;
     return TWFloatingCard(
       key: const Key('portfolio_manager_report'),
       child: Column(
@@ -223,19 +234,61 @@ class _ReportCard extends StatelessWidget {
               ],
             ),
             const Divider(height: 24),
-            const Text('Recommendations',
-                style: TextStyle(
-                    color: TWColors.textSecondary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            if (report.recommendations.isEmpty)
-              const Text('No recommendations right now.',
-                  style: TextStyle(
-                      color: TWColors.textTertiary, fontSize: 12))
-            else
-              for (final rec in report.recommendations)
-                _RecTile(rec: rec),
+            // Tappable header: hide / show the recommendations list.
+            Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                key: const Key('portfolio_manager_recs_toggle'),
+                borderRadius: BorderRadius.circular(8),
+                onTap: () =>
+                    setState(() => _recsExpanded = !_recsExpanded),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    children: [
+                      const Text('Recommendations',
+                          style: TextStyle(
+                              color: TWColors.textSecondary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600)),
+                      if (recCount > 0) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: TWColors.accent.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text('$recCount',
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 12,
+                                  color: TWColors.accent)),
+                        ),
+                      ],
+                      const Spacer(),
+                      AnimatedRotation(
+                        duration: const Duration(milliseconds: 180),
+                        turns: _recsExpanded ? 0.5 : 0.0,
+                        child: const Icon(Icons.expand_more,
+                            size: 22, color: TWColors.textTertiary),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            if (_recsExpanded) ...[
+              const SizedBox(height: 8),
+              if (report.recommendations.isEmpty)
+                const Text('No recommendations right now.',
+                    style: TextStyle(
+                        color: TWColors.textTertiary, fontSize: 12))
+              else
+                for (final rec in report.recommendations)
+                  _RecTile(rec: rec),
+            ],
           ],
       ),
     );

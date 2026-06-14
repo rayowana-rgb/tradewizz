@@ -133,4 +133,59 @@ void main() {
     expect(find.byKey(const Key('rebalance_loading')), findsNothing);
     await tester.pumpAndSettle();
   });
+
+  testWidgets('AI Portfolio Manager: recommendations can be hidden and shown',
+      (tester) async {
+    final auth = await _auth();
+    // Repo whose manager report carries one recommendation.
+    final fake = MockClient((req) async {
+      if (req.url.path.contains('/portfolio/manager')) {
+        return http.Response(
+            jsonEncode({
+              ..._managerJson,
+              'recommendations': [
+                {
+                  'kind': 'concentration',
+                  'severity': 'warning',
+                  'title': 'Trim BBCA',
+                  'message': 'BBCA is 25% of the book.',
+                }
+              ],
+            }),
+            200,
+            headers: {'content-type': 'application/json'});
+      }
+      return http.Response(jsonEncode({}), 200,
+          headers: {'content-type': 'application/json'});
+    });
+    final repo = StockRepository(
+      client: ApiClient(
+        config: const AppConfig(baseUrl: 'https://test.tradewiz.app/v1'),
+        httpClient: fake,
+      ),
+    );
+
+    await tester.pumpWidget(_wrap(
+        PortfolioManagerCard(
+            repository: repo, cache: InMemoryPortfolioInsightCache()),
+        auth,
+        repo));
+    await tester.pumpAndSettle();
+
+    // Recommendation shown by default.
+    expect(find.byKey(const Key('pm_rec_concentration')), findsOneWidget);
+
+    // Tap the header to HIDE.
+    await tester.tap(find.byKey(const Key('portfolio_manager_recs_toggle')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('pm_rec_concentration')), findsNothing);
+    // The header itself stays visible so it can be reopened.
+    expect(find.byKey(const Key('portfolio_manager_recs_toggle')),
+        findsOneWidget);
+
+    // Tap again to SHOW.
+    await tester.tap(find.byKey(const Key('portfolio_manager_recs_toggle')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('pm_rec_concentration')), findsOneWidget);
+  });
 }
