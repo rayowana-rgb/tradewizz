@@ -57,12 +57,11 @@ class ApiClient {
     developer.log(message, name: 'TradeWizz.api');
   }
 
-  /// A readable, token-free description of a transport failure that names the
-  /// host the app tried to reach, so connectivity problems are diagnosable
-  /// from user-visible errors without exposing secrets.
+  /// A readable, token-free description of a transport failure. We deliberately
+  /// do NOT name the backend host in the user-visible message — it just says
+  /// the server could not be reached, without exposing the API hostname.
   String _transportError(Uri uri, String reason) {
-    final host = uri.host.isEmpty ? uri.toString() : uri.host;
-    return '$reason (could not reach $host).';
+    return '$reason.';
   }
 
   /// GET /analyze/{symbol}
