@@ -204,8 +204,9 @@ class _HomePageState extends State<HomePage> {
         onRefresh: _load,
         child: ListView(
           key: const Key('home_list'),
+          // Tight horizontal gutters so the cards run almost edge-to-edge.
           padding: EdgeInsets.fromLTRB(
-              TWSpace.xl, TWSpace.lg, TWSpace.xl, TWSpace.xxxl + bottomInset),
+              TWSpace.sm, TWSpace.lg, TWSpace.sm, TWSpace.xxxl + bottomInset),
           children: [
             _HeroCard(
               greeting: _greeting(),
