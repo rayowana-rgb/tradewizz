@@ -130,6 +130,34 @@ void main() {
     );
   });
 
+  test('screener timeout surfaces a friendly "busy screening" message',
+      () async {
+    final mock = MockClient((req) async {
+      // Respond slower than the configured request timeout.
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      return http.Response('{}', 200);
+    });
+    final client = ApiClient(
+      config: AppConfig(
+        baseUrl: 'https://test.tradewiz.app/v1',
+        requestTimeout: const Duration(milliseconds: 50),
+        mockFallback: false,
+      ),
+      httpClient: mock,
+    );
+
+    await expectLater(
+      () => client.screen(Market.idx),
+      throwsA(
+        isA<ApiException>().having(
+          (e) => e.message,
+          'message',
+          allOf(contains('screening'), contains('wait')),
+        ),
+      ),
+    );
+  });
+
   test('non-2xx surfaces a friendly error (no silent fallback)', () async {
     final mock = MockClient((req) async => http.Response('nope', 500));
     final client = ApiClient(config: _config(), httpClient: mock);

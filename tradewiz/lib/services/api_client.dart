@@ -64,6 +64,32 @@ class ApiClient {
     return '$reason.';
   }
 
+  /// Heavy endpoints can legitimately take a while when the backend is pulling
+  /// a large batch of market data or (re)building a screen/snapshot cache --
+  /// e.g. right after a deploy when the cache is cold. Instead of a blunt
+  /// "request timed out", tell the user the server is busy crunching data and
+  /// to wait a moment, so a slow-but-healthy backend doesn't read as an error.
+  String _timeoutMessage(Uri uri) {
+    final path = uri.path.toLowerCase();
+    final isScreening = path.contains('/screen') ||
+        path.contains('/snapshot') ||
+        path.contains('/idx') ||
+        path.contains('/news');
+    final isAnalyze = path.contains('/analyze') ||
+        path.contains('/rebalance') ||
+        path.contains('/portfolio');
+    if (isScreening) {
+      return 'The server is screening the market and pulling fresh data — '
+          'this can take a little longer. Please wait a moment and try again.';
+    }
+    if (isAnalyze) {
+      return 'The server is crunching the latest data — this can take a little '
+          'longer. Please wait a moment and try again.';
+    }
+    return 'The server is taking longer than usual to respond. '
+        'Please wait a moment and try again.';
+  }
+
   /// GET /analyze/{symbol}
   Future<Sourced<Map<String, dynamic>>> analyze(String symbol, Market market) {
     final s = Uri.encodeComponent(symbol.toUpperCase());
@@ -212,7 +238,7 @@ class ApiClient {
       rethrow;
     } on TimeoutException {
       _log('Timeout contacting $uri');
-      throw ApiException(_transportError(uri, 'The request timed out'));
+      throw ApiException(_timeoutMessage(uri));
     } on SocketException catch (e) {
       _log('SocketException contacting $uri: ${e.osError?.message ?? e.message}');
       throw ApiException(_transportError(uri, 'Could not reach the server'));
@@ -259,7 +285,7 @@ class ApiClient {
       rethrow;
     } on TimeoutException {
       _log('Timeout contacting $uri');
-      return _maybeFallback(fallback, _transportError(uri, 'The request timed out'));
+      return _maybeFallback(fallback, _timeoutMessage(uri));
     } on SocketException catch (e) {
       _log('SocketException contacting $uri: ${e.osError?.message ?? e.message}');
       return _maybeFallback(fallback, _transportError(uri, 'Could not reach the server'));

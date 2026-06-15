@@ -6,7 +6,7 @@ class AppConfig {
   const AppConfig({
     required this.baseUrl,
     this.cdnBaseUrl = '',
-    this.requestTimeout = const Duration(seconds: 10),
+    this.requestTimeout = const Duration(seconds: 25),
     this.mockFallback = true,
   });
 
