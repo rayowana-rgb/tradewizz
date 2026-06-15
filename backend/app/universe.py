@@ -58,6 +58,19 @@ _MARKET_SUFFIX = {m: cfg.yahoo_suffix for m, cfg in _MARKET_CONFIGS.items()}
 _HKEX_EQUITY_MIN = 1
 _HKEX_EQUITY_MAX = 9999
 
+# --- US symbol normalization ---------------------------------------------- #
+# The raw US universe export uses feed-style notation that Yahoo Finance does
+# NOT accept, producing nothing but 404 / no-data responses (pure noise that
+# also burns the shared Yahoo rate limit and slows the full-universe screen):
+#   * preferred shares use '$' (e.g. AGM$D); Yahoo's '-' form (AGM-D) is also
+#     not covered by yfinance, so these are dropped entirely.
+#   * warrants/units/rights use '.W' / '.U' / '.R'; these are not covered.
+# Class shares (.A/.B/.C/.V, e.g. BRK.A) ARE covered, but Yahoo spells them
+# with a dash (BRK-A), so we convert '.' -> '-' for those.
+# Empirically verified against Yahoo (2026-06-15): all sampled '$' and
+# '.W'/'.U'/'.R' returned no data; sampled '.A'/'.B' returned data once dashed.
+_US_DROP_DOT_SUFFIXES = (".W", ".U", ".R")
+
 
 @dataclass(frozen=True)
 class UniverseEntry:
@@ -120,6 +133,26 @@ def _strip_suffix(raw: str, market: Optional[Market]) -> str:
     return sym
 
 
+def _normalize_us_symbol(raw: str) -> Optional[str]:
+    """Normalize a raw US ticker for Yahoo, or return None to drop it.
+
+    * Drop preferred shares ('$') and warrants/units/rights ('.W'/'.U'/'.R'):
+      Yahoo/yfinance does not cover them, so they only generate 404/no-data
+      noise and waste the rate limit.
+    * Convert class-share dots to dashes (BRK.A -> BRK-A) so the covered
+      class shares resolve correctly.
+    """
+    sym = raw.strip().upper()
+    if not sym:
+        return None
+    if "$" in sym:
+        return None
+    for suf in _US_DROP_DOT_SUFFIXES:
+        if sym.endswith(suf):
+            return None
+    return sym.replace(".", "-")
+
+
 def _hkex_is_equity(bare_symbol: str) -> bool:
     """True for HKEX ordinary-equity board codes (1..9999)."""
     digits = "".join(ch for ch in bare_symbol if ch.isdigit())
@@ -172,7 +205,12 @@ def _entries_from_df(
             if src in (".KS", ".KQ") and src != want:
                 continue
 
-        sym = _strip_suffix(raw, market)
+        if market is Market.US:
+            sym = _normalize_us_symbol(raw)
+            if sym is None:
+                continue  # drop preferred ($) and warrant/unit/right (.W/.U/.R)
+        else:
+            sym = _strip_suffix(raw, market)
         if not sym:
             continue
 
