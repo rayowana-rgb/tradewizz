@@ -56,7 +56,9 @@ class TWGlassNavBar extends StatelessWidget {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
         child: Container(
-          padding: EdgeInsets.only(bottom: bottomInset),
+          // Pull the icons/labels closer to the screen edge: keep only a small
+          // slice of the safe-area inset instead of the full gesture-bar gap.
+          padding: EdgeInsets.only(bottom: bottomInset * 0.5),
           decoration: BoxDecoration(
             // Lower alpha than surfaceCardGlass so content reads through it.
             color: TWColors.bgRaised.withValues(alpha: 0.40),
