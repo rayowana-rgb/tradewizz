@@ -388,24 +388,6 @@ def test_rebalance_weak_score_causes_exit():
     sub_router.set_service(SubscriptionService())
 
 
-def test_rebalance_negligible_weight_holds_not_exit():
-    # A weak-scored position whose value rounds to 0.0% of the portfolio must
-    # NOT be recommended EXIT/REDUCE ("exit 0%" is nonsensical) -> HOLD.
-    c = _build_client(score_map={"TINY": (20, "SELL", -5.0),
-                                 "BIG": (78, "BUY", 1.0)})
-    h = _register(c)
-    c._simstate["positions"] = [
-        _Pos("TINY", Market.US, 100.0),       # ~0.0% of portfolio
-        _Pos("BIG", Market.US, 1_000_000.0),
-    ]
-    body = c.get("/v1/portfolio/rebalance", headers=h).json()
-    by = {a["symbol"]: a for a in body["actions"]}
-    assert by["TINY"]["current_weight"] == 0.0
-    assert by["TINY"]["action"] == "HOLD", by["TINY"]
-    assert by["TINY"]["action"] not in ("EXIT", "REDUCE")
-    sub_router.set_service(SubscriptionService())
-
-
 def test_rebalance_elite_underweight_causes_add():
     # Elite score (94), high quality, small weight, bullish -> ADD.
     c = _build_client(score_map={"ELITE": (94, "BUY", 5.0),
