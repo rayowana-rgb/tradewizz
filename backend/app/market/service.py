@@ -401,10 +401,38 @@ class MarketConditionService:
     def get(self, market: Market):
         from .condition import MarketCondition, classify_condition
 
+        # While the market is CLOSED the underlying daily candles do not change,
+        # so the Fear/Greed reading must stay stable for the whole closed period
+        # instead of flickering every time the short TTL lapses and we re-pull a
+        # (sometimes still-forming / revised) bar from Yahoo. We therefore key
+        # the cache on the current trading date and only honour the short TTL
+        # while a session is actually open.
+        try:
+            from ..market_session import current_trading_date, is_session_open
+            now = datetime.now(timezone.utc)
+            trading_date = current_trading_date(market, now)
+            session_open = is_session_open(market, now)
+        except Exception:  # noqa: BLE001 - fall back to plain TTL caching
+            trading_date = None
+            session_open = True
+
         with self._lock:
             entry = self._cache.get(market)
-            if entry is not None and self._clock() - entry[0] < self._ttl:
-                return entry[1]
+            if entry is not None:
+                cached_at, cached_result, cached_td = entry
+                if session_open:
+                    # Live session: keep it fresh on the short TTL.
+                    if self._clock() - cached_at < self._ttl:
+                        return cached_result
+                else:
+                    # Market closed: serve the cached reading for the entire
+                    # closed period (same trading date) so it doesn't change.
+                    if trading_date is not None and cached_td == trading_date:
+                        return cached_result
+                    # Trading-date unknown -> fall back to the short TTL.
+                    if trading_date is None and \
+                            self._clock() - cached_at < self._ttl:
+                        return cached_result
         spec = INDEX_BY_MARKET.get(market)
         if spec is None:
             return MarketCondition(
@@ -417,7 +445,7 @@ class MarketConditionService:
                 spec.unavailable_reason or "Index data unavailable"
             )
             with self._lock:
-                self._cache[market] = (self._clock(), result)
+                self._cache[market] = (self._clock(), result, trading_date)
             return result
         try:
             df = self._fetch(spec.symbol, "1y", "1d")
@@ -428,7 +456,7 @@ class MarketConditionService:
                 "UNKNOWN", 50, "Market condition data unavailable."
             )
         with self._lock:
-            self._cache[market] = (self._clock(), result)
+            self._cache[market] = (self._clock(), result, trading_date)
         return result
 
 
