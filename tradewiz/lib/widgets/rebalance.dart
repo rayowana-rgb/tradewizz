@@ -270,6 +270,10 @@ class _RebalanceDetailPageState extends State<RebalanceDetailPage> {
   bool _cacheSeeded = false;
   RebalanceReport? _data;
 
+  /// Symbol -> shares currently held in the simulation. Used to show the
+  /// holdings summary + drag-to-sell slider in the order ticket when trimming.
+  Map<String, double> _ownedShares = const {};
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -301,6 +305,19 @@ class _RebalanceDetailPageState extends State<RebalanceDetailPage> {
     }
     // Only spin when there is nothing cached to show yet.
     setState(() => _loading = _data == null);
+    // Refresh held quantities in parallel (best-effort) so a Sell from here
+    // knows the max and can show the lot info + slider. A failure is harmless.
+    unawaited(() async {
+      try {
+        final positions = await _repo.simPositions(token);
+        if (!mounted) return;
+        setState(() {
+          _ownedShares = {
+            for (final p in positions) p.symbol: p.quantity,
+          };
+        });
+      } catch (_) {/* keep whatever we had */}
+    }());
     try {
       final raw = await _repo.rawRebalance(token);
       if (!mounted) return;
@@ -318,12 +335,18 @@ class _RebalanceDetailPageState extends State<RebalanceDetailPage> {
   }
 
   Future<void> _ticket(RebalanceAction a, OrderSide side) async {
+    // When selling a held position, pass the owned shares so the ticket shows
+    // the holdings summary (e.g. "1,200 shares (12 lots)") + the drag slider.
+    final owned = _ownedShares[a.symbol] ?? 0;
+    final sellingHeld = side == OrderSide.sell && owned > 0;
     await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => OrderTicketPage(
         symbol: a.symbol,
         market: a.market,
         side: side,
         repository: _repo,
+        initialQuantity: sellingHeld ? owned : null,
+        maxQuantity: sellingHeld ? owned : null,
       ),
     ));
     if (mounted) await _load();

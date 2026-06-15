@@ -186,6 +186,17 @@ StockRepository _repo({List<String>? appliedCalls}) {
       body = _settingsBody();
     } else if (path.endsWith('/portfolio/rebalance')) {
       body = _rebalanceBody();
+    } else if (path.endsWith('/sim/positions')) {
+      body = {
+        'positions': [
+          {
+            'symbol': 'TPIA',
+            'market': 'IDX',
+            'quantity': 1200.0,
+            'avg_price': 4000.0,
+          },
+        ],
+      };
     } else if (path.endsWith('/rotation/global')) {
       body = _rotationBody();
     }
@@ -319,6 +330,25 @@ void main() {
     expect(find.byKey(const Key('rebalance_analysis_TPIA')), findsOneWidget);
     expect(find.text('REDUCE'), findsWidgets);
     expect(find.text('ADD'), findsWidgets);
+  });
+
+  testWidgets(
+      'Selling from Rebalance shows held lots + drag slider in the ticket',
+      (tester) async {
+    final repo = _repo();
+    await tester.pumpWidget(_wrap(const RebalanceCard(), repo));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('rebalance_card')));
+    await tester.pumpAndSettle();
+
+    // Sell the held TPIA position -> ticket opens with holdings info + slider.
+    await tester.tap(find.byKey(const Key('rebalance_sell_TPIA')));
+    await tester.pumpAndSettle();
+
+    // 1,200 shares @ 100/lot = 12 lots shown, and the drag slider is present.
+    expect(find.byKey(const Key('sell_qty_slider')), findsOneWidget);
+    expect(find.textContaining('1200 shares (12 lots)'), findsWidgets);
   });
 
   // === Global Rotation Engine =============================================
