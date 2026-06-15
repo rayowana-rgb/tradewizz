@@ -551,8 +551,7 @@ class _ScreenerPageState extends State<ScreenerPage> {
 
   Widget _buildBody() {
     if (_loading) {
-      return const Center(
-          child: CircularProgressIndicator(color: TWColors.accentBright));
+      return const _ScreeningProgress();
     }
     if (_error != null) {
       return _ScreenerError(message: _error!, onRetry: _run);
@@ -1561,6 +1560,44 @@ class _ExploreTag extends StatelessWidget {
         style: TWType.caption.copyWith(
           fontWeight: FontWeight.w600,
           color: color,
+        ),
+      ),
+    );
+  }
+}
+
+class _ScreeningProgress extends StatelessWidget {
+  const _ScreeningProgress();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(
+              width: 32,
+              height: 32,
+              child: CircularProgressIndicator(
+                color: TWColors.accentBright,
+                strokeWidth: 3,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Screening the market…',
+              textAlign: TextAlign.center,
+              style: TWType.label.copyWith(color: TWColors.textPrimary),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Pulling fresh data and ranking matches. This can take a moment.',
+              textAlign: TextAlign.center,
+              style: TWType.caption.copyWith(color: TWColors.textSecondary),
+            ),
+          ],
         ),
       ),
     );
