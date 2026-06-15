@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import os
 import random
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -280,18 +281,43 @@ _YF_TIMEOUT = float(os.environ.get("TRADEWIZ_YF_TIMEOUT", "8"))
 _YF_IMPERSONATE = os.environ.get("TRADEWIZ_YF_IMPERSONATE", "chrome")
 
 
+# A SINGLE shared curl_cffi session, lazily created and reused across all
+# downloads. Previously a new Session was created on EVERY _yf_download call and
+# never closed; each curl_cffi Session owns a libcurl handle with its own
+# resolver thread(s). During a 956-symbol screen hundreds of un-closed sessions
+# piled up -> the host ran out of thread slots (kern.maxprocperuid) and DNS
+# resolution failed with "getaddrinfo() thread failed to start", which wedged
+# the whole server. Reusing one session keeps thread usage flat and bounded.
+_SESSION_LOCK = threading.Lock()
+_SHARED_SESSION = None
+_SESSION_INIT_TRIED = False
+
+
 def _impersonating_session():
-    """A curl_cffi session impersonating a real browser, or None if unavailable.
+    """A SHARED curl_cffi session impersonating a real browser, or None.
 
     yfinance accepts a `session=`; a curl_cffi session with a browser TLS
-    fingerprint bypasses Yahoo's fingerprint-based 429 blocking.
+    fingerprint bypasses Yahoo's fingerprint-based 429 blocking. The session is
+    created once and reused (curl_cffi sessions are safe to share across
+    threads) so per-symbol fetches don't churn resolver threads.
     """
-    try:
-        from curl_cffi import requests as cffi_requests
+    global _SHARED_SESSION, _SESSION_INIT_TRIED
+    if _SHARED_SESSION is not None:
+        return _SHARED_SESSION
+    with _SESSION_LOCK:
+        if _SHARED_SESSION is not None:
+            return _SHARED_SESSION
+        if _SESSION_INIT_TRIED:
+            # Creation already failed once; don't retry on every call.
+            return None
+        _SESSION_INIT_TRIED = True
+        try:
+            from curl_cffi import requests as cffi_requests
 
-        return cffi_requests.Session(impersonate=_YF_IMPERSONATE)
-    except Exception:  # noqa: BLE001 - fall back to yfinance default session
-        return None
+            _SHARED_SESSION = cffi_requests.Session(impersonate=_YF_IMPERSONATE)
+        except Exception:  # noqa: BLE001 - fall back to yfinance default session
+            _SHARED_SESSION = None
+        return _SHARED_SESSION
 
 
 def _is_rate_limited(exc: BaseException) -> bool:
