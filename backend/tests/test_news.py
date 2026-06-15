@@ -132,3 +132,73 @@ def test_topics_always_min_three():
     svc = NewsService(fetcher=lambda s: data.get(s, []), symbols=["^GSPC"])
     feed = svc.feed()
     assert len(feed.topics) >= 3
+
+
+def test_default_fetcher_bounds_a_hanging_provider(monkeypatch):
+    """A yfinance call that never returns must not hang the fetch.
+
+    Regression: ``yf.Ticker(sym).news`` has no timeout and once stalled the
+    whole /v1/news request (and its threadpool worker), wedging the server.
+    The bounded fetcher must give up and return [] instead of blocking.
+    """
+    import time as _time
+
+    from app.news import service as news_service
+
+    # Shrink the timeout so the test is fast.
+    monkeypatch.setattr(news_service, "_FETCH_TIMEOUT", 0.3)
+
+    class _HangingTicker:
+        def __init__(self, *_a, **_k):
+            pass
+
+        @property
+        def news(self):
+            _time.sleep(5)  # would hang far past the timeout
+            return [{"content": {"title": "never seen"}}]
+
+    fake_yf = type("_YF", (), {"Ticker": _HangingTicker})
+    monkeypatch.setitem(__import__("sys").modules, "yfinance", fake_yf)
+
+    start = _time.monotonic()
+    out = news_service._default_fetcher("^GSPC")
+    elapsed = _time.monotonic() - start
+
+    assert out == []
+    assert elapsed < 2.0  # bounded by the (shrunk) timeout, not the 5s sleep
+
+
+def test_concurrent_rebuild_serves_stale_without_blocking():
+    """While one thread rebuilds, a concurrent caller gets cached data fast."""
+    import threading
+    import time as _time
+
+    release = threading.Event()
+    calls = {"n": 0}
+
+    def slow_fetcher(sym):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return [_story("First build story")]
+        release.wait(2.0)  # second build blocks until released
+        return [_story("Second build story")]
+
+    svc = NewsService(fetcher=slow_fetcher, symbols=["^GSPC"], ttl_seconds=0)
+    # Prime the cache (build #1).
+    first = svc.feed()
+    assert first.items
+
+    # Build #2 (slow) in a background thread.
+    t = threading.Thread(target=svc.feed)
+    t.start()
+    _time.sleep(0.1)  # let the background build start + hold _building
+
+    # Concurrent caller must NOT block on the slow build: returns stale fast.
+    began = _time.monotonic()
+    concurrent = svc.feed()
+    assert (_time.monotonic() - began) < 0.5
+    assert concurrent.cached is True
+    assert concurrent.fallback is True
+
+    release.set()
+    t.join(timeout=3)

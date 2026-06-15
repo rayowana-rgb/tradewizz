@@ -16,6 +16,7 @@ import logging
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional
 
@@ -70,12 +71,35 @@ THEME_RULES: List[tuple] = [
 ]
 
 
+# Hard per-symbol timeout (seconds). yfinance's ``.news`` has no timeout knob
+# and can hang indefinitely when Yahoo is slow/unreachable (notably off-market
+# hours). An unbounded fetch stalls _build(), which holds the service lock, so
+# every concurrent /v1/news request piles up on threadpool workers until the
+# server stops responding. Bounding each call keeps the whole feed responsive.
+_FETCH_TIMEOUT = 8.0
+
+# A tiny dedicated pool so a hung provider call is isolated and abandoned (the
+# orphaned worker dies on its own) instead of blocking the request thread.
+_fetch_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="news-yf")
+
+
 def _default_fetcher(symbol: str) -> List[dict]:
-    """Real fetch via yfinance (imported lazily to keep import light)."""
-    import yfinance as yf  # local import: heavy + only needed in production
+    """Real fetch via yfinance, bounded by a hard timeout so it can never hang.
+
+    Imported lazily to keep import light.
+    """
+    def _call() -> List[dict]:
+        import yfinance as yf  # local import: heavy + only needed in production
+
+        return yf.Ticker(symbol).news or []
 
     try:
-        return yf.Ticker(symbol).news or []
+        return _fetch_pool.submit(_call).result(timeout=_FETCH_TIMEOUT)
+    except FuturesTimeout:
+        logger.warning(
+            "news fetch timed out for %s after %.0fs", symbol, _FETCH_TIMEOUT
+        )
+        return []
     except Exception as exc:  # noqa: BLE001 - provider is best-effort
         logger.warning("news fetch failed for %s: %s", symbol, exc)
         return []
@@ -229,6 +253,10 @@ class NewsService:
         self._lock = threading.Lock()
         self._cache: Optional[NewsFeed] = None
         self._cached_at: float = 0.0
+        # True while exactly one thread is rebuilding the feed. Concurrent
+        # callers serve the current (stale) cache instead of blocking, so a
+        # slow provider can never pile requests up on the threadpool.
+        self._building = False
 
     def _build(self) -> NewsFeed:
         by_title: Dict[str, NewsItem] = {}
@@ -265,6 +293,11 @@ class NewsService:
 
         On a build failure, returns the last good feed flagged ``fallback`` so
         the UI keeps showing content instead of an error.
+
+        Single-flight: only one thread rebuilds at a time. If a rebuild is
+        already in progress, concurrent callers return the current cached feed
+        (flagged stale) rather than waiting — this keeps the endpoint fast and
+        stops a slow upstream from exhausting the request threadpool.
         """
         with self._lock:
             fresh_cache = (
@@ -276,19 +309,34 @@ class NewsService:
                 cached.cached = True
                 return cached
 
-            try:
-                feed = self._build()
+            # A rebuild is already running: don't block, serve what we have.
+            if self._building and self._cache is not None:
+                stale = self._cache.model_copy()
+                stale.cached = True
+                stale.fallback = True
+                return stale
+
+            self._building = True
+
+        # Build OUTSIDE the lock so other callers can read the cache meanwhile.
+        try:
+            feed = self._build()
+            with self._lock:
                 self._cache = feed
                 self._cached_at = self._clock()
-                return feed.model_copy()
-            except Exception as exc:  # noqa: BLE001 - serve stale on failure
-                logger.warning("news build failed: %s", exc)
-                if self._cache is not None:
-                    stale = self._cache.model_copy()
-                    stale.cached = True
-                    stale.fallback = True
-                    return stale
-                raise
+                self._building = False
+            return feed.model_copy()
+        except Exception as exc:  # noqa: BLE001 - serve stale on failure
+            logger.warning("news build failed: %s", exc)
+            with self._lock:
+                self._building = False
+                cache = self._cache
+            if cache is not None:
+                stale = cache.model_copy()
+                stale.cached = True
+                stale.fallback = True
+                return stale
+            raise
 
     def clear_cache(self) -> None:
         with self._lock:
