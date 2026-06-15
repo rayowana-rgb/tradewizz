@@ -140,8 +140,17 @@ class RebalanceService:
             (q.symbol, q.market): q.quality_score for q in health.positions
         }
 
-        values = {
-            (p.symbol, p.market): max(0.0, p.market_value) for p in positions
+        def _mv(p) -> float:
+            try:
+                return max(0.0, float(p.market_value))
+            except (TypeError, ValueError):
+                return 0.0  # price unavailable -> treat as unvalued
+
+        values = {(p.symbol, p.market): _mv(p) for p in positions}
+        # A position is "valued" only when its market value is a positive number;
+        # a missing/zero price must not drive EXIT/REDUCE recommendations.
+        has_value_by_key = {
+            (p.symbol, p.market): _mv(p) > 0.0 for p in positions
         }
         invested = sum(values.values())
         try:
@@ -169,6 +178,7 @@ class RebalanceService:
             action, reason, priority = _decide(
                 score=score, signal=signal, quality=quality, weight=weight,
                 regime=regime, pnl_pct=pnl_pct, target=target,
+                has_value=has_value_by_key.get(key, True),
             )
             actions.append(RebalanceAction(
                 symbol=p.symbol,
@@ -234,9 +244,22 @@ def _position_pnl_pct(p) -> float:
     return 0.0
 
 
-def _decide(*, score, signal, quality, weight, regime, pnl_pct, target):
+def _decide(*, score, signal, quality, weight, regime, pnl_pct, target,
+            has_value=True):
     sig = (signal or "HOLD").upper()
     bearish = regime == REGIME_BEAR
+
+    # Negligible position: either the live price is unavailable, or the holding
+    # is so small it rounds to 0.0% of the portfolio (the weight the user sees).
+    # Recommending EXIT/REDUCE on a "0%" line is nonsensical and confusing —
+    # there is effectively nothing to trim or exit. Keep it as a low-priority
+    # HOLD instead. (0.05 = half of the 1-decimal display rounding step.)
+    if not has_value or weight < 0.05:
+        if not has_value:
+            note = "Live price unavailable — holding until data refreshes."
+        else:
+            note = "Position too small to act on (rounds to 0% of portfolio)."
+        return (ACTION_HOLD, note, PRIORITY_LOW)
 
     # EXIT (highest priority).
     if score < 45 or sig == "SELL" or quality < 40 or (
