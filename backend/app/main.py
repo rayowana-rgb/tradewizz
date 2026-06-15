@@ -196,6 +196,15 @@ app.include_router(morning_brief_router)
 _brief_service = MorningBriefService(radar=_radar_service)
 _set_brief_service(_brief_service)
 
+# Global market news feed (yfinance-sourced; research only, no auth gate).
+from .news.router import router as news_router  # noqa: E402
+from .news.router import set_service as _set_news_service  # noqa: E402
+from .news.service import NewsService  # noqa: E402
+
+app.include_router(news_router)
+_news_service = NewsService()
+_set_news_service(_news_service)
+
 # Portfolio Health + Position Quality (Elite). Reads SIMULATED positions and
 # the existing engine score per symbol.
 from .portfolio_health.router import router as health_router  # noqa: E402

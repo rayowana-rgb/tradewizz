@@ -26,6 +26,7 @@ import 'services/watchlist_store.dart';
 import 'theme_tradewizz.dart';
 import 'widgets/ds/ds.dart';
 import 'widgets/market_selector.dart';
+import 'widgets/news_button.dart';
 import 'widgets/notification_bell.dart';
 
 void main() async {
@@ -240,6 +241,7 @@ class _HomeShellState extends State<HomeShell> {
                 onChanged: _onMarketChanged,
               ),
             ),
+          const NewsButton(),
           const NotificationBell(),
           const SizedBox(width: 4),
         ],

@@ -3,6 +3,7 @@ import '../models/broker.dart';
 import '../models/broker_connection.dart';
 import '../models/market.dart';
 import '../models/market_index.dart';
+import '../models/news.dart';
 import '../models/market_overview.dart';
 import '../models/phase2.dart';
 import '../models/phase3.dart';
@@ -570,6 +571,20 @@ class StockRepository {
       bearer: token,
     );
     return AutoWatchlistSettings.fromJson(j);
+  }
+
+  // --- Global market news --------------------------------------------------
+
+  /// Raw global news feed JSON. Backs `GET /v1/news` (no auth required).
+  Future<Map<String, dynamic>> rawNews({bool forceRefresh = false}) {
+    final path = forceRefresh ? '/news?force_refresh=true' : '/news';
+    return _client.authGet(path);
+  }
+
+  /// Parsed global market news feed.
+  Future<NewsFeed> news({bool forceRefresh = false}) async {
+    final j = await rawNews(forceRefresh: forceRefresh);
+    return NewsFeed.fromJson(j);
   }
 
   // --- Phase 3: Portfolio Rebalancing AI -----------------------------------
