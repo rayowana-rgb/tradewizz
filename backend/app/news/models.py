@@ -26,11 +26,26 @@ class NewsItem(BaseModel):
     related_symbols: List[str] = []
 
 
+class NewsTopic(BaseModel):
+    """A rule-based cluster of headlines around one theme.
+
+    Built by keyword-grouping the fetched headlines (no LLM). ``headline`` is a
+    representative title for the theme; ``article_count`` is how many fetched
+    items mention it.
+    """
+
+    label: str                    # e.g. "Oil & Energy", "Fed & Rates"
+    headline: str = ""            # representative headline for the theme
+    article_count: int = 0
+    symbols: List[str] = []       # related global symbols (e.g. CL=F)
+
+
 class NewsFeed(BaseModel):
     """A de-duplicated, newest-first list of global market headlines."""
 
     scope: str = "GLOBAL"
     generated_at: str = ""        # ISO-8601 (UTC)
+    topics: List[NewsTopic] = []  # "what the world is talking about" (min 3)
     items: List[NewsItem] = []
     cached: bool = False          # True when served from the in-memory cache
     fallback: bool = False        # True when served stale after a fetch failure

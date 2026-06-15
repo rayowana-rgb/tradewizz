@@ -118,13 +118,115 @@ class _NewsPageState extends State<NewsPage> {
         ],
       );
     }
-    return ListView.separated(
+    return ListView(
       key: const Key('news_list'),
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      itemCount: _data.items.length,
-      separatorBuilder: (_, _) => const Divider(height: 1, indent: 16),
-      itemBuilder: (context, i) =>
-          _NewsTile(item: _data.items[i], onTap: () => _open(_data.items[i])),
+      padding: const EdgeInsets.only(bottom: 8),
+      children: [
+        if (_data.topics.isNotEmpty) _TopicsPanel(topics: _data.topics),
+        for (final item in _data.items) ...[
+          _NewsTile(item: item, onTap: () => _open(item)),
+          const Divider(height: 1, indent: 16),
+        ],
+      ],
+    );
+  }
+}
+
+/// "What the world is talking about" — rule-based theme summary shown above
+/// the headline list. At least 3 themes per the backend contract.
+class _TopicsPanel extends StatelessWidget {
+  const _TopicsPanel({required this.topics});
+  final List<NewsTopic> topics;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('news_topics_panel'),
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: TWColors.heroBlueGradient,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: const [
+              Icon(Icons.travel_explore, size: 18, color: Colors.white),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text('WHAT THE WORLD IS TALKING ABOUT',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.6)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          for (var i = 0; i < topics.length; i++) ...[
+            if (i > 0) const SizedBox(height: 10),
+            _TopicRow(topic: topics[i]),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TopicRow extends StatelessWidget {
+  const _TopicRow({required this.topic});
+  final NewsTopic topic;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(top: 5, right: 8),
+          child: Icon(Icons.circle, size: 6, color: Colors.white70),
+        ),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(topic.label.toUpperCase(),
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.4)),
+                  ),
+                  if (topic.articleCount > 1) ...[
+                    const SizedBox(width: 6),
+                    Text('${topic.articleCount} stories',
+                        style: const TextStyle(
+                            color: Colors.white60, fontSize: 11)),
+                  ],
+                ],
+              ),
+              if (topic.headline.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 1),
+                  child: Text(topic.headline,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          height: 1.25,
+                          fontWeight: FontWeight.w500)),
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

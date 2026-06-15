@@ -17,6 +17,26 @@ const _feed = {
   'generated_at': '2026-06-15T01:00:00Z',
   'cached': false,
   'fallback': false,
+  'topics': [
+    {
+      'label': 'Oil & Energy',
+      'headline': 'Oil slips on demand worries',
+      'article_count': 2,
+      'symbols': ['CL=F'],
+    },
+    {
+      'label': 'Stocks & Markets',
+      'headline': 'Global stocks rally as inflation cools',
+      'article_count': 1,
+      'symbols': ['^GSPC'],
+    },
+    {
+      'label': 'Fed & Rates',
+      'headline': 'Fed signals a cut',
+      'article_count': 1,
+      'symbols': ['^GSPC'],
+    },
+  ],
   'items': [
     {
       'id': 'a1',
@@ -70,9 +90,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('news_list')), findsOneWidget);
+    expect(find.byKey(const Key('news_topics_panel')), findsOneWidget);
+    expect(find.text('WHAT THE WORLD IS TALKING ABOUT'), findsOneWidget);
+    expect(find.text('OIL & ENERGY'), findsOneWidget);
+    expect(find.text('2 stories'), findsOneWidget);
     expect(find.byKey(const Key('news_item_a1')), findsOneWidget);
     expect(find.byKey(const Key('news_item_a2')), findsOneWidget);
-    expect(find.text('Global stocks rally as inflation cools'), findsOneWidget);
+    // Appears in both the topics panel and the headline list.
+    expect(find.text('Global stocks rally as inflation cools'), findsWidgets);
     expect(find.textContaining('Reuters'), findsOneWidget);
     expect(find.byKey(const Key('news_error')), findsNothing);
   });

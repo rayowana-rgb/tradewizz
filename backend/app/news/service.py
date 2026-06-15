@@ -19,7 +19,7 @@ import time
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional
 
-from .models import NewsFeed, NewsItem
+from .models import NewsFeed, NewsItem, NewsTopic
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +43,31 @@ NewsFetcher = Callable[[str], List[dict]]
 
 DEFAULT_TTL_SECONDS = 900  # 15 min — news doesn't need second-by-second polling
 DEFAULT_LIMIT = 40
+MIN_TOPICS = 3
+MAX_TOPICS = 5
+
+# Rule-based themes: (label, keywords). A headline joins a theme if it contains
+# any keyword. Themes are scored by how many headlines match; the strongest are
+# surfaced as "what the world is talking about". Order matters only as a
+# tie-breaker (earlier = slightly preferred).
+THEME_RULES: List[tuple] = [
+    ("Oil & Energy", ("oil", "crude", "opec", "energy", "gas", "brent", "wti")),
+    ("Fed & Rates", ("fed", "rate", "interest", "inflation", "cpi", "powell",
+                      "central bank", "hike", "cut")),
+    ("Stocks & Markets", ("stock", "shares", "equities", "s&p", "nasdaq",
+                          "dow", "rally", "sell-off", "selloff", "futures",
+                          "index")),
+    ("Crypto", ("bitcoin", "crypto", "ethereum", "btc", "xrp", "dogecoin",
+                "blockchain")),
+    ("Currencies", ("dollar", "euro", "yen", "forex", "currency", "fx")),
+    ("Gold & Metals", ("gold", "silver", "metal", "bullion")),
+    ("Geopolitics", ("war", "peace", "iran", "gulf", "russia", "ukraine",
+                     "china", "tariff", "sanction", "trump", "election")),
+    ("Tech & AI", ("ai ", "artificial intelligence", "chip", "semiconductor",
+                   "nvidia", "apple", "tesla", "spacex", "tech")),
+    ("Earnings & Economy", ("earnings", "gdp", "jobs", "unemployment",
+                            "economy", "recession", "growth", "retail")),
+]
 
 
 def _default_fetcher(symbol: str) -> List[dict]:
@@ -126,6 +151,64 @@ def _coerce(raw: dict, source_symbol: str) -> Optional[NewsItem]:
     )
 
 
+def _topics(items: List[NewsItem]) -> List[NewsTopic]:
+    """Rule-based 'what the world is talking about' (min 3 themes).
+
+    Each headline is matched against keyword themes (a headline may match
+    several). Themes are ranked by article count; the strongest are returned
+    with a representative (newest) headline + related symbols. If fewer than
+    MIN_TOPICS themes match, the most-recent uncategorized headlines fill the
+    gap so the panel always shows at least 3 things.
+    """
+    matched: Dict[str, Dict] = {}
+    used_titles: set = set()
+    for item in items:
+        text = f"{item.title} {item.summary}".lower()
+        for label, keywords in THEME_RULES:
+            if any(kw in text for kw in keywords):
+                bucket = matched.setdefault(
+                    label, {"count": 0, "headline": "", "symbols": set()}
+                )
+                bucket["count"] += 1
+                # items are already newest-first -> first match is the newest.
+                if not bucket["headline"]:
+                    bucket["headline"] = item.title
+                bucket["symbols"].update(item.related_symbols)
+                used_titles.add(item.title)
+
+    topics = [
+        NewsTopic(
+            label=label,
+            headline=data["headline"],
+            article_count=data["count"],
+            symbols=sorted(data["symbols"]),
+        )
+        for label, data in matched.items()
+    ]
+    # Strongest themes first; tie-break by THEME_RULES order for stability.
+    order = {label: i for i, (label, _) in enumerate(THEME_RULES)}
+    topics.sort(key=lambda t: (-t.article_count, order.get(t.label, 99)))
+    topics = topics[:MAX_TOPICS]
+
+    # Guarantee at least MIN_TOPICS by filling with uncategorized headlines.
+    if len(topics) < MIN_TOPICS:
+        for item in items:
+            if len(topics) >= MIN_TOPICS:
+                break
+            if item.title in used_titles:
+                continue
+            used_titles.add(item.title)
+            topics.append(
+                NewsTopic(
+                    label="Today",
+                    headline=item.title,
+                    article_count=1,
+                    symbols=item.related_symbols,
+                )
+            )
+    return topics
+
+
 class NewsService:
     """Builds + caches the global news feed."""
 
@@ -171,6 +254,7 @@ class NewsService:
         return NewsFeed(
             scope="GLOBAL",
             generated_at=_now_iso(),
+            topics=_topics(items),
             items=items,
             cached=False,
             fallback=False,

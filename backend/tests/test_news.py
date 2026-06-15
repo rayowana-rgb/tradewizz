@@ -91,3 +91,44 @@ def test_skips_items_without_title():
     svc = NewsService(fetcher=lambda s: data.get(s, []), symbols=["^GSPC"])
     feed = svc.feed()
     assert [i.title for i in feed.items] == ["Real one"]
+
+
+def test_topics_cluster_by_theme():
+    data = {
+        "^GSPC": [
+            _story("Oil prices plunge as OPEC boosts supply",
+                   date="2026-06-15T09:00:00Z"),
+            _story("Crude slides on demand worries",
+                   date="2026-06-15T08:00:00Z"),
+            _story("Fed signals another rate cut amid cooling inflation",
+                   date="2026-06-15T07:00:00Z"),
+            _story("Bitcoin rallies past new highs",
+                   date="2026-06-15T06:00:00Z"),
+        ],
+    }
+    svc = NewsService(fetcher=lambda s: data.get(s, []), symbols=["^GSPC"])
+    feed = svc.feed()
+    assert len(feed.topics) >= 3
+    labels = [t.label for t in feed.topics]
+    # Oil theme has 2 articles -> ranked first.
+    assert labels[0] == "Oil & Energy"
+    assert feed.topics[0].article_count == 2
+    # Representative headline = newest matching headline.
+    assert "Oil prices plunge" in feed.topics[0].headline
+    assert {"Fed & Rates", "Crypto"}.issubset(set(labels))
+
+
+def test_topics_always_min_three():
+    # Only one categorizable headline -> filler ensures >= 3 topics.
+    data = {
+        "^GSPC": [
+            _story("Gold hits record high", date="2026-06-15T09:00:00Z"),
+            _story("Local festival draws crowds",
+                   date="2026-06-15T08:00:00Z"),
+            _story("New museum opens downtown",
+                   date="2026-06-15T07:00:00Z"),
+        ],
+    }
+    svc = NewsService(fetcher=lambda s: data.get(s, []), symbols=["^GSPC"])
+    feed = svc.feed()
+    assert len(feed.topics) >= 3
