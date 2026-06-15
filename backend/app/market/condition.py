@@ -20,6 +20,13 @@ Signals (each nudges the score from a neutral 50 baseline):
     = fear).
   * Volatility (high realized volatility = fear).
   * RSI(14) of the index (overbought = greed, oversold = fear).
+  * Market breadth (optional): advances vs declines across the universe.
+    Captures hidden fragility/strength the headline index can hide (e.g. a
+    handful of mega-caps lifting an index while most stocks fall).
+  * Implied volatility / VIX (optional, US only): the market's forward-looking
+    "fear gauge". Elevated VIX = fear; subdued VIX = complacency/greed.
+The optional breadth/VIX signals are skipped gracefully when unavailable, so a
+breadth-less or VIX-less market keeps the original price-only behaviour.
 """
 
 from __future__ import annotations
@@ -90,12 +97,38 @@ def _rsi(closes: Sequence[float], period: int = 14) -> Optional[float]:
     return 100.0 - (100.0 / (1.0 + rs))
 
 
+def _breadth_ratio(
+    advances: Optional[int], declines: Optional[int]
+) -> Optional[float]:
+    """Net breadth in [-1, 1]: (adv - dec) / (adv + dec). None if no data.
+
+    +1 = every stock up (broad strength), -1 = every stock down (broad
+    capitulation), 0 = evenly split. ``unchanged`` deliberately ignored so a
+    quiet market does not dilute the signal.
+    """
+    if advances is None or declines is None:
+        return None
+    total = advances + declines
+    if total <= 0:
+        return None
+    return (advances - declines) / total
+
+
 def classify_condition(
     closes: Optional[Sequence[float]],
     highs: Optional[Sequence[float]] = None,
     lows: Optional[Sequence[float]] = None,
+    *,
+    advances: Optional[int] = None,
+    declines: Optional[int] = None,
+    vix: Optional[float] = None,
 ) -> MarketCondition:
-    """Classify market condition from index closes (oldest -> newest)."""
+    """Classify market condition from index closes (oldest -> newest).
+
+    Optional sentiment inputs (skipped gracefully when ``None``):
+      * ``advances`` / ``declines``: universe breadth counts.
+      * ``vix``: current implied-volatility / VIX level (US fear gauge).
+    """
     if not closes or len([c for c in closes if c is not None]) < 25:
         return MarketCondition(
             "UNKNOWN", 50, "Insufficient index data to gauge market condition."
@@ -187,6 +220,41 @@ def classify_condition(
         elif rsi <= 30:
             score -= 8
             bearish.append("oversold pressure")
+
+    # Market breadth (optional): advances vs declines across the universe.
+    # Surfaces fragility the headline index can hide. Scaled so a strongly
+    # one-sided tape is worth up to +/-12 points; mild skews barely move it.
+    breadth = _breadth_ratio(advances, declines)
+    if breadth is not None:
+        if breadth >= 0.30:
+            score += 10
+            bullish.append("broad participation")
+        elif breadth >= 0.10:
+            score += 4
+        elif breadth <= -0.30:
+            score -= 12
+            bearish.append("broad selling")
+        elif breadth <= -0.10:
+            score -= 5
+
+    # Implied volatility / VIX (optional, US only): the market's forward-looking
+    # fear gauge. Conventional reading: <15 complacent, 15-20 calm, 20-30
+    # cautious, >30 fearful, >40 panic.
+    if vix is not None and vix > 0:
+        if vix >= 40:
+            score -= 16
+            bearish.append("panic-level volatility (VIX)")
+        elif vix >= 30:
+            score -= 10
+            bearish.append("elevated fear (VIX)")
+        elif vix >= 22:
+            score -= 4
+            bearish.append("rising volatility (VIX)")
+        elif vix <= 13:
+            score += 8
+            bullish.append("subdued volatility (VIX)")
+        elif vix <= 17:
+            score += 4
 
     score = max(0.0, min(100.0, score))
     label = _label(score)

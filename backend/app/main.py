@@ -481,6 +481,21 @@ def set_market_overview_service(service) -> None:
     global market_overview_service
     market_overview_service = service
 
+
+# Wire market breadth into the Fear/Greed condition so it reflects how broadly
+# stocks are advancing/declining (not just the headline index). Late-binding
+# closure reads the module-global overview service so test hooks that swap it
+# are honoured. Best-effort: the condition service swallows any error here and
+# falls back to a price-only reading.
+def _condition_breadth_provider(market: Market):
+    ov = market_overview_service.get(market)
+    if ov is None or not getattr(ov, "available", False):
+        return (None, None)
+    return (ov.advances, ov.declines)
+
+
+market_condition_service._breadth_provider = _condition_breadth_provider
+
 # Optional test hook: override the market-local "now" used by the screener
 # cache so tests can pin OPEN/CLOSED deterministically. None => real clock.
 _screener_now_override = None  # type: Optional[object]

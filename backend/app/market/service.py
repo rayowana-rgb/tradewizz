@@ -96,6 +96,27 @@ def _index_fetch(
     return df
 
 
+def _fetch_vix_level() -> Optional[float]:
+    """Latest CBOE VIX close (``^VIX``), or None on any failure.
+
+    The VIX is the market's forward-looking implied-volatility "fear gauge"
+    for US equities. Reuses the index-tolerant fetcher (Close-only). Best
+    effort: never raises, so a VIX outage just drops the signal.
+    """
+    try:
+        df = _index_fetch("^VIX", "5d", "1d")
+        closes = pd.to_numeric(df["Close"], errors="coerce").dropna()
+        if closes.empty:
+            return None
+        value = float(closes.iloc[-1])
+        # Sanity bound: VIX realistically trades ~9..90.
+        if value <= 0 or value > 200:
+            return None
+        return value
+    except Exception:  # noqa: BLE001 - VIX is optional
+        return None
+
+
 @dataclass(frozen=True)
 class MarketIndexSpec:
     """Static mapping of a market to its Yahoo index symbol + display info."""
@@ -391,12 +412,39 @@ class MarketConditionService:
         fetcher: Optional[Fetcher] = None,
         ttl_seconds: int = 300,
         clock: Callable[[], float] = time.time,
+        breadth_provider: Optional[
+            Callable[[Market], tuple]
+        ] = None,
+        vix_fetcher: Optional[Callable[[], Optional[float]]] = None,
     ):
         self._fetch: Fetcher = fetcher or _index_fetch
         self._ttl = ttl_seconds
         self._clock = clock
         self._lock = threading.Lock()
         self._cache: Dict[Market, tuple] = {}
+        # Optional sentiment inputs. Both are best-effort: any error is swallowed
+        # and the corresponding signal is simply skipped (price-only fallback).
+        self._breadth_provider = breadth_provider
+        self._vix_fetcher = vix_fetcher or _fetch_vix_level
+
+    def _breadth(self, market: Market) -> tuple:
+        """(advances, declines) for the market, or (None, None) on any failure."""
+        if self._breadth_provider is None:
+            return (None, None)
+        try:
+            adv, dec = self._breadth_provider(market)
+            return (adv, dec)
+        except Exception:  # noqa: BLE001 - breadth is optional
+            return (None, None)
+
+    def _vix(self, market: Market) -> Optional[float]:
+        """Current VIX level (US only), or None when unavailable/non-US."""
+        if market != Market.US or self._vix_fetcher is None:
+            return None
+        try:
+            return self._vix_fetcher()
+        except Exception:  # noqa: BLE001 - VIX is optional
+            return None
 
     def get(self, market: Market):
         from .condition import MarketCondition, classify_condition
@@ -450,7 +498,12 @@ class MarketConditionService:
         try:
             df = self._fetch(spec.symbol, "1y", "1d")
             closes, highs, lows = _ohlc_series(df)
-            result = classify_condition(closes, highs, lows)
+            advances, declines = self._breadth(market)
+            vix = self._vix(market)
+            result = classify_condition(
+                closes, highs, lows,
+                advances=advances, declines=declines, vix=vix,
+            )
         except Exception:  # noqa: BLE001 - best-effort, never crash
             result = MarketCondition(
                 "UNKNOWN", 50, "Market condition data unavailable."

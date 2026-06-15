@@ -80,3 +80,115 @@ def test_condition_service_handles_fetch_failure():
     cond = svc.get(Market.US)
     assert cond.condition == "UNKNOWN"
     assert cond.condition_score == 50
+
+
+# --- Breadth + VIX sentiment signals (optional, backward-compatible) ---
+
+def _flat_closes(n: int = 260):
+    # Perfectly flat -> price-only score is exactly NEUTRAL (50), so any shift
+    # is attributable to the breadth/VIX signal under test.
+    return [100.0] * n
+
+
+def test_breadth_ratio_helper():
+    from app.market.condition import _breadth_ratio
+    assert _breadth_ratio(80, 20) == 0.6
+    assert _breadth_ratio(20, 80) == -0.6
+    assert _breadth_ratio(50, 50) == 0.0
+    assert _breadth_ratio(None, 10) is None
+    assert _breadth_ratio(10, None) is None
+    assert _breadth_ratio(0, 0) is None
+
+
+def test_breadth_default_none_is_backward_compatible():
+    # No breadth/VIX passed -> identical to the legacy price-only call.
+    closes = _flat_closes()
+    assert classify_condition(closes).condition_score == \
+        classify_condition(closes, advances=None, declines=None).condition_score
+
+
+def test_broad_selling_lowers_score():
+    base = classify_condition(_flat_closes()).condition_score
+    bad = classify_condition(
+        _flat_closes(), advances=10, declines=90
+    ).condition_score
+    assert bad < base, f"broad selling should lower score ({bad} !< {base})"
+
+
+def test_broad_participation_raises_score():
+    base = classify_condition(_flat_closes()).condition_score
+    good = classify_condition(
+        _flat_closes(), advances=90, declines=10
+    ).condition_score
+    assert good > base, f"broad buying should raise score ({good} !> {base})"
+
+
+def test_high_vix_lowers_score():
+    base = classify_condition(_flat_closes()).condition_score
+    panic = classify_condition(_flat_closes(), vix=45.0).condition_score
+    assert panic < base
+    # Larger drop at panic levels than merely elevated.
+    elevated = classify_condition(_flat_closes(), vix=32.0).condition_score
+    assert panic <= elevated <= base
+
+
+def test_low_vix_raises_score():
+    base = classify_condition(_flat_closes()).condition_score
+    calm = classify_condition(_flat_closes(), vix=12.0).condition_score
+    assert calm > base
+
+
+def test_vix_only_applies_for_us_market():
+    # The service must not feed VIX to non-US markets even if a fetcher exists.
+    import pandas as pd
+
+    def fake_fetch(symbol, period="1y", interval="1d"):
+        return pd.DataFrame({"Close": _flat_closes()})
+
+    seen = {"vix_called": False}
+
+    def fake_vix():
+        seen["vix_called"] = True
+        return 45.0
+
+    svc = MarketConditionService(fetcher=fake_fetch, vix_fetcher=fake_vix)
+    svc.get(Market.IDX)
+    assert seen["vix_called"] is False, "VIX must not be fetched for non-US"
+
+    svc.get(Market.US)
+    assert seen["vix_called"] is True, "VIX should be fetched for US"
+
+
+def test_breadth_provider_wired_into_service():
+    import pandas as pd
+
+    def fake_fetch(symbol, period="1y", interval="1d"):
+        return pd.DataFrame({"Close": _flat_closes()})
+
+    def heavy_selling(market):
+        return (5, 95)
+
+    svc = MarketConditionService(
+        fetcher=fake_fetch, breadth_provider=heavy_selling
+    )
+    cond = svc.get(Market.IDX)
+    # Flat index (price-only NEUTRAL 50) + broad selling -> pushed toward fear.
+    assert cond.condition_score < 50
+    assert cond.condition in ("FEAR", "EXTREME_FEAR", "NEUTRAL")
+
+
+def test_breadth_provider_failure_is_swallowed():
+    import pandas as pd
+
+    def fake_fetch(symbol, period="1y", interval="1d"):
+        return pd.DataFrame({"Close": _flat_closes()})
+
+    def boom(market):
+        raise RuntimeError("breadth source down")
+
+    svc = MarketConditionService(fetcher=fake_fetch, breadth_provider=boom)
+    cond = svc.get(Market.IDX)
+    # Falls back to the price-only reading without crashing (breadth ignored).
+    price_only = classify_condition(_flat_closes()).condition_score
+    assert cond.condition == "NEUTRAL"
+    assert cond.condition_score == price_only
