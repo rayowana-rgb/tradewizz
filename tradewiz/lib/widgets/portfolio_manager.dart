@@ -8,6 +8,7 @@ import '../services/api_client.dart';
 import '../services/auth_scope.dart';
 import '../services/portfolio_health_cache.dart';
 import '../services/repository_scope.dart';
+import '../services/user_prefs_scope.dart';
 import '../theme.dart';
 import '../theme_tradewizz.dart';
 import 'ds/ds.dart';
@@ -186,7 +187,28 @@ class _ReportCard extends StatefulWidget {
 
 class _ReportCardState extends State<_ReportCard> {
   // Recommendations can be hidden/shown via the section header. Default shown.
+  // The state is persisted in UserPrefs (manager_recs_collapsed), seeded once
+  // from the store so it survives app restarts.
   bool _recsExpanded = true;
+  bool _recsSeeded = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_recsSeeded) {
+      final prefs = UserPrefsScope.maybeOf(context)?.prefs;
+      if (prefs != null) {
+        _recsSeeded = true;
+        _recsExpanded = !prefs.managerRecsCollapsed;
+      }
+    }
+  }
+
+  void _toggleRecs() {
+    setState(() => _recsExpanded = !_recsExpanded);
+    UserPrefsScope.maybeOf(context)
+        ?.setManagerRecsCollapsed(!_recsExpanded);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -240,8 +262,7 @@ class _ReportCardState extends State<_ReportCard> {
               child: InkWell(
                 key: const Key('portfolio_manager_recs_toggle'),
                 borderRadius: BorderRadius.circular(8),
-                onTap: () =>
-                    setState(() => _recsExpanded = !_recsExpanded),
+                onTap: _toggleRecs,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 2),
                   child: Row(

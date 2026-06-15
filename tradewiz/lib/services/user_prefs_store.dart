@@ -99,6 +99,10 @@ class UserPrefsStore extends ChangeNotifier {
   Future<void> setTradesCollapsed(bool collapsed) =>
       update(_prefs.copyWith(tradesCollapsed: collapsed));
 
+  /// Persist the AI Portfolio Manager "Recommendations" hide/show state.
+  Future<void> setManagerRecsCollapsed(bool collapsed) =>
+      update(_prefs.copyWith(managerRecsCollapsed: collapsed));
+
   /// Mark onboarding complete (called after the final screen).
   Future<void> completeOnboarding() => update(
         _prefs.copyWith(onboarded: true, completedAt: DateTime.now()),

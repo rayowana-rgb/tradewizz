@@ -13,6 +13,8 @@ import 'package:tradewiz/services/auth_scope.dart';
 import 'package:tradewiz/services/auth_store.dart';
 import 'package:tradewiz/services/portfolio_health_cache.dart';
 import 'package:tradewiz/services/repository_scope.dart';
+import 'package:tradewiz/services/user_prefs_scope.dart';
+import 'package:tradewiz/services/user_prefs_store.dart';
 import 'package:tradewiz/widgets/portfolio_manager.dart';
 import 'package:tradewiz/widgets/rebalance.dart';
 
@@ -222,5 +224,74 @@ void main() {
     await tester.tap(find.byKey(const Key('portfolio_manager_recs_toggle')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('pm_rec_concentration')), findsOneWidget);
+  });
+
+  testWidgets(
+      'Recommendations hide state is seeded from + persisted to UserPrefs',
+      (tester) async {
+    final auth = await _auth();
+    final fake = MockClient((req) async {
+      if (req.url.path.contains('/portfolio/manager')) {
+        return http.Response(
+            jsonEncode({
+              ..._managerJson,
+              'recommendations': [
+                {
+                  'kind': 'concentration',
+                  'severity': 'warning',
+                  'title': 'Trim BBCA',
+                  'message': 'BBCA is 25% of the book.',
+                }
+              ],
+            }),
+            200,
+            headers: {'content-type': 'application/json'});
+      }
+      return http.Response(jsonEncode({}), 200,
+          headers: {'content-type': 'application/json'});
+    });
+    final repo = StockRepository(
+      client: ApiClient(
+        config: const AppConfig(baseUrl: 'https://test.tradewiz.app/v1'),
+        httpClient: fake,
+      ),
+    );
+
+    // Store pre-seeded with the section HIDDEN.
+    final prefsStore = UserPrefsStore();
+    await prefsStore.setManagerRecsCollapsed(true);
+
+    await tester.pumpWidget(RepositoryScope(
+      repository: repo,
+      child: AuthScope(
+        store: auth,
+        child: UserPrefsScope(
+          store: prefsStore,
+          child: MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: PortfolioManagerCard(
+                    repository: repo, cache: InMemoryPortfolioInsightCache()),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // Seeded hidden from prefs.
+    expect(find.byKey(const Key('pm_rec_concentration')), findsNothing);
+
+    // Tapping to SHOW persists the new state back to prefs.
+    await tester.tap(find.byKey(const Key('portfolio_manager_recs_toggle')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('pm_rec_concentration')), findsOneWidget);
+    expect(prefsStore.prefs.managerRecsCollapsed, isFalse);
+
+    // Hiding again persists true.
+    await tester.tap(find.byKey(const Key('portfolio_manager_recs_toggle')));
+    await tester.pumpAndSettle();
+    expect(prefsStore.prefs.managerRecsCollapsed, isTrue);
   });
 }

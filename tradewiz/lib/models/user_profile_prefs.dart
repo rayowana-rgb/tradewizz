@@ -44,6 +44,7 @@ class UserPrefs {
     this.preferredBrokerId,
     this.holdingsCollapsed = false,
     this.tradesCollapsed = false,
+    this.managerRecsCollapsed = false,
   });
 
   /// Markets the user picked (screen 2). Empty => not yet chosen.
@@ -71,6 +72,11 @@ class UserPrefs {
   final bool holdingsCollapsed;
   final bool tradesCollapsed;
 
+  /// Whether the AI Portfolio Manager "Recommendations" section is hidden.
+  /// User-facing space-saving toggle; persisted locally only. Default false
+  /// (shown). Never affects data, scoring, or trading.
+  final bool managerRecsCollapsed;
+
   /// The market the home screen should lead with (first selected, else IDX).
   Market get primaryMarket => markets.isEmpty ? Market.idx : markets.first;
 
@@ -88,6 +94,7 @@ class UserPrefs {
     bool clearPreferredBroker = false,
     bool? holdingsCollapsed,
     bool? tradesCollapsed,
+    bool? managerRecsCollapsed,
   }) =>
       UserPrefs(
         markets: markets ?? this.markets,
@@ -100,6 +107,8 @@ class UserPrefs {
             : (preferredBrokerId ?? this.preferredBrokerId),
         holdingsCollapsed: holdingsCollapsed ?? this.holdingsCollapsed,
         tradesCollapsed: tradesCollapsed ?? this.tradesCollapsed,
+        managerRecsCollapsed:
+            managerRecsCollapsed ?? this.managerRecsCollapsed,
       );
 
   Map<String, dynamic> toJson() => {
@@ -111,6 +120,7 @@ class UserPrefs {
         'preferred_broker_id': preferredBrokerId,
         'holdings_collapsed': holdingsCollapsed,
         'trades_collapsed': tradesCollapsed,
+        'manager_recs_collapsed': managerRecsCollapsed,
       };
 
   factory UserPrefs.fromJson(Map<String, dynamic> j) => UserPrefs(
@@ -130,5 +140,6 @@ class UserPrefs {
             ?.let((s) => s.isEmpty ? null : s),
         holdingsCollapsed: j['holdings_collapsed'] == true,
         tradesCollapsed: j['trades_collapsed'] == true,
+        managerRecsCollapsed: j['manager_recs_collapsed'] == true,
       );
 }
