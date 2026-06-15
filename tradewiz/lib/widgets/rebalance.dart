@@ -3,6 +3,7 @@ import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 
 import '../models/broker.dart';
+import '../models/market.dart';
 import '../models/phase3.dart';
 import '../pages/ai_analysis_page.dart';
 import '../pages/order_ticket_page.dart';
@@ -59,6 +60,10 @@ class _RebalanceCardState extends State<RebalanceCard> {
   bool _error = false;
   RebalanceReport? _data;
   bool _cacheSeeded = false;
+  // Held positions so the card's counts never reflect a stale cached action
+  // (e.g. an EXIT) for a name that is no longer held.
+  Set<String> _heldKeys = const {};
+  bool _positionsLoaded = false;
   late final PortfolioInsightCache _cache =
       widget.cache ?? SharedPrefsPortfolioInsightCache();
 
@@ -97,6 +102,20 @@ class _RebalanceCardState extends State<RebalanceCard> {
         }
       }());
     }
+    // Refresh held symbols in parallel (best-effort) so the summary counts are
+    // reconciled against real holdings. A failure is harmless.
+    unawaited(() async {
+      try {
+        final positions = await _repo.simPositions(token);
+        if (!mounted) return;
+        setState(() {
+          _heldKeys = {
+            for (final p in positions) '${p.symbol}@${p.market.code}',
+          };
+          _positionsLoaded = true;
+        });
+      } catch (_) {/* keep whatever we had */}
+    }());
     // Only show the spinner when there is nothing cached to display yet.
     setState(() => _loading = _data == null);
     try {
@@ -178,7 +197,7 @@ class _RebalanceCardState extends State<RebalanceCard> {
           key: Key('rebalance_error'),
           style: TextStyle(color: TWColors.down));
     }
-    final data = _data!;
+    final data = _positionsLoaded ? _data!.reconciledWith(_heldKeys) : _data!;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -270,9 +289,20 @@ class _RebalanceDetailPageState extends State<RebalanceDetailPage> {
   bool _cacheSeeded = false;
   RebalanceReport? _data;
 
-  /// Symbol -> shares currently held in the simulation. Used to show the
-  /// holdings summary + drag-to-sell slider in the order ticket when trimming.
+  /// 'SYMBOL@MARKETCODE' -> shares currently held in the simulation. Used to
+  /// (a) show the holdings summary + drag-to-sell slider when trimming and
+  /// (b) drop any stale action for a name that is no longer held.
   Map<String, double> _ownedShares = const {};
+  /// True once we have successfully fetched live positions at least once, so we
+  /// only reconcile (filter) the report against real holdings when we know them.
+  bool _positionsLoaded = false;
+
+  String _posKey(String symbol, Market market) => '$symbol@${market.code}';
+
+  /// Symbols we currently hold, as 'SYMBOL@MARKETCODE'. Empty until positions
+  /// load (reconcile then leaves the report untouched).
+  Set<String> get _heldKeys =>
+      _positionsLoaded ? _ownedShares.keys.toSet() : const {};
 
   @override
   void didChangeDependencies() {
@@ -313,8 +343,9 @@ class _RebalanceDetailPageState extends State<RebalanceDetailPage> {
         if (!mounted) return;
         setState(() {
           _ownedShares = {
-            for (final p in positions) p.symbol: p.quantity,
+            for (final p in positions) _posKey(p.symbol, p.market): p.quantity,
           };
+          _positionsLoaded = true;
         });
       } catch (_) {/* keep whatever we had */}
     }());
@@ -337,7 +368,7 @@ class _RebalanceDetailPageState extends State<RebalanceDetailPage> {
   Future<void> _ticket(RebalanceAction a, OrderSide side) async {
     // When selling a held position, pass the owned shares so the ticket shows
     // the holdings summary (e.g. "1,200 shares (12 lots)") + the drag slider.
-    final owned = _ownedShares[a.symbol] ?? 0;
+    final owned = _ownedShares[_posKey(a.symbol, a.market)] ?? 0;
     final sellingHeld = side == OrderSide.sell && owned > 0;
     await Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => OrderTicketPage(
@@ -365,7 +396,9 @@ class _RebalanceDetailPageState extends State<RebalanceDetailPage> {
 
   @override
   Widget build(BuildContext context) {
-    final data = _data;
+    // Reconcile against live holdings so a stale cached report never shows an
+    // action (e.g. EXIT) for a position that is no longer held.
+    final data = _data?.reconciledWith(_heldKeys);
     return Scaffold(
       backgroundColor: TWColors.bgBase,
       appBar: AppBar(

@@ -17,6 +17,8 @@ import 'package:tradewiz/services/repository_scope.dart';
 import 'package:tradewiz/services/watchlist_scope.dart';
 import 'package:tradewiz/services/watchlist_store.dart';
 import 'package:tradewiz/widgets/auto_watchlist.dart';
+import 'package:tradewiz/models/phase3.dart';
+import 'package:tradewiz/services/portfolio_health_cache.dart';
 import 'package:tradewiz/widgets/global_rotation.dart';
 import 'package:tradewiz/widgets/rebalance.dart';
 
@@ -187,6 +189,8 @@ StockRepository _repo({List<String>? appliedCalls}) {
     } else if (path.endsWith('/portfolio/rebalance')) {
       body = _rebalanceBody();
     } else if (path.endsWith('/sim/positions')) {
+      // Hold both names referenced by the rebalance body so the reconcile
+      // (drop actions for non-held symbols) keeps them.
       body = {
         'positions': [
           {
@@ -194,6 +198,12 @@ StockRepository _repo({List<String>? appliedCalls}) {
             'market': 'IDX',
             'quantity': 1200.0,
             'avg_price': 4000.0,
+          },
+          {
+            'symbol': 'NVDA',
+            'market': 'US',
+            'quantity': 10.0,
+            'avg_price': 800.0,
           },
         ],
       };
@@ -349,6 +359,106 @@ void main() {
     // 1,200 shares @ 100/lot = 12 lots shown, and the drag slider is present.
     expect(find.byKey(const Key('sell_qty_slider')), findsOneWidget);
     expect(find.textContaining('1200 shares (12 lots)'), findsWidgets);
+  });
+
+  testWidgets(
+      'Rebalance detail drops an action for a symbol that is no longer held',
+      (tester) async {
+    // Fresh report (rare, but possible from a stale backend snapshot or a
+    // race) lists GGRM EXIT even though positions only hold TPIA. The UI must
+    // reconcile against live holdings and never show the phantom action.
+    final fake = MockClient((req) async {
+      final path = req.url.path;
+      if (path.endsWith('/portfolio/rebalance')) {
+        return http.Response(
+            jsonEncode({
+              'profile': 'Balanced',
+              'portfolio_score': 70,
+              'cash_allocation': 10.0,
+              'actions': [
+                {
+                  'symbol': 'TPIA',
+                  'market': 'IDX',
+                  'action': 'REDUCE',
+                  'reason': 'Trim concentration.',
+                  'current_weight': 40.0,
+                  'target_weight': 20.0,
+                  'priority': 'HIGH',
+                },
+                {
+                  'symbol': 'GGRM',
+                  'market': 'IDX',
+                  'action': 'EXIT',
+                  'reason': 'Weak.',
+                  'current_weight': 0.0,
+                  'target_weight': 0.0,
+                  'priority': 'HIGH',
+                },
+              ],
+              'summary': 'x',
+              'warnings': [],
+              'high_priority_count': 2,
+              'estimated_score_improvement': 3.0,
+            }),
+            200,
+            headers: {'content-type': 'application/json'});
+      }
+      if (path.endsWith('/sim/positions')) {
+        return http.Response(
+            jsonEncode({
+              'positions': [
+                {'symbol': 'TPIA', 'market': 'IDX', 'quantity': 1000.0},
+              ],
+            }),
+            200,
+            headers: {'content-type': 'application/json'});
+      }
+      return http.Response('not found', 404);
+    });
+    final repo = StockRepository(
+      client: ApiClient(
+        config: const AppConfig(baseUrl: 'https://test.tradewiz.app/v1'),
+        httpClient: fake,
+      ),
+    );
+
+    await tester.pumpWidget(_wrap(
+        RebalanceDetailPage(
+            repository: repo, cache: InMemoryPortfolioInsightCache()),
+        repo));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('rebalance_action_TPIA')), findsOneWidget);
+    // GGRM is not held -> the phantom EXIT is filtered out.
+    expect(find.byKey(const Key('rebalance_action_GGRM')), findsNothing);
+  });
+
+  // === RebalanceReport reconcile (unit) ===================================
+  test('reconciledWith drops non-held actions and recomputes counts', () {
+    const report = RebalanceReport(
+      actions: [
+        RebalanceAction(
+            symbol: 'TPIA',
+            market: Market.idx,
+            action: 'REDUCE',
+            priority: 'HIGH'),
+        RebalanceAction(
+            symbol: 'GGRM',
+            market: Market.idx,
+            action: 'EXIT',
+            priority: 'HIGH'),
+      ],
+      highPriorityCount: 2,
+    );
+    final held = report.reconciledWith({'TPIA@IDX'});
+    expect(held.actions.length, 1);
+    expect(held.actions.single.symbol, 'TPIA');
+    expect(held.highPriorityCount, 1); // recomputed from kept actions
+    expect(held.actionCount, 1);
+
+    // Empty held set -> best-effort, leave the report untouched.
+    final unchanged = report.reconciledWith(const {});
+    expect(unchanged.actions.length, 2);
   });
 
   // === Global Rotation Engine =============================================

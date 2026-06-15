@@ -254,6 +254,31 @@ class RebalanceReport {
   int get actionCount =>
       actions.where((a) => a.action != 'HOLD').length;
 
+  /// Drop any action for a symbol that is no longer held and recompute the
+  /// derived counts. This is a client-side safety net against a stale cached
+  /// report (e.g. an EXIT shown for a position that was already sold) — the
+  /// backend only rebalances current holdings, so anything not in [heldKeys]
+  /// must not be displayed. [heldKeys] are 'SYMBOL@MARKETCODE' identifiers.
+  RebalanceReport reconciledWith(Set<String> heldKeys) {
+    // No holdings info available -> show the report unchanged (best-effort).
+    if (heldKeys.isEmpty) return this;
+    final kept = actions
+        .where((a) => heldKeys.contains('${a.symbol}@${a.market.code}'))
+        .toList();
+    if (kept.length == actions.length) return this;
+    return RebalanceReport(
+      profile: profile,
+      portfolioScore: portfolioScore,
+      cashAllocation: cashAllocation,
+      actions: kept,
+      summary: summary,
+      warnings: warnings,
+      highPriorityCount:
+          kept.where((a) => a.priority == 'HIGH' && a.action != 'HOLD').length,
+      estimatedScoreImprovement: estimatedScoreImprovement,
+    );
+  }
+
   factory RebalanceReport.fromJson(Map<String, dynamic> j) {
     return RebalanceReport(
       profile: (j['profile'] ?? 'Balanced').toString(),
