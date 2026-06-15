@@ -297,11 +297,11 @@ class _SearchResults extends StatelessWidget {
       return const TWFloatingCard(
         padding: EdgeInsets.symmetric(vertical: 18),
         child: Center(
-          child: SizedBox(
-            width: 20,
-            height: 20,
-            child: CircularProgressIndicator(
-                strokeWidth: 2.2, color: TWColors.accentBright),
+          child: TWBusyIndicator(
+            title: 'Searching…',
+            size: 22,
+            strokeWidth: 2.2,
+            boxed: false,
           ),
         ),
       );

@@ -176,10 +176,12 @@ class _AiAnalysisPageState extends State<AiAnalysisPage> {
         const SizedBox(height: 20),
         if (_loading)
           const Padding(
-            padding: EdgeInsets.symmetric(vertical: 40),
-            child: Center(
-                child: CircularProgressIndicator(
-                    color: TWColors.accentBright)),
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: TWBusyIndicator(
+              title: 'Analyzing…',
+              subtitle:
+                  'Crunching the latest market data. This can take a moment.',
+            ),
           ),
         if (_error != null) _ErrorCard(message: _error!),
         if (_result != null && !_loading) ...[

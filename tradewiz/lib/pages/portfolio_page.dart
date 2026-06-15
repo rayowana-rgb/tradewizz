@@ -6,6 +6,7 @@ import '../services/api_client.dart';
 import '../services/auth_scope.dart';
 import '../services/repository_scope.dart';
 import '../theme.dart';
+import '../widgets/ds/ds.dart';
 
 /// Portfolio tab with Summary / Positions / Orders sub-tabs. Aggregates across
 /// the user's connected brokers via GET /v1/portfolio. Requires sign-in.
@@ -88,7 +89,10 @@ class _PortfolioPageState extends State<PortfolioPage> {
           ),
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator())
+                ? const TWBusyIndicator(
+                    title: 'Loading portfolio…',
+                    subtitle: 'Fetching your holdings and live valuations.',
+                  )
                 : _error != null
                     ? _ErrorView(message: _error!, onRetry: _load)
                     : RefreshIndicator(

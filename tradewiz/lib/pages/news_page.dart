@@ -6,6 +6,7 @@ import '../repositories/stock_repository.dart';
 import '../services/repository_scope.dart';
 import '../theme.dart';
 import '../theme_tradewizz.dart';
+import '../widgets/ds/ds.dart';
 
 /// Global market news — world-wide headlines (US/EU/Asia indices, commodities,
 /// crypto, FX) sourced via the backend's yfinance aggregator. Research only.
@@ -85,9 +86,10 @@ class _NewsPageState extends State<NewsPage> {
 
   Widget _buildBody() {
     if (_loading) {
-      return const Center(
+      return const TWBusyIndicator(
         key: Key('news_loading'),
-        child: CircularProgressIndicator(),
+        title: 'Loading news…',
+        subtitle: 'Fetching the latest market headlines.',
       );
     }
     if (_error) {

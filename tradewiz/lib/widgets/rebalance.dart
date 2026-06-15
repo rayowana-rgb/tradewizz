@@ -177,13 +177,15 @@ class _RebalanceCardState extends State<RebalanceCard> {
   Widget _buildBody() {
     if (_loading && _data == null) {
       return const Padding(
+        key: Key('rebalance_loading'),
         padding: EdgeInsets.symmetric(vertical: 18),
         child: Center(
-          child: SizedBox(
-            key: Key('rebalance_loading'),
-            width: 22,
-            height: 22,
-            child: CircularProgressIndicator(strokeWidth: 2.4),
+          child: TWBusyIndicator(
+            title: 'Rebalancing…',
+            subtitle: 'Reviewing your holdings against the latest signals.',
+            size: 24,
+            strokeWidth: 2.4,
+            boxed: false,
           ),
         ),
       );

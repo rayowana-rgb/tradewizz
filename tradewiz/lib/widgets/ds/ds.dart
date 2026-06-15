@@ -5,6 +5,7 @@
 library;
 
 export 'tw_ai_orb.dart';
+export 'tw_busy_indicator.dart';
 export 'tw_buttons.dart';
 export 'tw_cards.dart';
 export 'tw_chips.dart';
