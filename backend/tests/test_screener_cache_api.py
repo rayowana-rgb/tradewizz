@@ -24,6 +24,23 @@ CLOSED_TIME = datetime(2026, 6, 8, 18, 0, tzinfo=HK)  # Mon 18:00 HKT -> CLOSED
 
 @pytest.fixture(autouse=True)
 def _reset_now_hook():
+    # Snapshot freshness is decided by the latest cached candle's TRADING DATE
+    # vs. the snapshot's market_date. The default probe reads the GLOBAL cache
+    # registry, which other test modules prime with candles dated "today";
+    # those would map to a trading date newer than the pinned CLOSED_TIME
+    # (2026-06-08) and spuriously invalidate the snapshot. Clear the registry
+    # before each test so the probe is indeterminate (-> keep snapshot),
+    # isolating these API tests from cross-module cache pollution.
+    try:
+        from app.cache import all_caches
+
+        for _c in all_caches():
+            try:
+                _c.clear()
+            except Exception:  # noqa: BLE001 - best-effort isolation
+                pass
+    except Exception:  # noqa: BLE001
+        pass
     yield
     main.set_screener_now_override(None)
 

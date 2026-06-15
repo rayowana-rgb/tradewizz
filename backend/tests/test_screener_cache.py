@@ -71,7 +71,17 @@ class _Counter:
         return _result(market=self._market, score0=90.0 + self.calls)
 
 
+# Snapshot freshness is decided by TRADING DATE vs. the snapshot's market_date.
+# These tests must be deterministic, so by default inject a probe reporting a
+# candle on the SAME trading day as CLOSED_TIME (2026-06-08) -> never "newer"
+# -> never a spurious rebuild. (Without this, the default live cache-registry
+# probe leaks candles from OTHER tests dated "today", which would invalidate
+# the snapshot.) Tests that want a newer-day candle pass latest_data_timestamp.
+_SAME_DAY_CANDLE = "2026-06-08T12:00:00+00:00"  # trading_date_str(HKEX) == 2026-06-08
+
+
 def _service(store, run, now: datetime, **kw) -> ScreenerCacheService:
+    kw.setdefault("latest_data_timestamp", lambda _m: _SAME_DAY_CANDLE)
     return ScreenerCacheService(
         store, run, now_provider=lambda _m: now, **kw
     )

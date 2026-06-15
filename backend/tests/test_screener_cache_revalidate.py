@@ -47,6 +47,19 @@ def _iso(offset_seconds: float) -> str:
     ).isoformat()
 
 
+# Snapshot freshness is decided by TRADING DATE, not raw instant (a snapshot
+# stays valid for its whole trading day; only a candle from a strictly later
+# trading day invalidates it). These constants return candle timestamps
+# anchored to a trading day so the date comparison is what is exercised.
+#
+# CLOSED_TIME is 2026-06-08 (HKEX) -> the snapshot's market_date is
+# "2026-06-08". A SAME-day candle must reuse; a NEXT-day candle must rebuild.
+# (HKEX trading-date mapping rolls the calendar boundary; these instants are
+# chosen so trading_date_str(HKEX, ts) yields exactly the dates noted.)
+_SAME_DAY_CANDLE = "2026-06-08T12:00:00+00:00"   # trading date 2026-06-08 -> reuse
+_NEXT_DAY_CANDLE = "2026-06-09T12:00:00+00:00"   # trading date 2026-06-09 -> rebuild
+
+
 def _result(price: float, *, generated_at: str) -> ScreenerResult:
     """A one-symbol screener result at a given close price."""
     return ScreenerResult(
@@ -104,9 +117,9 @@ def test_closed_snapshot_rebuilds_when_ohlcv_data_refreshed():
     store = InMemoryScreenerSnapshotStore()
     engine = _Engine()
 
-    # Snapshot saved with generated_at = now(); probe reports data from the
-    # past (older than the snapshot) so the first build is not re-run.
-    data = {"ts": _iso(-3600)}
+    # Snapshot saved for trading date 2026-06-08; probe reports a candle for the
+    # SAME trading day, so the first build is not re-run.
+    data = {"ts": _SAME_DAY_CANDLE}
     svc = _service(store, engine, data_ts=lambda _m: data["ts"])
 
     first = svc.get(Market.HKEX, KEY)
@@ -114,11 +127,11 @@ def test_closed_snapshot_rebuilds_when_ohlcv_data_refreshed():
     assert first.cached is False
     assert engine.calls == 1
 
-    # --- Same trading date: OHLCV/analyze data refreshes to close=110. ---
+    # --- A NEWER trading-day candle appears (next session). ---
     engine.price = 110.0
-    # The cache-only probe now reports a NEWER candle/refresh than the
-    # snapshot's generated_at.
-    data["ts"] = _iso(3600)
+    # The cache-only probe now reports a candle for a STRICTLY LATER trading day
+    # than the snapshot's market_date.
+    data["ts"] = _NEXT_DAY_CANDLE
 
     second = svc.get(Market.HKEX, KEY)
 
@@ -133,12 +146,12 @@ def test_dashboard_path_via_screen_also_gets_refreshed_value():
     """The dashboard top-movers use the same /screen path -> same refreshed 110."""
     store = InMemoryScreenerSnapshotStore()
     engine = _Engine()
-    data = {"ts": _iso(-3600)}
+    data = {"ts": _SAME_DAY_CANDLE}
     svc = _service(store, engine, data_ts=lambda _m: data["ts"])
 
     svc.get(Market.HKEX, KEY)  # build at 100
     engine.price = 110.0
-    data["ts"] = _iso(3600)
+    data["ts"] = _NEXT_DAY_CANDLE
 
     # Dashboard calls the very same cache_key/path as the screener list.
     dashboard = svc.get(Market.HKEX, KEY)
@@ -152,8 +165,8 @@ def test_closed_snapshot_reused_when_data_not_newer():
     """No newer data -> keep existing snapshot (no rebuild), behavior unchanged."""
     store = InMemoryScreenerSnapshotStore()
     engine = _Engine()
-    # Probe reports a timestamp OLDER than the snapshot's generated_at.
-    svc = _service(store, engine, data_ts=lambda _m: _iso(-3600))
+    # Probe reports a candle for the SAME trading day as the snapshot.
+    svc = _service(store, engine, data_ts=lambda _m: _SAME_DAY_CANDLE)
 
     first = svc.get(Market.HKEX, KEY)
     assert engine.calls == 1
@@ -254,8 +267,8 @@ def test_force_refresh_while_closed_rebuilds_regardless():
     """force_refresh=True while CLOSED always rebuilds (unchanged behavior)."""
     store = InMemoryScreenerSnapshotStore()
     engine = _Engine()
-    # Even with an OLDER data timestamp, force_refresh must rebuild.
-    svc = _service(store, engine, data_ts=lambda _m: _iso(-3600))
+    # Even with a SAME-day (not-newer) candle, force_refresh must rebuild.
+    svc = _service(store, engine, data_ts=lambda _m: _SAME_DAY_CANDLE)
 
     svc.get(Market.HKEX, KEY)
     assert engine.calls == 1
@@ -281,8 +294,8 @@ def test_closed_screen_is_stable_across_requests_despite_engine_variance():
     """
     store = InMemoryScreenerSnapshotStore()
     engine = _Engine()
-    # Probe reports data OLDER than the snapshot -> never "newer" -> no rebuild.
-    svc = _service(store, engine, data_ts=lambda _m: _iso(-3600))
+    # Probe reports a SAME-day candle -> never a newer trading day -> no rebuild.
+    svc = _service(store, engine, data_ts=lambda _m: _SAME_DAY_CANDLE)
 
     first = svc.get(Market.HKEX, KEY)
     assert first.cached is False

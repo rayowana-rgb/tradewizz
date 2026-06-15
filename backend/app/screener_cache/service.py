@@ -243,13 +243,28 @@ class ScreenerCacheService:
     def _data_is_newer_than(
         self, market: Market, rec: ScreenerSnapshotRecord
     ) -> bool:
-        """True when cached OHLCV data is newer than the snapshot.
+        """True when cached OHLCV data is for a NEWER TRADING DAY than the snapshot.
 
-        Lightweight, cache-only check: compares the newest cached candle
-        timestamp for the market against the snapshot's ``generated_at``.
-        Returns False (keep existing snapshot) whenever the comparison cannot
-        be made -- no probe, no cached candle, or unparseable timestamps -- so
-        behavior is unchanged when validation is indeterminate.
+        Lightweight, cache-only check. The freshness signal is the latest cached
+        candle's **trading DATE** vs. the snapshot's trading date
+        (``rec.market_date``), NOT a raw-instant comparison.
+
+        Why date, not instant (critical correctness fix): the probe returns a
+        candle *timestamp* (the day the data is FOR -- e.g. today's daily candle,
+        whose clock-time can land later in the UTC day than the snapshot's
+        wall-clock *generation* time). The old ``candle_ts > generated_at``
+        check therefore made today's OWN candle look "newer" than a snapshot
+        generated earlier the same day, so EVERY CLOSED request rebuilt the
+        whole universe. For IDX (~956 symbols) that was merely slow; for the
+        ~12,767-symbol US universe it was catastrophic -- every /screen/us call
+        re-ran a multi-minute live screen, hit Yahoo rate limits, and timed out,
+        so the app's home screen rendered blank. A snapshot built for a given
+        trading day must stay valid for that whole day; only a candle from a
+        STRICTLY LATER trading day should invalidate it (next market close).
+
+        Returns False (keep existing snapshot) whenever the comparison cannot be
+        made -- no probe, no cached candle, or unparseable values -- so behavior
+        is unchanged when validation is indeterminate.
         """
         if self._latest_data_timestamp is None:
             return False
@@ -259,11 +274,19 @@ class ScreenerCacheService:
             return False
         if not latest:
             return False
-        snap_dt = _parse_iso(rec.generated_at)
         data_dt = _parse_iso(latest)
-        if snap_dt is None or data_dt is None:
+        if data_dt is None:
             return False
-        return data_dt > snap_dt
+        # Map the candle instant to its market-local trading date, then compare
+        # against the snapshot's recorded trading date (both YYYY-MM-DD strings).
+        try:
+            candle_trading_date = trading_date_str(market, data_dt)
+        except Exception:  # noqa: BLE001 - never let date mapping break /screen
+            return False
+        snap_date = (rec.market_date or "").strip()
+        if not snap_date or not candle_trading_date:
+            return False
+        return candle_trading_date > snap_date
 
     def _serve_open(
         self,
