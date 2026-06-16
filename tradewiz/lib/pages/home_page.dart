@@ -1175,14 +1175,19 @@ class _HorizonStrip extends StatelessWidget {
             h.horizon == 'monthly')
         .toList();
     if (items.isEmpty) return const SizedBox.shrink();
-    return Row(
-      key: const Key('home_condition_horizons'),
-      children: [
-        for (var i = 0; i < items.length; i++) ...[
-          if (i > 0) const SizedBox(width: TWSpace.sm),
-          Expanded(child: _HorizonChip(horizon: items[i])),
+    // IntrinsicHeight keeps all three chips the same height regardless of an
+    // UNKNOWN one missing its score line, so the strip stays perfectly even.
+    return IntrinsicHeight(
+      child: Row(
+        key: const Key('home_condition_horizons'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < items.length; i++) ...[
+            if (i > 0) const SizedBox(width: TWSpace.sm),
+            Expanded(child: _HorizonChip(horizon: items[i])),
+          ],
         ],
-      ],
+      ),
     );
   }
 }
@@ -1199,36 +1204,50 @@ class _HorizonChip extends StatelessWidget {
     return Container(
       key: Key('home_horizon_${horizon.horizon}'),
       padding: const EdgeInsets.symmetric(
-          horizontal: TWSpace.sm, vertical: TWSpace.sm),
+          horizontal: TWSpace.xs, vertical: TWSpace.sm),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
         borderRadius: TWRadius.rChip,
         border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          // Timeframe header.
           Text(
             horizon.horizonLabel.toUpperCase(),
+            textAlign: TextAlign.center,
             style: TWType.caption.copyWith(
+              fontSize: 11,
               color: TWColors.textTertiary,
-              letterSpacing: 0.4,
+              letterSpacing: 0.6,
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 3),
+          const SizedBox(height: 6),
+          // Big score is the focal point.
           Text(
-            horizon.label,
+            known ? '${horizon.score}' : '\u2014',
+            textAlign: TextAlign.center,
+            style: TWType.tabular(TWType.title2).copyWith(
+              color: color,
+              fontWeight: FontWeight.w800,
+              height: 1.0,
+            ),
+          ),
+          const SizedBox(height: 2),
+          // Condition label, shortened so "Extreme" never clips in 3-up.
+          Text(
+            known ? horizon.shortLabel : 'No data',
+            textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TWType.label.copyWith(color: color),
-          ),
-          if (known)
-            Text(
-              '${horizon.score}/100',
-              style:
-                  TWType.tabular(TWType.caption).copyWith(color: color),
+            style: TWType.caption.copyWith(
+              color: color,
+              fontWeight: FontWeight.w600,
             ),
+          ),
         ],
       ),
     );

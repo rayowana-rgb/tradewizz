@@ -129,6 +129,13 @@ class HorizonCondition {
 
   String get label => conditionLabel(condition);
 
+  /// Compact label that fits a narrow 3-up chip, e.g. "Ext. Greed".
+  String get shortLabel => switch (condition) {
+        'EXTREME_FEAR' => 'Ext. Fear',
+        'EXTREME_GREED' => 'Ext. Greed',
+        _ => conditionLabel(condition),
+      };
+
   /// Title-cased horizon name, e.g. "Daily".
   String get horizonLabel => switch (horizon) {
         'daily' => 'Daily',
