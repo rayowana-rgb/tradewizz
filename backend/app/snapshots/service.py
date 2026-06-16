@@ -95,13 +95,25 @@ class SnapshotService:
         builder: Callable[[], Any],
         *,
         force: bool = False,
+        block: bool = True,
     ) -> Any:
         """Return a fresh-or-cached section payload.
 
         Fresh cache within TTL -> reuse (no Yahoo, no recompute).
         Otherwise rebuild; on failure/empty keep the last good cached section.
+
+        When ``block`` is False (the live request path), a *stale but cached*
+        section is served as-is rather than rebuilt synchronously: the
+        background scheduler owns refreshes, so a slow Yahoo rebuild can never
+        hang the request and blank the dashboard. We only build inline when
+        forced or when there is no cached value at all (cold start).
         """
         if not force and self.cache.is_fresh(name, ttl_seconds):
+            payload, _age = self.cache.get(name)
+            if payload is not None:
+                return payload
+        if not force and not block:
+            # Stale: serve last-good cache without blocking on a rebuild.
             payload, _age = self.cache.get(name)
             if payload is not None:
                 return payload
@@ -120,48 +132,50 @@ class SnapshotService:
         return round(age, 3) if age is not None else -1.0
 
     # -- Phase A: dashboard -------------------------------------------------
-    def dashboard(self, market: Market, *, force: bool = False) -> DashboardSnapshot:
+    def dashboard(
+        self, market: Market, *, force: bool = False, block: bool = True
+    ) -> DashboardSnapshot:
         mk = market.value
 
         indices = self._section(
             "indices", ttl.TTL_INDICES,
             lambda: {"indices": _dump(self._indices())} if self._indices else None,
-            force=force,
+            force=force, block=block,
         )
         brief = self._section(
             f"morning_brief_{mk}", ttl.TTL_MORNING_BRIEF,
             lambda: _dump(self._brief(market)) if self._brief else None,
-            force=force,
+            force=force, block=block,
         )
         rotation = self._section(
             "rotation", ttl.TTL_ROTATION,
             lambda: _dump(self._rotation()) if self._rotation else None,
-            force=force,
+            force=force, block=block,
         )
         radar = self._section(
             "radar", ttl.TTL_RADAR,
             lambda: _dump(self._opportunities()) if self._opportunities else None,
-            force=force,
+            force=force, block=block,
         )
         daily = self._section(
             "daily_picks", ttl.TTL_DAILY_PICKS,
             lambda: _dump(self._daily()) if self._daily else None,
-            force=force,
+            force=force, block=block,
         )
         multibagger = self._section(
             "multibagger", ttl.TTL_MULTIBAGGER,
             lambda: _dump(self._multibagger()) if self._multibagger else None,
-            force=force,
+            force=force, block=block,
         )
         watchlist = self._section(
             "watchlist_ai", ttl.TTL_WATCHLIST_AI,
             lambda: _dump(self._watchlist(0, None)) if self._watchlist else None,
-            force=force,
+            force=force, block=block,
         )
         notifications = self._section(
             "notifications", ttl.TTL_NOTIFICATIONS,
             lambda: self._notifications_payload(0),
-            force=force,
+            force=force, block=block,
         )
 
         snap = DashboardSnapshot(

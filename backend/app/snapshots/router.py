@@ -61,9 +61,16 @@ def dashboard(
     force: bool = Query(default=False),
     authorization: Optional[str] = Header(default=None),
 ) -> DashboardSnapshot:
-    """One snapshot for the whole dashboard (open during preview)."""
+    """One snapshot for the whole dashboard (open during preview).
+
+    Non-blocking by default: stale sections are served from last-good cache so
+    a slow Yahoo rebuild can never hang the request and blank Home. The
+    background scheduler owns refreshes. ``force=true`` still rebuilds inline.
+    """
     _user_id(authorization)
-    return get_service().dashboard(_parse_market(market), force=force)
+    return get_service().dashboard(
+        _parse_market(market), force=force, block=force
+    )
 
 
 @router.get("/portfolio", response_model=PortfolioSnapshot)
