@@ -1183,7 +1183,7 @@ class _HorizonStrip extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           for (var i = 0; i < items.length; i++) ...[
-            if (i > 0) const SizedBox(width: TWSpace.sm),
+            if (i > 0) const SizedBox(width: TWSpace.xs),
             Expanded(child: _HorizonChip(horizon: items[i])),
           ],
         ],
@@ -1204,7 +1204,7 @@ class _HorizonChip extends StatelessWidget {
     return Container(
       key: Key('home_horizon_${horizon.horizon}'),
       padding: const EdgeInsets.symmetric(
-          horizontal: TWSpace.xs, vertical: TWSpace.sm),
+          horizontal: TWSpace.xs, vertical: TWSpace.xs),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
         borderRadius: TWRadius.rChip,
@@ -1214,29 +1214,29 @@ class _HorizonChip extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Timeframe header.
+          // Timeframe header + score on one tight line keeps the chip short.
           Text(
             horizon.horizonLabel.toUpperCase(),
             textAlign: TextAlign.center,
             style: TWType.caption.copyWith(
-              fontSize: 11,
+              fontSize: 10,
               color: TWColors.textTertiary,
-              letterSpacing: 0.6,
+              letterSpacing: 0.5,
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 6),
-          // Big score is the focal point.
+          const SizedBox(height: 2),
           Text(
             known ? '${horizon.score}' : '\u2014',
             textAlign: TextAlign.center,
-            style: TWType.tabular(TWType.title2).copyWith(
+            style: TWType.tabular(TWType.body).copyWith(
+              fontSize: 16,
               color: color,
               fontWeight: FontWeight.w800,
               height: 1.0,
             ),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 1),
           // Condition label, shortened so "Extreme" never clips in 3-up.
           Text(
             known ? horizon.shortLabel : 'No data',
@@ -1244,6 +1244,7 @@ class _HorizonChip extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TWType.caption.copyWith(
+              fontSize: 10,
               color: color,
               fontWeight: FontWeight.w600,
             ),
