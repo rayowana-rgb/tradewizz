@@ -1078,7 +1078,9 @@ class _MarketFilterBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      // Tightened to sit closer under the search field (was top 12) while
+      // keeping a small breathing gap.
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 2),
       child: Row(
         children: [
           for (final m in Market.values)
@@ -1105,7 +1107,9 @@ class _CategoryFilterBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      // Sits snug below the market row (was top 4 / bottom 12); still leaves a
+      // little room before the content divider.
+      padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
       child: Row(
         children: [
           Padding(
