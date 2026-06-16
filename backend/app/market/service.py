@@ -192,6 +192,11 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# A real equity index never moves this much in a single session. Used to
+# reject Yahoo rate-limited / partial candles that parse into absurd levels.
+_MAX_INDEX_DAILY_MOVE_PCT = 25.0
+
+
 class MarketIndicesService:
     """Fetches + caches index quotes for all markets."""
 
@@ -235,6 +240,17 @@ class MarketIndicesService:
                     # market opening/closing within the cache window is correct.
                     return self._with_status(quote, self._status(spec))
         quote = self._fetch_quote(spec)
+        # If a fresh fetch came back unavailable (e.g. rejected absurd candle or
+        # a transient Yahoo failure) but we still hold a previously-good quote,
+        # keep serving the last-good value instead of regressing to a blank/null
+        # index. We deliberately do NOT overwrite the good cache with the bad
+        # one, so the next read retries the fetch.
+        if not quote.available:
+            with self._lock:
+                entry = self._cache.get(spec.symbol)
+            if entry is not None and entry[1].available:
+                return self._with_status(entry[1], self._status(spec))
+            return quote
         with self._lock:
             self._cache[spec.symbol] = (self._clock(), quote)
         return quote
@@ -290,6 +306,16 @@ class MarketIndicesService:
         except Exception:  # noqa: BLE001 - any failure -> safe unavailable
             return self._unavailable(spec, status)
         if price is None:
+            return self._unavailable(spec, status)
+        # Sanity guard: a real equity index never gaps +/-25% in one session.
+        # Yahoo occasionally returns a rate-limited / partial candle that parses
+        # into an absurd level (e.g. IHSG "754.83 / -87%"). Reject it as a bad
+        # fetch rather than caching fabricated numbers; the caller keeps the
+        # last-good quote (or reports unavailable on a cold start).
+        if (
+            change_pct is not None
+            and abs(change_pct) > _MAX_INDEX_DAILY_MOVE_PCT
+        ) or price <= 0:
             return self._unavailable(spec, status)
         return IndexQuote(
             symbol=spec.symbol,

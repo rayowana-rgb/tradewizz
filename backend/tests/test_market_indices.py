@@ -381,3 +381,45 @@ def test_api_failure_reports_unavailable_not_fake(client_with):
         assert i["price"] is None
         assert i["change"] is None
         assert i["change_percent"] is None
+
+
+# --------------------------------------------------------------------------- #
+# Absurd-candle sanity guard (Yahoo rate-limited / partial candle)            #
+# --------------------------------------------------------------------------- #
+def test_absurd_daily_move_is_rejected_not_fabricated():
+    """A Yahoo partial/rate-limited candle that parses into a >25% one-day
+    move (e.g. IHSG '754.83 / -87%') must NOT be served as a real quote."""
+
+    def absurd(ticker, period="5d", interval="1d"):
+        return _close_only([6007.66, 754.83])  # ~ -87% in one session
+
+    svc = MarketIndicesService(fetcher=absurd, now_provider=_closed_now)
+    svc._intraday_last = lambda s: None  # type: ignore[assignment]
+    q = {q.market: q for q in svc.get_indices()}[Market.IDX]
+    assert q.available is False
+    assert q.price is None
+    assert q.change_percent is None
+
+
+def test_last_good_quote_survives_a_bad_fetch():
+    """Once a good quote is cached, a subsequent absurd/failed fetch keeps
+    serving the last-good value instead of regressing to a blank index."""
+
+    seq = [
+        lambda t, p="5d", i="1d": _close_only([5886.0, 6007.66]),  # good
+        lambda t, p="5d", i="1d": _close_only([6007.66, 754.83]),   # absurd
+    ]
+
+    def seq_fetch(ticker, period="5d", interval="1d"):
+        return seq.pop(0)(ticker, period, interval)
+
+    # ttl=0 forces a re-fetch on the second read.
+    svc = MarketIndicesService(
+        fetcher=seq_fetch, now_provider=_closed_now, ttl_seconds=0
+    )
+    svc._intraday_last = lambda s: None  # type: ignore[assignment]
+    spec = INDEX_BY_MARKET[Market.IDX]
+    first = svc._get_one(spec)
+    second = svc._get_one(spec)  # bad fetch -> must keep last-good
+    assert first.available is True and first.price == 6007.66
+    assert second.available is True and second.price == 6007.66
