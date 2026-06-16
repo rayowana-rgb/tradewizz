@@ -241,9 +241,13 @@ class _HomeShellState extends State<HomeShell> {
                 onChanged: _onMarketChanged,
               ),
             ),
+          // Even spacing around the action icons so the globe (news) sits
+          // balanced between the market selector on its left and the bell on
+          // its right, with a matching gap to the screen edge.
           const NewsButton(),
-          const NotificationBell(),
           const SizedBox(width: 4),
+          const NotificationBell(),
+          const SizedBox(width: 8),
         ],
       ),
       // Let page content extend behind the translucent nav bar so it shows
