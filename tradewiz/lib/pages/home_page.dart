@@ -216,7 +216,10 @@ class _HomePageState extends State<HomePage> {
               onView: _openAnalysis,
               onViewIndex: _openIndex,
             ),
-            const SizedBox(height: TWSpace.md),
+            // Unified section rhythm: a single `lg` gap between every top-level
+            // Home section so the vertical cadence reads disciplined (premium)
+            // rather than mixing md/lg/xl.
+            const SizedBox(height: TWSpace.lg),
             // Market Pulse card first.
             _MarketPulseCard(
               market: widget.market,
@@ -228,15 +231,15 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: TWSpace.lg),
             // Morning Brief — inline section (no card) below Market Pulse.
             _BriefCard(brief: brief),
-            const SizedBox(height: TWSpace.md),
+            const SizedBox(height: TWSpace.lg),
             _PortfolioCard(
               account: _account,
               positions: _positions,
               onOpenPortfolio: _openPortfolio,
             ),
-            const SizedBox(height: TWSpace.xl),
+            const SizedBox(height: TWSpace.lg),
             // Watchlist as a light inline strip (no card) — reduces card count
-            // and varies the rhythm before the ranked ideas list.
+            // before the ranked ideas list.
             _WatchlistStrip(market: widget.market),
             const SizedBox(height: TWSpace.lg),
             _IdeasSection(
@@ -362,7 +365,9 @@ class _HeroCard extends StatelessWidget {
     return Container(
       key: const Key('home_hero'),
       width: double.infinity,
-      padding: const EdgeInsets.all(TWSpace.xl),
+      // Roomier padding (xl -> xxl) so the densest card on Home breathes like a
+      // premium hero rather than feeling text-packed edge to edge.
+      padding: const EdgeInsets.all(TWSpace.xxl),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(TWRadius.cardLg),
         // Same indigo/violet/electric-blue family as the My Portfolio card, but
@@ -445,7 +450,7 @@ class _HeroCard extends StatelessWidget {
                 TWSignalPill(signal: signal),
               ],
             ),
-            const SizedBox(height: TWSpace.md),
+            const SizedBox(height: TWSpace.lg),
             // Tags row (Momentum / Strong Liquidity / ...) with the Confidence
             // indicator moved here from the top-right of the card.
             Row(
@@ -467,7 +472,7 @@ class _HeroCard extends StatelessWidget {
                 _Confidence(score: score),
               ],
             ),
-            const SizedBox(height: TWSpace.md),
+            const SizedBox(height: TWSpace.lg),
             Text(reason,
                 key: const Key('home_hero_reason'),
                 maxLines: 2,
@@ -642,8 +647,18 @@ class _BriefCard extends StatelessWidget {
             children: [
               const TWAiOrb(size: 28, glow: false),
               const SizedBox(width: TWSpace.sm),
-              Text('Morning Brief', style: TWType.title3),
-              const Spacer(),
+              // Expanded so a long title yields to the chip instead of pushing
+              // it off-screen (was a 105px horizontal overflow on narrow
+              // widths). Ellipsis keeps it on one clean line.
+              Expanded(
+                child: Text(
+                  'Morning Brief',
+                  style: TWType.title3,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: TWSpace.sm),
               Container(
                 padding: const EdgeInsets.symmetric(
                     horizontal: TWSpace.md, vertical: 4),
