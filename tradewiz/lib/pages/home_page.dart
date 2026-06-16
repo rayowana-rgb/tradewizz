@@ -1884,12 +1884,14 @@ class _IdeasSection extends StatelessWidget {
               child: TWFloatingCard(
                 key: Key('home_idea_${idea.symbol}'),
                 onTap: () => onTap(idea),
-                padding: const EdgeInsets.all(TWSpace.lg),
+                // Tighter padding + a smaller score ring shrink the idea cards
+                // so the ranked list reads compact instead of oversized.
+                padding: const EdgeInsets.all(TWSpace.md),
                 child: Row(
                   children: [
                     // Final score visually dominant (the ring), tags secondary.
-                    TWScoreRing(score: idea.score, size: 50, stroke: 4),
-                    const SizedBox(width: TWSpace.lg),
+                    TWScoreRing(score: idea.score, size: 42, stroke: 3.5),
+                    const SizedBox(width: TWSpace.md),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1954,11 +1956,12 @@ class _BestIndexCard extends StatelessWidget {
     return TWFloatingCard(
       key: const Key('home_best_index'),
       onTap: onTap,
-      padding: const EdgeInsets.all(TWSpace.lg),
+      // Match the tighter idea cards below it.
+      padding: const EdgeInsets.all(TWSpace.md),
       child: Row(
         children: [
-          TWScoreRing(score: entry.rotationScore, size: 50, stroke: 4),
-          const SizedBox(width: TWSpace.lg),
+          TWScoreRing(score: entry.rotationScore, size: 42, stroke: 3.5),
+          const SizedBox(width: TWSpace.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
