@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:tradewiz/models/market.dart';
@@ -78,5 +79,28 @@ void main() {
     // Detail page app-bar title + analysis result rendered.
     expect(find.text('$firstIdx · IDX'), findsOneWidget);
     expect(find.textContaining('Score'), findsOneWidget);
+  });
+
+  testWidgets(
+      'cross-market picks (e.g. Auto Watchlist AI) show under Other Markets '
+      'on a different market tab', (tester) async {
+    // Empty store + one US name, as if Apply All added a US pick while the
+    // user is on the IDX tab. It must still be visible, not silently hidden.
+    final store = WatchlistStore();
+    store.add(const WatchlistItem(
+      symbol: 'ROKU',
+      name: 'Roku Inc.',
+      market: Market.us,
+    ));
+
+    await tester.pumpWidget(
+      wrapApp(const WatchlistPage(market: Market.idx), store: store),
+    );
+    await tester.pumpAndSettle();
+
+    // Not in the current-market list, but surfaced in Other Markets.
+    expect(find.byKey(const Key('watchlist_other_markets')), findsOneWidget);
+    expect(find.text('ROKU'), findsOneWidget);
+    expect(find.text('Other Markets'), findsOneWidget);
   });
 }

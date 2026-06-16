@@ -96,6 +96,12 @@ class _WatchlistPageState extends State<WatchlistPage> {
   Widget build(BuildContext context) {
     final store = WatchlistScope.of(context); // rebuilds on changes
     final items = store.forMarket(widget.market);
+    // Watchlist names that live in OTHER markets (e.g. AI picks applied across
+    // markets). These would otherwise be invisible on the current market tab,
+    // making "Apply All" look like it did nothing.
+    final otherMarketItems =
+        store.items.where((i) => i.market != widget.market).toList()
+          ..sort((a, b) => a.market.code.compareTo(b.market.code));
     final q = _query.trim().toUpperCase();
 
     // Search results: screener universe filtered by ticker / company name,
@@ -201,6 +207,60 @@ class _WatchlistPageState extends State<WatchlistPage> {
           Center(
             child: Text(
               'Swipe left to remove \u00b7 ${items.length} in watchlist',
+              style: TWType.caption,
+            ),
+          ),
+        ],
+
+        // --- OTHER MARKETS -------------------------------------------------
+        // Surface watchlist names from other markets (AI picks land here when
+        // the current tab is a different market) so they aren't lost.
+        if (otherMarketItems.isNotEmpty) ...[
+          const SizedBox(height: TWSpace.xl),
+          const _SectionHeader(
+            icon: Icons.public_rounded,
+            title: 'Other Markets',
+            color: TWColors.accentBright,
+          ),
+          const SizedBox(height: TWSpace.md),
+          Column(
+            key: const Key('watchlist_other_markets'),
+            children: [
+              for (var i = 0; i < otherMarketItems.length; i++) ...[
+                Dismissible(
+                  key: ValueKey(
+                      'other:${otherMarketItems[i].market.code}:${otherMarketItems[i].symbol}'),
+                  direction: DismissDirection.endToStart,
+                  background: Container(
+                    alignment: Alignment.centerRight,
+                    padding: const EdgeInsets.only(right: TWSpace.xxl),
+                    decoration: BoxDecoration(
+                      color: TWColors.downSoft,
+                      borderRadius: TWRadius.rCard,
+                    ),
+                    child: const Icon(Icons.delete_outline_rounded,
+                        color: TWColors.down),
+                  ),
+                  onDismissed: (_) => store.remove(
+                      otherMarketItems[i].symbol, otherMarketItems[i].market),
+                  child: TWFloatingCard(
+                    padding: EdgeInsets.zero,
+                    onTap: () => _open(otherMarketItems[i]),
+                    child: _WatchRow(
+                      item: otherMarketItems[i],
+                      match: null,
+                    ),
+                  ),
+                ),
+                if (i != otherMarketItems.length - 1)
+                  const SizedBox(height: TWSpace.md),
+              ],
+            ],
+          ),
+          const SizedBox(height: TWSpace.md),
+          Center(
+            child: Text(
+              'Switch market at the top to see live prices',
               style: TWType.caption,
             ),
           ),
@@ -426,7 +486,19 @@ class _WatchRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(item.symbol, style: TWType.label),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(item.symbol,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TWType.label),
+                    ),
+                    const SizedBox(width: 6),
+                    Text('${item.market.flag} ${item.market.code}',
+                        style: TWType.caption),
+                  ],
+                ),
                 Text(
                   item.name.isEmpty ? item.market.name : item.name,
                   maxLines: 1,
