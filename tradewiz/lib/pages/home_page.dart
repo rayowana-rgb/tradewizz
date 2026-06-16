@@ -980,6 +980,9 @@ class _MarketPulseCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return TWFloatingCard(
+      // Signature blue gradient (same family as the hero) but with the blue
+      // corner anchored at the BOTTOM-LEFT.
+      gradient: TWColors.pulseBlueGradient,
       child: _pulseSection(context),
     );
   }

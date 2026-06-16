@@ -102,6 +102,15 @@ class TWColors {
     colors: [accent, premiumViolet, premiumIndigo],
   );
 
+  // Same indigo->violet->electric-blue family, but with the blue corner mirrored
+  // to the BOTTOM-LEFT. Used by the Home "Market Pulse" card so it shares the
+  // signature blue palette while reading distinct from the hero (top-left blue).
+  static const Gradient pulseBlueGradient = LinearGradient(
+    begin: Alignment.bottomLeft,
+    end: Alignment.topRight,
+    colors: [accent, premiumViolet, premiumIndigo],
+  );
+
   // Softer variant for dense content cards (metrics, news, reasoning) where the
   // electric-blue corner would distract. Same violet-indigo family, no blue.
   static const Gradient premiumGradient = LinearGradient(
