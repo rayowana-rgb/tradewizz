@@ -447,7 +447,11 @@ class MarketConditionService:
             return None
 
     def get(self, market: Market):
-        from .condition import MarketCondition, classify_condition
+        from .condition import (
+            MarketCondition,
+            classify_condition,  # noqa: F401 - kept for back-compat callers
+            classify_multi_horizon,
+        )
 
         # While the market is CLOSED the underlying daily candles do not change,
         # so the Fear/Greed reading must stay stable for the whole closed period
@@ -500,7 +504,7 @@ class MarketConditionService:
             closes, highs, lows = _ohlc_series(df)
             advances, declines = self._breadth(market)
             vix = self._vix(market)
-            result = classify_condition(
+            result = classify_multi_horizon(
                 closes, highs, lows,
                 advances=advances, declines=declines, vix=vix,
             )

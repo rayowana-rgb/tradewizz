@@ -192,3 +192,91 @@ def test_breadth_provider_failure_is_swallowed():
     price_only = classify_condition(_flat_closes()).condition_score
     assert cond.condition == "NEUTRAL"
     assert cond.condition_score == price_only
+
+
+# --- Multi-horizon (daily / weekly / monthly) breakdown ---
+
+def test_multi_horizon_returns_three_horizons():
+    from app.market import classify_multi_horizon
+    closes = [100 + i * 0.4 for i in range(260)]
+    cond = classify_multi_horizon(closes)
+    d = cond.to_dict()
+    assert "horizons" in d
+    names = [h["horizon"] for h in d["horizons"]]
+    assert names == ["daily", "weekly", "monthly"]
+    for h in d["horizons"]:
+        assert h["condition"] in (
+            "EXTREME_FEAR", "FEAR", "NEUTRAL", "GREED", "EXTREME_GREED",
+            "UNKNOWN",
+        )
+        if h["available"]:
+            assert 0 <= h["condition_score"] <= 100
+        assert isinstance(h["reason"], str)
+
+
+def test_multi_horizon_top_level_matches_classify_condition():
+    # Drop-in: the headline fields equal the single-reading classifier.
+    from app.market import classify_multi_horizon
+    closes = [100 + i * 0.4 for i in range(260)]
+    multi = classify_multi_horizon(closes)
+    single = classify_condition(closes)
+    assert multi.condition == single.condition
+    assert multi.condition_score == single.condition_score
+
+
+def test_classify_condition_has_no_horizons_key():
+    # Legacy callers are untouched (no horizons leaked into the old reading).
+    closes = [100 + i * 0.4 for i in range(260)]
+    assert "horizons" not in classify_condition(closes).to_dict()
+
+
+def test_daily_horizon_cools_on_recent_plunge_within_uptrend():
+    # Year-long uptrend with a sharp final-week selloff: the daily horizon must
+    # read less greedy than the monthly horizon (near-term fear, regime intact).
+    from app.market import classify_multi_horizon
+    closes = [100 + i * 0.4 for i in range(260)]
+    for k in range(1, 8):
+        closes[-k] = closes[-8] - k * 2.5
+    hs = {h["horizon"]: h["condition_score"]
+          for h in classify_multi_horizon(closes).to_dict()["horizons"]}
+    assert hs["daily"] < hs["monthly"], hs
+
+
+def test_daily_horizon_warms_on_recent_bounce_within_downtrend():
+    # Year-long downtrend with a recent bounce: daily > monthly.
+    from app.market import classify_multi_horizon
+    closes = [300 - i * 0.6 for i in range(260)]
+    for k in range(1, 8):
+        closes[-k] = closes[-8] + k * 3.0
+    hs = {h["horizon"]: h["condition_score"]
+          for h in classify_multi_horizon(closes).to_dict()["horizons"]}
+    assert hs["daily"] >= hs["monthly"], hs
+
+
+def test_multi_horizon_missing_data_degrades_gracefully():
+    from app.market import classify_multi_horizon
+    cond = classify_multi_horizon(None)
+    assert cond.condition == "UNKNOWN"
+    # horizons present but each unavailable, no crash.
+    d = cond.to_dict()
+    assert "horizons" in d
+    for h in d["horizons"]:
+        assert h["available"] is False
+
+
+def test_condition_endpoint_exposes_horizons():
+    import pandas as pd
+
+    def fake_fetch(symbol, period="1y", interval="1d"):
+        closes = [100 + i * 0.4 for i in range(260)]
+        return pd.DataFrame({"Close": closes})
+
+    set_market_condition_service(MarketConditionService(fetcher=fake_fetch))
+    client = TestClient(app)
+    r = client.get("/v1/market/condition", params={"market": "IDX"})
+    assert r.status_code == 200
+    body = r.json()
+    assert "horizons" in body
+    assert {h["horizon"] for h in body["horizons"]} == {
+        "daily", "weekly", "monthly"
+    }

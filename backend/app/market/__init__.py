@@ -11,7 +11,12 @@ from .overview import (
     MarketOverviewService,
     MoverRef,
 )
-from .condition import MarketCondition, classify_condition
+from .condition import (
+    HorizonCondition,
+    MarketCondition,
+    classify_condition,
+    classify_multi_horizon,
+)
 from .service import (
     INDEX_BY_MARKET,
     IndexQuote,
@@ -24,11 +29,13 @@ __all__ = [
     "INDEX_BY_MARKET",
     "ForeignFlow",
     "IndexQuote",
+    "HorizonCondition",
     "MarketCondition",
     "MarketConditionService",
     "MarketIndexSpec",
     "MarketIndicesService",
     "classify_condition",
+    "classify_multi_horizon",
     "MarketOverview",
     "MarketOverviewService",
     "MoverRef",
