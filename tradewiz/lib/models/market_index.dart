@@ -61,6 +61,7 @@ class MarketCondition {
     required this.condition,
     required this.score,
     required this.reason,
+    this.horizons = const [],
   });
 
   /// One of EXTREME_FEAR / FEAR / NEUTRAL / GREED / EXTREME_GREED / UNKNOWN.
@@ -70,26 +71,86 @@ class MarketCondition {
   final int score;
   final String reason;
 
+  /// Per-timeframe breakdown (daily / weekly / monthly). Empty for older
+  /// backends that only return the single headline reading.
+  final List<HorizonCondition> horizons;
+
   /// Human-friendly label, e.g. "Extreme Greed".
-  String get label => switch (condition) {
-        'EXTREME_FEAR' => 'Extreme Fear',
-        'FEAR' => 'Fear',
-        'NEUTRAL' => 'Neutral',
-        'GREED' => 'Greed',
-        'EXTREME_GREED' => 'Extreme Greed',
-        _ => 'Unknown',
-      };
+  String get label => conditionLabel(condition);
 
   bool get isKnown => condition != 'UNKNOWN';
+
+  bool get hasHorizons => horizons.isNotEmpty;
 
   factory MarketCondition.fromJson(Map<String, dynamic> j) => MarketCondition(
         condition: (j['condition'] ?? 'UNKNOWN').toString(),
         score: ((j['condition_score'] ?? 50) as num).toInt(),
         reason: (j['reason'] ?? '').toString(),
+        horizons: (j['horizons'] is List)
+            ? (j['horizons'] as List)
+                .whereType<Map<String, dynamic>>()
+                .map(HorizonCondition.fromJson)
+                .toList()
+            : const [],
       );
 
   static const MarketCondition unknown =
       MarketCondition(condition: 'UNKNOWN', score: 50, reason: '');
+}
+
+/// Map a raw condition code to a friendly label.
+String conditionLabel(String condition) => switch (condition) {
+      'EXTREME_FEAR' => 'Extreme Fear',
+      'FEAR' => 'Fear',
+      'NEUTRAL' => 'Neutral',
+      'GREED' => 'Greed',
+      'EXTREME_GREED' => 'Extreme Greed',
+      _ => 'Unknown',
+    };
+
+/// A single timeframe's Fear/Greed reading from `horizons[]`.
+class HorizonCondition {
+  const HorizonCondition({
+    required this.horizon,
+    required this.condition,
+    required this.score,
+    required this.reason,
+    required this.available,
+  });
+
+  /// 'daily' | 'weekly' | 'monthly'.
+  final String horizon;
+  final String condition;
+
+  /// 0..100; -1 when unavailable (no data for this horizon).
+  final int score;
+  final String reason;
+  final bool available;
+
+  String get label => conditionLabel(condition);
+
+  /// Title-cased horizon name, e.g. "Daily".
+  String get horizonLabel => switch (horizon) {
+        'daily' => 'Daily',
+        'weekly' => 'Weekly',
+        'monthly' => 'Monthly',
+        _ => horizon.isEmpty
+            ? horizon
+            : horizon[0].toUpperCase() + horizon.substring(1),
+      };
+
+  bool get isKnown => available && condition != 'UNKNOWN';
+
+  factory HorizonCondition.fromJson(Map<String, dynamic> j) {
+    final raw = j['condition_score'];
+    return HorizonCondition(
+      horizon: (j['horizon'] ?? '').toString(),
+      condition: (j['condition'] ?? 'UNKNOWN').toString(),
+      score: raw is num ? raw.toInt() : -1,
+      reason: (j['reason'] ?? '').toString(),
+      available: j['available'] == null ? raw is num : j['available'] == true,
+    );
+  }
 }
 
 /// Parse the `{ "indices": [...] }` envelope.

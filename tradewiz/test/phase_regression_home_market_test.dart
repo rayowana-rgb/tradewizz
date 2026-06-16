@@ -36,6 +36,7 @@ StockRepository _repo({
   bool indexAvailable = true,
   String condition = 'GREED',
   double? valueTraded = 3.4e12,
+  bool withHorizons = false,
 }) {
   final fake = MockClient((req) async {
     final path = req.url.path;
@@ -69,6 +70,30 @@ StockRepository _repo({
           'condition_score': 72,
           'reason': 'Index above its short-term average with momentum.',
           'market': 'IDX',
+          if (withHorizons)
+            'horizons': [
+              {
+                'horizon': 'daily',
+                'condition': 'GREED',
+                'condition_score': 76,
+                'reason': 'Index above its 5-session trend.',
+                'available': true,
+              },
+              {
+                'horizon': 'weekly',
+                'condition': 'NEUTRAL',
+                'condition_score': 55,
+                'reason': 'Index is mixed over the weekly window.',
+                'available': true,
+              },
+              {
+                'horizon': 'monthly',
+                'condition': 'FEAR',
+                'condition_score': 24,
+                'reason': 'Index below its 20-session trend.',
+                'available': true,
+              },
+            ],
         }),
         200,
         headers: {'content-type': 'application/json'},
@@ -199,6 +224,30 @@ void main() {
     // Value traded formatted as compact Rupiah.
     expect(find.byKey(const Key('home_value_traded')), findsOneWidget);
     expect(find.text('Rp3.4T'), findsOneWidget);
+    // No horizons in this response -> the breakdown strip is absent.
+    expect(find.byKey(const Key('home_condition_horizons')), findsNothing);
+  });
+
+  testWidgets('Home shows the daily/weekly/monthly Fear-Greed breakdown',
+      (tester) async {
+    await _pumpHome(tester, _repo(condition: 'GREED', withHorizons: true));
+
+    final list = find.byKey(const Key('home_list'));
+    final scrollable =
+        find.descendant(of: list, matching: find.byType(Scrollable));
+    await tester.scrollUntilVisible(
+        find.byKey(const Key('home_condition_horizons')), 300,
+        scrollable: scrollable);
+
+    expect(find.byKey(const Key('home_condition_horizons')), findsOneWidget);
+    expect(find.byKey(const Key('home_horizon_daily')), findsOneWidget);
+    expect(find.byKey(const Key('home_horizon_weekly')), findsOneWidget);
+    expect(find.byKey(const Key('home_horizon_monthly')), findsOneWidget);
+    // Timeframe labels + their distinct readings are visible.
+    expect(find.text('DAILY'), findsOneWidget);
+    expect(find.text('WEEKLY'), findsOneWidget);
+    expect(find.text('MONTHLY'), findsOneWidget);
+    expect(find.text('Fear'), findsOneWidget); // monthly diverges from headline
   });
 
   testWidgets('Home renders the index card even when index data is missing',

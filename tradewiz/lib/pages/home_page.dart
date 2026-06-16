@@ -1057,6 +1057,10 @@ class _MarketPulseCard extends StatelessWidget {
             ),
           ],
         ),
+        if (condition.hasHorizons) ...[
+          const SizedBox(height: TWSpace.md),
+          _HorizonStrip(horizons: condition.horizons),
+        ],
         if (condition.isKnown && condition.reason.isNotEmpty) ...[
           const SizedBox(height: TWSpace.md),
           Container(
@@ -1149,6 +1153,81 @@ class _ConditionBadge extends StatelessWidget {
             Text(
               '${condition.score}/100',
               style: TWType.tabular(TWType.caption).copyWith(color: color),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A three-up strip of Fear/Greed readings by timeframe (daily / weekly /
+/// monthly). Lets the user see today's mood vs the prevailing regime at a
+/// glance. Renders nothing extra for older backends (no horizons -> not shown).
+class _HorizonStrip extends StatelessWidget {
+  const _HorizonStrip({required this.horizons});
+  final List<HorizonCondition> horizons;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = horizons
+        .where((h) => h.horizon == 'daily' ||
+            h.horizon == 'weekly' ||
+            h.horizon == 'monthly')
+        .toList();
+    if (items.isEmpty) return const SizedBox.shrink();
+    return Row(
+      key: const Key('home_condition_horizons'),
+      children: [
+        for (var i = 0; i < items.length; i++) ...[
+          if (i > 0) const SizedBox(width: TWSpace.sm),
+          Expanded(child: _HorizonChip(horizon: items[i])),
+        ],
+      ],
+    );
+  }
+}
+
+class _HorizonChip extends StatelessWidget {
+  const _HorizonChip({required this.horizon});
+  final HorizonCondition horizon;
+
+  @override
+  Widget build(BuildContext context) {
+    final known = horizon.isKnown;
+    final color =
+        known ? _conditionColor(horizon.condition) : TWColors.neutral;
+    return Container(
+      key: Key('home_horizon_${horizon.horizon}'),
+      padding: const EdgeInsets.symmetric(
+          horizontal: TWSpace.sm, vertical: TWSpace.sm),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: TWRadius.rChip,
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            horizon.horizonLabel.toUpperCase(),
+            style: TWType.caption.copyWith(
+              color: TWColors.textTertiary,
+              letterSpacing: 0.4,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            horizon.label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TWType.label.copyWith(color: color),
+          ),
+          if (known)
+            Text(
+              '${horizon.score}/100',
+              style:
+                  TWType.tabular(TWType.caption).copyWith(color: color),
             ),
         ],
       ),
