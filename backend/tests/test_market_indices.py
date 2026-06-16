@@ -423,3 +423,32 @@ def test_last_good_quote_survives_a_bad_fetch():
     second = svc._get_one(spec)  # bad fetch -> must keep last-good
     assert first.available is True and first.price == 6007.66
     assert second.available is True and second.price == 6007.66
+
+
+def test_intraday_falls_back_to_5m_when_1m_is_empty():
+    """Yahoo returns an EMPTY 1d/1m frame for some index symbols (^JKSE), which
+    used to freeze the index on a stale daily close. The service must fall back
+    to a coarser intraday window (5d/5m) that DOES carry today's tick and serve
+    that fresher level."""
+
+    daily_idx = pd.to_datetime(["2026-06-11", "2026-06-12"])
+    daily = pd.DataFrame({"Close": [5886.0, 6007.66]}, index=daily_idx)
+    # A fresher intraday tick on a LATER trading day.
+    intra_idx = pd.to_datetime(["2026-06-15 08:00", "2026-06-15 09:00"])
+    intra_5m = pd.DataFrame({"Close": [6200.0, 6254.97]}, index=intra_idx)
+
+    def fetch(ticker, period="5d", interval="1d"):
+        if interval == "1d":
+            return daily
+        if (period, interval) == ("1d", "1m"):
+            return pd.DataFrame({"Close": []})  # empty 1m, like ^JKSE
+        if (period, interval) == ("5d", "5m"):
+            return intra_5m
+        raise ValueError(f"unexpected {period}/{interval}")
+
+    svc = MarketIndicesService(fetcher=fetch, now_provider=_closed_now)
+    q = {q.market: q for q in svc.get_indices()}[Market.IDX]
+    assert q.available is True
+    # Served the fresher 5m tick, change recomputed vs the last daily close.
+    assert q.price == 6254.97
+    assert q.change == pytest.approx(247.31, abs=0.01)

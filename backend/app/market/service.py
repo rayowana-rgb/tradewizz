@@ -381,32 +381,43 @@ class MarketIndicesService:
             day = pd.Timestamp(ts).date()
         return day, float(closes.iloc[-1])
 
+    # Intraday fetch attempts, in priority order. ``1d/1m`` is the freshest but
+    # Yahoo returns it EMPTY for several index symbols (notably ^JKSE), so we
+    # fall back to ``5d/5m`` which DOES carry today's/yesterday's index ticks
+    # for those symbols. Without this fallback IDX stays frozen on an old daily
+    # close (the "IHSG shows last week" bug).
+    _INTRADAY_ATTEMPTS = (("1d", "1m"), ("5d", "5m"))
+
     def _intraday_last(
         self, symbol: str
     ) -> Optional[tuple[object, Optional[float]]]:
-        """Latest intraday (1m) close + its trading date, or None.
+        """Latest intraday close + its trading date, or None.
 
         Used only to detect/serve TODAY's index level when the daily candle
-        still lags. Any failure is swallowed so the daily path keeps working.
+        still lags. Tries progressively coarser intraday windows so a symbol
+        whose 1m feed is empty (e.g. ^JKSE) still resolves via 5m. Any failure
+        is swallowed so the daily path keeps working.
         """
-        try:
-            df = self._fetch(symbol, "1d", "1m")
-        except Exception:  # noqa: BLE001 - intraday is best-effort
-            return None
-        if df is None or df.empty or "Close" not in df.columns:
-            return None
-        close = df["Close"]
-        if isinstance(close, pd.DataFrame):
-            close = close.iloc[:, 0]
-        closes = pd.to_numeric(close, errors="coerce").dropna()
-        if closes.empty:
-            return None
-        ts = closes.index[-1]
-        try:
-            day = ts.date()
-        except AttributeError:
-            day = pd.Timestamp(ts).date()
-        return day, float(closes.iloc[-1])
+        for period, interval in self._INTRADAY_ATTEMPTS:
+            try:
+                df = self._fetch(symbol, period, interval)
+            except Exception:  # noqa: BLE001 - intraday is best-effort
+                continue
+            if df is None or df.empty or "Close" not in df.columns:
+                continue
+            close = df["Close"]
+            if isinstance(close, pd.DataFrame):
+                close = close.iloc[:, 0]
+            closes = pd.to_numeric(close, errors="coerce").dropna()
+            if closes.empty:
+                continue
+            ts = closes.index[-1]
+            try:
+                day = ts.date()
+            except AttributeError:
+                day = pd.Timestamp(ts).date()
+            return day, float(closes.iloc[-1])
+        return None
 
     @staticmethod
     def _unavailable(spec: MarketIndexSpec, status: str) -> IndexQuote:
