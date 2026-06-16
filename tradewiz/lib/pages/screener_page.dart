@@ -326,17 +326,27 @@ class _ScreenerPageState extends State<ScreenerPage> {
     final failures = <String>[];
 
     // Progress dialog so the user knows a multi-order run is in flight.
+    // The dialog can request cancellation (tap outside / back); when confirmed
+    // it flips this token so the loop stops after the current order.
     final progress = ValueNotifier<int>(0);
+    final cancel = _BulkCancelToken();
     showDialog<void>(
       context: context,
+      // We handle dismissal ourselves so we can confirm "stop the purchase?".
       barrierDismissible: false,
       builder: (_) => _BulkProgressDialog(
         total: matches.length,
         progress: progress,
+        cancel: cancel,
       ),
     );
 
+    var cancelled = false;
     for (var i = 0; i < matches.length; i++) {
+      if (cancel.isCancelled) {
+        cancelled = true;
+        break;
+      }
       final m = matches[i];
       final price = config.orderType == OrderTypeKind.limit ? m.price : null;
       try {
@@ -367,7 +377,11 @@ class _ScreenerPageState extends State<ScreenerPage> {
 
     progress.dispose();
     if (!mounted) return;
-    Navigator.of(context, rootNavigator: true).pop(); // close progress dialog
+    // Close the progress dialog only if it is still up (a confirmed cancel may
+    // have already popped it).
+    if (!cancel.dialogClosed) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
 
     await showDialog<void>(
       context: context,
@@ -377,6 +391,7 @@ class _ScreenerPageState extends State<ScreenerPage> {
         skipped: skipped,
         failed: failed,
         failures: failures,
+        cancelled: cancelled,
       ),
     );
   }
@@ -970,29 +985,126 @@ class _BulkBuySheetState extends State<_BulkBuySheet> {
 }
 
 /// Modal progress while the bulk run places one order at a time.
-class _BulkProgressDialog extends StatelessWidget {
-  const _BulkProgressDialog({required this.total, required this.progress});
+/// Shared mutable flag the progress dialog flips when the user confirms they
+/// want to stop a running bulk buy. The order loop checks [isCancelled] before
+/// each order; [dialogClosed] tells the caller whether the dialog already
+/// popped itself (so it isn't popped twice).
+class _BulkCancelToken {
+  bool isCancelled = false;
+  bool dialogClosed = false;
+}
+
+class _BulkProgressDialog extends StatefulWidget {
+  const _BulkProgressDialog({
+    required this.total,
+    required this.progress,
+    required this.cancel,
+  });
   final int total;
   final ValueNotifier<int> progress;
+  final _BulkCancelToken cancel;
+
+  @override
+  State<_BulkProgressDialog> createState() => _BulkProgressDialogState();
+}
+
+class _BulkProgressDialogState extends State<_BulkProgressDialog> {
+  bool _stopping = false;
+
+  /// Ask the user to confirm stopping. Returns true if they chose "Yes".
+  Future<bool> _confirmStop() async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        key: const Key('bulk_cancel_confirm'),
+        title: const Text('Stop the purchase?'),
+        content: const Text(
+          'Orders already placed will stay. The remaining orders won\u2019t '
+          'be placed.',
+        ),
+        actions: [
+          TextButton(
+            key: const Key('bulk_cancel_no'),
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('No'),
+          ),
+          FilledButton(
+            key: const Key('bulk_cancel_yes'),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Yes'),
+          ),
+        ],
+      ),
+    );
+    return yes ?? false;
+  }
+
+  Future<void> _requestCancel() async {
+    if (_stopping) return;
+    final yes = await _confirmStop();
+    if (!mounted) return;
+    if (yes) {
+      setState(() => _stopping = true);
+      widget.cancel.isCancelled = true;
+      // Close the progress dialog now; the loop will break and the summary
+      // dialog (reflecting what was placed) follows.
+      widget.cancel.dialogClosed = true;
+      Navigator.of(context).pop();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      content: ValueListenableBuilder<int>(
-        valueListenable: progress,
-        builder: (context, done, _) => Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const SizedBox(height: 4),
-            LinearProgressIndicator(
-              value: total == 0 ? null : done / total,
-              color: TWColors.up,
+    // Catch the system back gesture/button and route it through the same
+    // confirm flow instead of dismissing silently.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _requestCancel();
+      },
+      child: Stack(
+        children: [
+          // A transparent full-screen layer so a tap *outside* the card opens
+          // the "stop the purchase?" confirmation rather than doing nothing.
+          Positioned.fill(
+            child: GestureDetector(
+              key: const Key('bulk_progress_barrier'),
+              behavior: HitTestBehavior.opaque,
+              onTap: _requestCancel,
             ),
-            const SizedBox(height: 16),
-            Text('Placing simulated orders…  $done / $total',
-                style: const TextStyle(fontSize: 13)),
-          ],
-        ),
+          ),
+          Center(
+            child: AlertDialog(
+              key: const Key('bulk_progress_dialog'),
+              content: ValueListenableBuilder<int>(
+                valueListenable: widget.progress,
+                builder: (context, done, _) => Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(height: 4),
+                    LinearProgressIndicator(
+                      value: widget.total == 0 ? null : done / widget.total,
+                      color: TWColors.up,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      _stopping
+                          ? 'Stopping\u2026  $done / ${widget.total}'
+                          : 'Placing simulated orders\u2026  $done / ${widget.total}',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Tap outside to stop.',
+                      style: TextStyle(
+                          fontSize: 11, color: TWColors.textTertiary),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1006,12 +1118,14 @@ class _BulkResultDialog extends StatelessWidget {
     required this.skipped,
     required this.failed,
     required this.failures,
+    this.cancelled = false,
   });
   final int total;
   final int filled;
   final int skipped;
   final int failed;
   final List<String> failures;
+  final bool cancelled;
 
   @override
   Widget build(BuildContext context) {
@@ -1027,7 +1141,7 @@ class _BulkResultDialog extends StatelessWidget {
         );
     return AlertDialog(
       key: const Key('bulk_result_dialog'),
-      title: const Text('Bulk buy complete'),
+      title: Text(cancelled ? 'Bulk buy stopped' : 'Bulk buy complete'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,

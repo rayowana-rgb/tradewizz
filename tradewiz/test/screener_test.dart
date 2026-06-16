@@ -582,4 +582,148 @@ void main() {
     expect(find.textContaining('2 filled'), findsOneWidget);
     expect(find.textContaining('2 skipped'), findsOneWidget);
   });
+
+  testWidgets(
+      'Tapping outside the progress dialog asks to stop; Yes halts the run',
+      (tester) async {
+    final placed = <Map<String, dynamic>>[];
+    // Delay each simulated order so the run is observably in-flight.
+    final repo = _delayedBulkBuyRepo(8, placed: placed,
+        delay: const Duration(milliseconds: 60));
+    await tester.pumpWidget(
+      _wrapSignedIn(
+        ScreenerPage(market: Market.idx, repository: repo),
+        repo,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('screener_buy_all_button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('bulk_confirm_button')));
+    // Let the run start (progress dialog is up, a couple orders in flight).
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+
+    expect(find.byKey(const Key('bulk_progress_dialog')), findsOneWidget);
+
+    // Tap OUTSIDE the card (near the top-left corner) -> the
+    // "stop the purchase?" confirmation appears.
+    await tester.tapAt(const Offset(20, 20));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('bulk_cancel_confirm')), findsOneWidget);
+
+    // Choose Yes -> the run stops; let pending order(s) settle.
+    await tester.tap(find.byKey(const Key('bulk_cancel_yes')));
+    await tester.pumpAndSettle(const Duration(milliseconds: 200));
+
+    // Stopped early: fewer than all 8 orders were placed.
+    expect(placed.length, lessThan(8));
+    // Summary reflects the cancellation.
+    expect(find.byKey(const Key('bulk_result_dialog')), findsOneWidget);
+    expect(find.text('Bulk buy stopped'), findsOneWidget);
+  });
+
+  testWidgets('Tapping outside then No keeps the run going', (tester) async {
+    final placed = <Map<String, dynamic>>[];
+    // Generous per-order delay so the run can't finish while we interact.
+    final repo = _delayedBulkBuyRepo(3, placed: placed,
+        delay: const Duration(milliseconds: 120));
+    await tester.pumpWidget(
+      _wrapSignedIn(
+        ScreenerPage(market: Market.idx, repository: repo),
+        repo,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('screener_buy_all_button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('bulk_confirm_button')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 30));
+
+    // Open the confirm, then choose No.
+    await tester.tapAt(const Offset(20, 20));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('bulk_cancel_confirm')), findsOneWidget);
+
+    // Choose No -> dismiss the confirm and let the run finish normally.
+    await tester.tap(find.byKey(const Key('bulk_cancel_no')));
+    await tester.pumpAndSettle(const Duration(milliseconds: 800));
+
+    // All 3 orders went through; the run completed (not cancelled).
+    expect(placed.length, 3);
+    expect(find.byKey(const Key('bulk_result_dialog')), findsOneWidget);
+    expect(find.text('Bulk buy complete'), findsOneWidget);
+  });
+}
+
+/// Like [_bulkBuyRepo] but each /sim/order/place response is delayed so the
+/// bulk run is observably in flight (needed to test cancellation).
+StockRepository _delayedBulkBuyRepo(
+  int matchCount, {
+  required Duration delay,
+  List<Map<String, dynamic>>? placed,
+}) {
+  var placedCount = 0;
+  final live = MockClient((req) async {
+    final path = req.url.path;
+    if (path.endsWith('/sim/order/place')) {
+      await Future<void>.delayed(delay);
+      placedCount++;
+      final body = jsonDecode(req.body) as Map<String, dynamic>;
+      placed?.add(body);
+      return http.Response(
+        jsonEncode({
+          'order_id': 'sim-$placedCount',
+          'symbol': body['symbol'],
+          'market': body['market'],
+          'side': body['side'],
+          'quantity': body['quantity'],
+          'price': body['price'] ?? 1000.0,
+          'value': 1000.0,
+          'status': 'FILLED_SIMULATED',
+          'realized_pnl': 0.0,
+          'cash_after': 1000000.0,
+          'simulated': true,
+          'message': 'Simulated order filled.',
+        }),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    }
+    final matches = List.generate(
+      matchCount,
+      (i) => {
+        'symbol': 'IDX${(i + 1).toString().padLeft(2, '0')}',
+        'name': 'Co $i',
+        'score': (90 - i).toDouble(),
+        'signal': 'BUY',
+        'price': 1000.0 + i,
+        'change_percent': 1.0,
+        'categories': ['bullish'],
+      },
+    );
+    return http.Response(
+      jsonEncode({
+        'market': 'IDX',
+        'matches': matches,
+        'generated_at': '2026-06-10T00:00:00Z',
+        'total_count': matchCount,
+        'returned_count': matchCount,
+        'limit': 50,
+        'min_score': 0,
+        'categories': <String>[],
+      }),
+      200,
+      headers: {'content-type': 'application/json'},
+    );
+  });
+  return StockRepository(
+    client: ApiClient(
+      config: const AppConfig(baseUrl: 'https://test.tradewiz.app/v1'),
+      httpClient: live,
+    ),
+  );
 }
