@@ -1360,7 +1360,11 @@ class _PortfolioCard extends StatelessWidget {
         decoration: const BoxDecoration(
           gradient: TWColors.portfolioGradient,
         ),
-        padding: const EdgeInsets.all(24),
+        // Tighter outer padding (24 -> 16) so the Today's P/L, Top Winner and
+        // Largest Position boxes sit closer to the card edges (hugging left &
+        // right) while still leaving breathing room. The full-width Open
+        // Portfolio CTA follows the same inset automatically.
+        padding: const EdgeInsets.all(TWSpace.lg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1389,9 +1393,11 @@ class _PortfolioCard extends StatelessWidget {
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
               child: Text(_money(a.equity, a.currency),
+                  // Match the Market Pulse index price scale (title2 = 20) so
+                  // the headline USD figure no longer dwarfs the rest of Home.
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 28,
+                    fontSize: 20,
                     fontWeight: FontWeight.w900,
                     height: 1.0,
                     fontFeatures: [FontFeature.tabularFigures()],
