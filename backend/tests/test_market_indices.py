@@ -452,3 +452,41 @@ def test_intraday_falls_back_to_5m_when_1m_is_empty():
     # Served the fresher 5m tick, change recomputed vs the last daily close.
     assert q.price == 6254.97
     assert q.change == pytest.approx(247.31, abs=0.01)
+
+
+def test_corrupt_scale_daily_close_is_rejected():
+    """Yahoo sometimes returns a daily Close that is an order of magnitude off
+    (e.g. 67 when IHSG trades ~6000). The change% guard misses it when the
+    move looks small, so a level/median sanity check must reject it instead of
+    serving a wrong index level."""
+
+    def corrupt(ticker, period="5d", interval="1d"):
+        # Latest daily row is mis-scaled (67) amid normal ~6000 closes.
+        return _close_only([5902.0, 5886.0, 6007.66, 67.1])
+
+    svc = MarketIndicesService(fetcher=corrupt, now_provider=_closed_now)
+    svc._intraday_last = lambda s: None  # type: ignore[assignment]
+    q = {q.market: q for q in svc.get_indices()}[Market.IDX]
+    assert q.available is False
+    assert q.price is None
+
+
+def test_corrupt_intraday_tick_is_ignored_keeping_daily_level():
+    """A mis-scaled intraday tick (67) on a newer trading day must NOT replace
+    the trusted daily close (~6000); the daily level is served instead."""
+
+    daily = _close_only([5886.0, 6007.66])  # latest daily 12 Jun-ish
+    daily.index = pd.to_datetime(["2026-06-11", "2026-06-12"])
+
+    def fetch(ticker, period="5d", interval="1d"):
+        return daily
+
+    svc = MarketIndicesService(fetcher=fetch, now_provider=_closed_now)
+    # Intraday returns a LATER date but a corrupt ~67 level.
+    svc._intraday_last = lambda s: (  # type: ignore[assignment]
+        __import__("datetime").date(2026, 6, 15),
+        67.1,
+    )
+    q = {q.market: q for q in svc.get_indices()}[Market.IDX]
+    assert q.available is True
+    assert q.price == 6007.66  # kept the trusted daily level

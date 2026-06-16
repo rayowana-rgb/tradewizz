@@ -196,6 +196,28 @@ def _now_iso() -> str:
 # reject Yahoo rate-limited / partial candles that parse into absurd levels.
 _MAX_INDEX_DAILY_MOVE_PCT = 25.0
 
+# A real index tick stays within the same order of magnitude as its recent
+# level. Yahoo sometimes returns a corrupt candle ~100x off (e.g. 67 vs 6000).
+# Accept a tick only if it is within [1/3x, 3x] of the reference level.
+_LEVEL_RATIO_TOLERANCE = 3.0
+
+
+def _level_is_consistent(
+    value: Optional[float], reference: Optional[float]
+) -> bool:
+    """True if ``value`` is the same order of magnitude as ``reference``.
+
+    Used to reject corrupt Yahoo candles whose level is wildly off (e.g. an
+    intraday tick of 67 when the index trades near 6000). A missing reference
+    means we cannot judge -> treat as consistent (don't over-reject).
+    """
+    if value is None or value <= 0:
+        return False
+    if reference is None or reference <= 0:
+        return True
+    ratio = value / reference
+    return (1.0 / _LEVEL_RATIO_TOLERANCE) <= ratio <= _LEVEL_RATIO_TOLERANCE
+
 
 class MarketIndicesService:
     """Fetches + caches index quotes for all markets."""
@@ -281,6 +303,12 @@ class MarketIndicesService:
         try:
             df = self._fetch(spec.symbol, "5d", "1d")
             price, change, change_pct = self._extract(df)
+            # Daily-level sanity: reject a corrupt daily Close that is wildly off
+            # the recent level (e.g. Yahoo hands back 67 when IHSG trades ~6000,
+            # which slips past the change% guard when BOTH rows are mis-scaled).
+            daily_ref = self._reference_level(df)
+            if price is not None and not _level_is_consistent(price, daily_ref):
+                return self._unavailable(spec, status)
             # Yahoo's DAILY index candle lags: after the session closes, today's
             # 1d candle often is not published for hours, so _extract returns
             # YESTERDAY's close (the "Home shows kemarin's close" bug). Pull an
@@ -288,13 +316,18 @@ class MarketIndicesService:
             # the latest daily candle, it is today's real level -> use it and
             # recompute change against the last DAILY close.
             intraday = self._intraday_last(spec.symbol)
+            last_daily_date, last_daily_close = self._last_daily(df)
             if intraday is not None:
                 intra_date, intra_price = intraday
-                last_daily_date, last_daily_close = self._last_daily(df)
                 if (
                     last_daily_date is not None
                     and intra_date > last_daily_date
                     and intra_price is not None
+                    # Level sanity: a real index tick stays within the same
+                    # order of magnitude as the last daily close. Yahoo can hand
+                    # back a corrupt/parsed-wrong candle (e.g. ~67 when IHSG is
+                    # ~6000); reject it so we keep the trusted daily level.
+                    and _level_is_consistent(intra_price, last_daily_close)
                 ):
                     price = intra_price
                     change = intra_price - last_daily_close
@@ -380,6 +413,24 @@ class MarketIndicesService:
         except AttributeError:
             day = pd.Timestamp(ts).date()
         return day, float(closes.iloc[-1])
+
+    @staticmethod
+    def _reference_level(df: pd.DataFrame) -> Optional[float]:
+        """Robust recent level (median of valid daily closes), or None.
+
+        Used as a stable yardstick to detect a corrupt latest Close that is an
+        order of magnitude off. The median ignores a single mis-scaled row, so
+        a 67-vs-6000 glitch is caught even when it is the most recent candle.
+        """
+        if df is None or df.empty or "Close" not in df.columns:
+            return None
+        close = df["Close"]
+        if isinstance(close, pd.DataFrame):
+            close = close.iloc[:, 0]
+        closes = pd.to_numeric(close, errors="coerce").dropna()
+        if closes.empty:
+            return None
+        return float(closes.median())
 
     # Intraday fetch attempts, in priority order. ``1d/1m`` is the freshest but
     # Yahoo returns it EMPTY for several index symbols (notably ^JKSE), so we
