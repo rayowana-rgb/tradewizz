@@ -5,6 +5,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'package:tradewiz/cache/cache_keys.dart';
+import 'package:tradewiz/cache/cache_service.dart';
+import 'package:tradewiz/cache/cached_repository.dart';
 import 'package:tradewiz/config/app_config.dart';
 import 'package:tradewiz/models/market.dart';
 import 'package:tradewiz/models/user.dart';
@@ -305,6 +308,66 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('ai_suggestion_NVDA')), findsNothing);
     expect(find.byKey(const Key('ai_suggestion_PLTR')), findsOneWidget);
+  });
+
+  testWidgets(
+      'Auto Watchlist paints cached picks INSTANTLY without waiting on the '
+      '(slow) network', (tester) async {
+    // Pre-seed the SWR cache with a payload, then give the backend a long
+    // delay. The card must show the cached count immediately (no spinner),
+    // proving it no longer blocks on the per-market radar rebuild.
+    final cache = CacheService.inMemory();
+    await cache.write(
+      CacheKeys.autoWatchlist,
+      _suggestionsBody(),
+      ttl: CacheKeys.ttlAutoWatchlist,
+    );
+
+    var networkHits = 0;
+    final slow = MockClient((req) async {
+      if (req.url.path.endsWith('/auto-watchlist/suggestions')) {
+        networkHits++;
+        await Future<void>.delayed(const Duration(seconds: 30));
+      }
+      return http.Response(jsonEncode(_suggestionsBody()), 200,
+          headers: {'content-type': 'application/json'});
+    });
+    final repo = StockRepository(
+      client: ApiClient(
+        config: const AppConfig(baseUrl: 'https://test.tradewiz.app/v1'),
+        httpClient: slow,
+      ),
+    );
+    final cached = CachedRepository(repo, cache: cache);
+
+    await tester.pumpWidget(
+      RepositoryScope(
+        repository: repo,
+        cached: cached,
+        child: AuthScope(
+          store: _loggedIn(),
+          child: WatchlistScope(
+            store: WatchlistStore(),
+            child: const MaterialApp(
+                home: Scaffold(body: AutoWatchlistCard())),
+          ),
+        ),
+      ),
+    );
+    // A single pump (NOT pumpAndSettle, which would wait out the 30s delay):
+    // the cached payload must already be on screen.
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byKey(const Key('auto_watchlist_loading')), findsNothing);
+    expect(find.byKey(const Key('auto_watchlist_count')), findsOneWidget);
+    expect(find.textContaining('2 new pick'), findsOneWidget);
+    expect(networkHits, 1, reason: 'background refresh still fires once');
+
+    // Tear the widget down, then let the outstanding slow-network / request
+    // timeout timers fire so the test exits without "pending timers".
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(seconds: 31));
   });
 
   // === Portfolio Rebalancing AI ===========================================

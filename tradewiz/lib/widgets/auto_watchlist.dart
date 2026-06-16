@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../cache/cache_entry.dart';
 import '../cache/cache_service.dart';
 import '../cache/cached_repository.dart';
 import '../models/phase3.dart';
@@ -41,11 +44,18 @@ class _AutoWatchlistCardState extends State<AutoWatchlistCard> {
   bool _busy = false;
   bool _error = false;
   AutoWatchlistSuggestions? _data;
+  StreamSubscription<Cached<AutoWatchlistSuggestions>>? _sub;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_loading && _data == null) _load();
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
   }
 
   List<String> _existingKeys() {
@@ -55,7 +65,7 @@ class _AutoWatchlistCardState extends State<AutoWatchlistCard> {
     return store.items.map((i) => '${i.market.code}:${i.symbol}').toList();
   }
 
-  Future<void> _load() async {
+  void _load() {
     final token = _token;
     if (token == null) {
       setState(() {
@@ -64,27 +74,39 @@ class _AutoWatchlistCardState extends State<AutoWatchlistCard> {
       });
       return;
     }
+    // Read everything that depends on `context` synchronously, BEFORE any async
+    // gap — once an `await` runs the widget may have been unmounted and the
+    // State would no longer have a context.
+    final cached = _cached;
+    final existing = _existingKeys();
     setState(() => _loading = true);
-    try {
-      // Phase G: suggestions are SWR-cached (15-min TTL) so the card appears
-      // instantly from cache and refreshes in the background.
-      final s = await _cached.autoWatchlist(
-        token,
-        existing: _existingKeys(),
-      );
-      if (!mounted) return;
-      setState(() {
-        _data = s.value;
-        _loading = false;
-        _error = false;
-      });
-    } on ApiException {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = true;
-      });
-    }
+    // Phase G: suggestions are SWR-cached (15-min TTL). Use the STREAM variant
+    // (not the blocking future) so a cached payload paints the card instantly
+    // and the network refresh happens in the background. This is what keeps the
+    // card from sitting on a spinner for seconds every time the backend has to
+    // (re)build its per-market radar caches: we only block on a truly cold,
+    // never-before-cached load — every subsequent open is instant.
+    _sub?.cancel();
+    _sub = cached
+        .autoWatchlistSwr(token, existing: existing)
+        .listen(
+      (s) {
+        if (!mounted) return;
+        setState(() {
+          _data = s.value;
+          _loading = false;
+          _error = false;
+        });
+      },
+      onError: (Object e) {
+        if (!mounted) return;
+        setState(() {
+          _loading = false;
+          // Only surface an error when we have nothing cached to show.
+          _error = _data == null;
+        });
+      },
+    );
   }
 
   Future<void> _applyAll() async {
@@ -120,8 +142,12 @@ class _AutoWatchlistCardState extends State<AutoWatchlistCard> {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(e.message)));
     } finally {
-      if (mounted) setState(() => _busy = false);
-      await _load();
+      if (mounted) {
+        setState(() => _busy = false);
+        // Re-fetch only while still mounted: _load() touches `context`, so
+        // calling it after a teardown throws "State no longer has a context".
+        _load();
+      }
     }
   }
 
