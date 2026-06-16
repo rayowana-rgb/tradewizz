@@ -855,11 +855,14 @@ class _BulkBuySheetState extends State<_BulkBuySheet> {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
+        // Comfortable top padding so the header isn't cramped right under the
+        // drag handle (it used to hug the very top). Gives the sheet a more
+        // centered, premium feel.
         padding: EdgeInsets.fromLTRB(
-          16,
-          0,
-          16,
-          16 + MediaQuery.of(context).viewInsets.bottom,
+          20,
+          20,
+          20,
+          24 + MediaQuery.of(context).viewInsets.bottom,
         ),
         child: Form(
           key: _formKey,
