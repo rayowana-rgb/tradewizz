@@ -41,11 +41,14 @@ from ..market_session import (
     trading_date_str,
 )
 from ..models import Market
+from .archive import DailyOhlcvArchive
 
 logger = logging.getLogger("tradewiz.warmer")
 
-# (symbol, market) -> fetch into cache (or raise). Returns nothing useful.
-FetchSymbol = Callable[[str, Market], None]
+# (symbol, market) -> fetch into cache, returning the OHLCV DataFrame (or None).
+# Returning the frame lets the warmer also archive it day-by-day; a None/raise
+# is tolerated (the symbol is simply not archived).
+FetchSymbol = Callable[[str, Market], object]
 # market -> list of bare symbols in that market's universe.
 SymbolsFor = Callable[[Market], List[str]]
 
@@ -86,16 +89,8 @@ def warmer_enabled() -> bool:
 
 # Default throttle: ~0.4s between symbol fetches (~2.5 symbols/sec). Tunable.
 DEFAULT_FETCH_DELAY_SECONDS = 0.4
-# Markets warmed by default (the active app universes). Override via env CSV.
-DEFAULT_MARKETS: List[Market] = [
-    Market.IDX,
-    Market.HKEX,
-    Market.KOSPI,
-    Market.KOSDAQ,
-    Market.US,
-    Market.JAPAN,
-    Market.INDIA,
-]
+# Markets warmed by default: ALL markets. Override via TRADEWIZZ_WARMER_MARKETS.
+DEFAULT_MARKETS: List[Market] = list(Market)
 
 
 def _markets_from_env(default: List[Market]) -> List[Market]:
@@ -133,9 +128,14 @@ class DailyCacheWarmer:
         tick_seconds: float = 60.0,
         clock=time.monotonic,
         now_provider: Optional[Callable[[Market], object]] = None,
+        archive: Optional[DailyOhlcvArchive] = None,
     ) -> None:
         self._fetch_symbol = fetch_symbol
         self._symbols_for = symbols_for
+        # Day-keyed archive (default: 30-day rolling retention). When set, each
+        # warmed symbol's frame is also stored per (market, trading_date) and
+        # old days are purged after each market warm.
+        self._archive = archive if archive is not None else DailyOhlcvArchive()
         self._markets = markets or _markets_from_env(DEFAULT_MARKETS)
         self._delay = (
             fetch_delay_seconds
@@ -232,43 +232,56 @@ class DailyCacheWarmer:
                     continue
                 if self._already_warmed(market, trading_date):
                     continue
-            n = self._warm_market(market, trading_date)
+            n, archived = self._warm_market(market, trading_date)
             self._mark_warmed(market, trading_date)
             warmed.append(market.value)
+            # Roll the retention window after warming this market.
+            purged = 0
+            if self._archive is not None:
+                try:
+                    purged = self._archive.purge_old()
+                except Exception:  # noqa: BLE001
+                    pass
             self.last_warm[market.value] = {
                 "trading_date": trading_date,
                 "symbols": n,
+                "archived": archived,
+                "purged_days": purged,
                 "at": time.time(),
             }
         return warmed
 
     # -- the gradual warm loop ---------------------------------------------
-    def _warm_market(self, market: Market, trading_date: str) -> int:
+    def _warm_market(self, market: Market, trading_date: str) -> tuple:
         symbols = list(self._symbols_for(market) or [])
         if self._max_symbols and len(symbols) > self._max_symbols:
             symbols = symbols[: self._max_symbols]
         total = len(symbols)
         if total == 0:
-            return 0
+            return (0, 0)
         logger.info(
             "warmer: warming %s (%d symbols, trading_date=%s, delay=%.2fs)",
             market.value, total, trading_date, self._delay,
         )
         ok = 0
+        archived = 0
         for i, sym in enumerate(symbols):
             if self._stop.is_set():
                 logger.info("warmer: %s interrupted at %d/%d", market.value, i, total)
                 break
             try:
-                self._fetch_symbol(sym, market)
+                df = self._fetch_symbol(sym, market)
                 ok += 1
+                if self._archive is not None and df is not None:
+                    if self._archive.store(market.value, trading_date, sym, df):
+                        archived += 1
             except Exception as exc:  # noqa: BLE001 — one bad symbol never stops the warm
                 logger.debug("warmer: fetch failed %s/%s: %s", market.value, sym, exc)
             # Throttle between fetches (interruptible).
             if self._delay > 0 and i + 1 < total:
                 self._stop.wait(self._delay)
         logger.info(
-            "warmer: %s done — %d/%d symbols warmed (trading_date=%s)",
-            market.value, ok, total, trading_date,
+            "warmer: %s done — %d/%d warmed, %d archived (trading_date=%s)",
+            market.value, ok, total, archived, trading_date,
         )
-        return ok
+        return (ok, archived)

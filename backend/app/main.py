@@ -951,10 +951,13 @@ if not os.environ.get("TRADEWIZZ_DISABLE_SCHEDULER") and \
 from .screener_cache.warmer import DailyCacheWarmer, warmer_enabled  # noqa: E402
 
 
-def _warm_fetch_symbol(symbol, market) -> None:
-    """Fetch one symbol into the engine's OHLCV cache (same path as analyze)."""
+def _warm_fetch_symbol(symbol, market):
+    """Fetch one symbol into the engine's OHLCV cache (same path as analyze).
+
+    Returns the OHLCV DataFrame so the warmer can also archive it day-by-day.
+    """
     ticker = yf_symbol(symbol, market)
-    engine._fetch(ticker, "1y", "1d")  # noqa: SLF001 — pre-warm the shared cache
+    return engine._fetch(ticker, "1y", "1d")  # noqa: SLF001 — pre-warm shared cache
 
 
 _cache_warmer = DailyCacheWarmer(
@@ -984,6 +987,8 @@ def debug_warmer() -> dict:
         "delay_seconds": _cache_warmer._delay,  # noqa: SLF001
         "markets": [m.value for m in _cache_warmer._markets],  # noqa: SLF001
         "last_warm": _cache_warmer.last_warm,
+        "archive": _cache_warmer._archive.summary()  # noqa: SLF001
+        if _cache_warmer._archive is not None else None,  # noqa: SLF001
         "sessions": {
             m.value: {
                 "session_state": get_market_session_state(m).value,
