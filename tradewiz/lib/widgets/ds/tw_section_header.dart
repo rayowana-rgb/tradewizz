@@ -100,6 +100,46 @@ class TWBandedSectionHeader extends StatelessWidget {
   }
 }
 
+/// Footer "See all" link (Stockbit-style): a full-width, centered, tappable
+/// link at the bottom of a long section instead of an inline right chevron.
+/// Uses the brand accent (not Stockbit green) to keep TradeWizz's identity.
+class TWSeeAllFooter extends StatelessWidget {
+  const TWSeeAllFooter({
+    super.key,
+    required this.onTap,
+    this.label = 'See all',
+  });
+
+  final VoidCallback onTap;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: TWRadius.rSm,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: TWSpace.md),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              label,
+              style: TWType.bodySm.copyWith(
+                color: TWColors.accent,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: TWSpace.xs),
+            const Icon(Icons.chevron_right_rounded,
+                size: 18, color: TWColors.accent),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Standalone uppercase eyebrow label.
 class TWEyebrow extends StatelessWidget {
   const TWEyebrow(this.text, {super.key, this.color});

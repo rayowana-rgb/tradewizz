@@ -26,6 +26,8 @@ import '../theme_tradewizz.dart';
 import '../widgets/ds/ds.dart';
 import 'account_page.dart';
 import 'ai_analysis_page.dart';
+import 'screener_page.dart';
+import 'watchlist_page.dart';
 
 /// Phase B/D/E — the redesigned, personalized AI Home screen.
 ///
@@ -254,6 +256,7 @@ class _HomePageState extends State<HomePage> {
               market: widget.market,
               overview: _overview,
               onTap: _openSymbol,
+              onSeeAll: _openWatchlistAll,
             ),
             const SizedBox(height: TWSpace.lg),
             _IdeasSection(
@@ -261,6 +264,7 @@ class _HomePageState extends State<HomePage> {
               rotation: _dashboard?.rotation,
               onTap: _openIdea,
               onTapIndex: _openIndex,
+              onSeeAll: _openExploreAll,
             ),
           ],
         ),
@@ -298,6 +302,19 @@ class _HomePageState extends State<HomePage> {
         market: widget.market,
         repository: _repo,
       ),
+    ));
+  }
+
+  void _openWatchlistAll() {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) =>
+          WatchlistPage(market: widget.market, repository: _repo),
+    ));
+  }
+
+  void _openExploreAll() {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ScreenerPage(market: widget.market, repository: _repo),
     ));
   }
 
@@ -2058,10 +2075,12 @@ class _WatchlistStrip extends StatelessWidget {
     required this.market,
     this.overview,
     this.onTap,
+    this.onSeeAll,
   });
   final Market market;
   final MarketOverview? overview;
   final ValueChanged<String>? onTap;
+  final VoidCallback? onSeeAll;
 
   @override
   Widget build(BuildContext context) {
@@ -2108,6 +2127,8 @@ class _WatchlistStrip extends StatelessWidget {
               ),
             ],
           ),
+          if (onSeeAll != null && items.length > shown.length)
+            TWSeeAllFooter(onTap: onSeeAll!),
         ],
       ],
     );
@@ -2198,11 +2219,13 @@ class _IdeasSection extends StatelessWidget {
     required this.onTap,
     this.rotation,
     this.onTapIndex,
+    this.onSeeAll,
   });
   final TodaysIdeas ideas;
   final GlobalRotation? rotation;
   final ValueChanged<TradeIdea> onTap;
   final ValueChanged<MarketRotation>? onTapIndex;
+  final VoidCallback? onSeeAll;
 
   @override
   Widget build(BuildContext context) {
@@ -2270,6 +2293,8 @@ class _IdeasSection extends StatelessWidget {
                 ),
               ),
             ),
+        if (onSeeAll != null && ideas.top(8).isNotEmpty)
+          TWSeeAllFooter(label: 'Explore all stocks', onTap: onSeeAll!),
       ],
     );
   }
