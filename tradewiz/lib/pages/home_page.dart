@@ -681,31 +681,17 @@ class _BriefCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final insights = _insights();
-    // Flat section (no card/box): keep the AI-brief identity (orb + title)
-    // but drop the floating card frame so it matches the other home sections.
+    // Flat section (no card/box): banded title box like Top Movers (no AI
+    // orb, title left-aligned). The '15s read' chip stays as trailing.
     return Column(
       key: const Key('home_brief'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
           Padding(
             padding: const EdgeInsets.only(top: TWSpace.xs),
-            child: Row(
-            children: [
-              const TWAiOrb(size: 28, glow: false),
-              const SizedBox(width: TWSpace.sm),
-              // Expanded so a long title yields to the chip instead of pushing
-              // it off-screen (was a 105px horizontal overflow on narrow
-              // widths). Ellipsis keeps it on one clean line.
-              Expanded(
-                child: Text(
-                  'Morning Brief',
-                  style: TWType.title3,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: TWSpace.sm),
-              Container(
+            child: TWBandedSectionHeader(
+              title: 'Morning Brief',
+              trailing: Container(
                 padding: const EdgeInsets.symmetric(
                     horizontal: TWSpace.md, vertical: 4),
                 decoration: BoxDecoration(
@@ -714,8 +700,7 @@ class _BriefCard extends StatelessWidget {
                 ),
                 child: Text('15s read', style: TWType.caption),
               ),
-            ],
-          ),
+            ),
           ),
           const SizedBox(height: TWSpace.lg),
           if (insights.isEmpty)
@@ -735,8 +720,7 @@ class _BriefCard extends StatelessWidget {
                         color: TWColors.hairlineTop,
                       ),
                     Expanded(
-                      child: _InsightColumn(
-                          index: i + 1, insight: insights[i]),
+                      child: _InsightColumn(insight: insights[i]),
                     ),
                   ],
                 ],
@@ -849,8 +833,7 @@ class _BriefInsight {
 /// A single briefing column: numbered header (circle + title) then content,
 /// laid out side-by-side in the Morning Brief card.
 class _InsightColumn extends StatelessWidget {
-  const _InsightColumn({required this.index, required this.insight});
-  final int index;
+  const _InsightColumn({required this.insight});
   final _BriefInsight insight;
 
   @override
@@ -859,37 +842,14 @@ class _InsightColumn extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Numbered header: accent circle + section title.
-        Row(
-          children: [
-            Container(
-              width: 22,
-              height: 22,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: TWColors.accent.withValues(alpha: 0.18),
-                shape: BoxShape.circle,
-                border: Border.all(
-                    color: TWColors.accent.withValues(alpha: 0.45),
-                    width: 1),
-              ),
-              child: Text('$index',
-                  style: TWType.tabular(TWType.caption).copyWith(
-                      color: TWColors.accentBright,
-                      fontWeight: FontWeight.w700)),
-            ),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(i.title.toUpperCase(),
-                  maxLines: 2,
-                  style: TWType.bodySm.copyWith(
-                      color: TWColors.accentBright,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 1.1)),
-            ),
-          ],
-        ),
+        // Section title (numbered badge removed per design).
+        Text(i.title.toUpperCase(),
+            maxLines: 2,
+            style: TWType.bodySm.copyWith(
+                color: TWColors.accentBright,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 1.1)),
         const SizedBox(height: TWSpace.sm),
         ..._content(i),
       ],
