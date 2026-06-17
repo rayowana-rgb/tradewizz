@@ -939,3 +939,56 @@ if not os.environ.get("TRADEWIZZ_DISABLE_SCHEDULER") and \
     @app.on_event("shutdown")
     def _stop_snapshot_scheduler() -> None:  # pragma: no cover
         _snapshot_scheduler.stop()
+
+
+# ---------------------------------------------------------------------------
+# Daily OHLCV cache warmer (opt-in). After each market closes for the day, this
+# gradually pre-fetches that market's universe OHLCV into the SAME on-disk cache
+# the screener/analyze already read from, so screener results are served from
+# warm cache. It only pre-warms data; it never changes scoring/engine behaviour.
+# Disabled unless TRADEWIZZ_ENABLE_DAILY_WARMER is truthy (and never under
+# pytest). Markets close at different local times, handled per-market inside.
+from .screener_cache.warmer import DailyCacheWarmer, warmer_enabled  # noqa: E402
+
+
+def _warm_fetch_symbol(symbol, market) -> None:
+    """Fetch one symbol into the engine's OHLCV cache (same path as analyze)."""
+    ticker = yf_symbol(symbol, market)
+    engine._fetch(ticker, "1y", "1d")  # noqa: SLF001 — pre-warm the shared cache
+
+
+_cache_warmer = DailyCacheWarmer(
+    fetch_symbol=_warm_fetch_symbol,
+    symbols_for=lambda mk: engine._universe.symbols(mk),  # noqa: SLF001
+)
+
+if warmer_enabled():  # pragma: no cover
+    @app.on_event("startup")
+    def _start_cache_warmer() -> None:
+        _cache_warmer.start()
+
+    @app.on_event("shutdown")
+    def _stop_cache_warmer() -> None:
+        _cache_warmer.stop()
+
+
+@app.get(f"{API_PREFIX}/debug/warmer")
+def debug_warmer() -> dict:
+    """Inspect the daily OHLCV cache warmer (read-only).
+
+    Shows whether it is enabled, its per-market close/trading-date state, and
+    the last warm summary per market.
+    """
+    return {
+        "enabled": warmer_enabled(),
+        "delay_seconds": _cache_warmer._delay,  # noqa: SLF001
+        "markets": [m.value for m in _cache_warmer._markets],  # noqa: SLF001
+        "last_warm": _cache_warmer.last_warm,
+        "sessions": {
+            m.value: {
+                "session_state": get_market_session_state(m).value,
+                "trading_date": trading_date_str(m),
+            }
+            for m in Market
+        },
+    }
