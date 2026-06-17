@@ -1232,46 +1232,39 @@ class _TopMoversCardState extends State<_TopMoversCard> {
   @override
   Widget build(BuildContext context) {
     final rows = _rows;
-    return TWFloatingCard(
-      child: Column(
-        key: const Key('home_top_movers'),
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const TWEyebrow('Top Movers'),
-          const SizedBox(height: TWSpace.md),
-          _tabs(),
-          const SizedBox(height: TWSpace.md),
-          if (rows.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: TWSpace.md),
-              child: Text(
-                'No movers available.',
-                style: TWType.bodySm
-                    .copyWith(color: TWColors.textTertiary),
-              ),
-            )
-          else
-            GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              padding: EdgeInsets.zero,
-              itemCount: rows.length,
-              gridDelegate:
-                  const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                mainAxisSpacing: TWSpace.sm,
-                crossAxisSpacing: TWSpace.sm,
-                mainAxisExtent: 64,
-              ),
-              itemBuilder: (_, i) => _MoverTile(
-                market: widget.market,
-                mover: rows[i],
-                showValue: _tab == _MoversTab.active,
-                onTap: () => widget.onTap(rows[i].symbol),
-              ),
+    // Flat section (no card): banded header + tab switcher, then a hairline-
+    // separated list of movers with a gain/loss gradient tint per row.
+    return Column(
+      key: const Key('home_top_movers'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(top: TWSpace.xs, bottom: TWSpace.md),
+          child: TWBandedSectionHeader(title: 'Top Movers'),
+        ),
+        _tabs(),
+        const SizedBox(height: TWSpace.sm),
+        if (rows.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: TWSpace.md),
+            child: Text(
+              'No movers available.',
+              style: TWType.bodySm.copyWith(color: TWColors.textTertiary),
             ),
-        ],
-      ),
+          )
+        else
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0)
+              const Divider(
+                  height: 1, thickness: 1, color: TWColors.hairlineTop),
+            _MoverTile(
+              market: widget.market,
+              mover: rows[i],
+              showValue: _tab == _MoversTab.active,
+              onTap: () => widget.onTap(rows[i].symbol),
+            ),
+          ],
+      ],
     );
   }
 
@@ -1348,57 +1341,65 @@ class _MoverTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final up = mover.changePercent >= 0;
-    final accent = mover.changePercent == 0
-        ? TWColors.neutral
-        : (up ? TWColors.up : TWColors.down);
+    final flat = mover.changePercent == 0;
+    final accent =
+        flat ? TWColors.neutral : (up ? TWColors.up : TWColors.down);
     final pct = '${up ? '+' : ''}${mover.changePercent.toStringAsFixed(2)}%';
     final sub = showValue
         ? _compactMoney(market, mover.valueTraded)
         : '${_currencySymbol(market)}${mover.price.toStringAsFixed(2)}';
-    return GestureDetector(
+    return InkWell(
       onTap: onTap,
-      behavior: HitTestBehavior.opaque,
+      borderRadius: TWRadius.rSm,
       child: Container(
         padding: const EdgeInsets.symmetric(
-            horizontal: TWSpace.md, vertical: TWSpace.sm),
+            horizontal: TWSpace.sm, vertical: TWSpace.sm),
+        // Gain/loss gradient: tinted on the leading edge, fading to clear so
+        // rows read as a list (no card outline) yet signal direction.
         decoration: BoxDecoration(
-          color: accent.withValues(alpha: 0.10),
           borderRadius: TWRadius.rSm,
-          border: Border.all(
-            color: accent.withValues(alpha: 0.30),
-            width: 1,
-          ),
+          gradient: flat
+              ? null
+              : LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [
+                    accent.withValues(alpha: 0.18),
+                    accent.withValues(alpha: 0.0),
+                  ],
+                ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
+        child: Row(
           children: [
-            Text(
-              mover.symbol,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TWType.bodySm.copyWith(fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 2),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    mover.symbol,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TWType.body.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: TWColors.textPrimary),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
                     sub,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TWType.caption
                         .copyWith(color: TWColors.textTertiary),
                   ),
-                ),
-                const SizedBox(width: TWSpace.xs),
-                Text(
-                  pct,
-                  maxLines: 1,
-                  style: TWType.tabular(TWType.caption)
-                      .copyWith(color: accent, fontWeight: FontWeight.w700),
-                ),
-              ],
+                ],
+              ),
+            ),
+            const SizedBox(width: TWSpace.sm),
+            Text(
+              pct,
+              maxLines: 1,
+              style: TWType.tabular(TWType.bodySm)
+                  .copyWith(color: accent, fontWeight: FontWeight.w700),
             ),
           ],
         ),
