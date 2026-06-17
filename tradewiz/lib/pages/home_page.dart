@@ -1558,20 +1558,15 @@ class _PortfolioCard extends StatelessWidget {
     // number below comes straight from the existing SimAccount / SimPosition
     // data (no new API, no recalculation of the portfolio engine).
     if (a == null) {
-      return TWFloatingCard(
+      return Column(
         key: const Key('home_portfolio'),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const TWEyebrow('Simulated Portfolio'),
-            const SizedBox(height: TWSpace.sm),
-            Text('My Portfolio', style: TWType.title3),
-            const SizedBox(height: TWSpace.sm),
-            Text('Start a simulated portfolio to track P&L here.',
-                style:
-                    TWType.bodySm.copyWith(color: TWColors.textTertiary)),
-          ],
-        ),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const TWBandedSectionHeader(title: 'My Portfolio'),
+          const SizedBox(height: TWSpace.lg),
+          Text('Start a simulated portfolio to track P&L here.',
+              style: TWType.bodySm.copyWith(color: TWColors.textTertiary)),
+        ],
       );
     }
 
@@ -1587,45 +1582,24 @@ class _PortfolioCard extends StatelessWidget {
     final winner = _extreme(highest: true);
     final largest = _largest();
 
-    return Container(
+    // Flat section (no card frame/gradient) matching the other Home sections:
+    // banded header + hairline dividers between the value, today's P/L and
+    // metric blocks.
+    return Column(
       key: const Key('home_portfolio'),
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(TWRadius.premium),
-        border: Border.all(color: TWColors.hairlineTop, width: 1),
-        boxShadow: TWShadow.premium,
-      ),
-      child: Container(
-        decoration: const BoxDecoration(
-          gradient: TWColors.portfolioGradient,
-        ),
-        // Tighter outer padding (24 -> 16) so the Today's P/L, Top Winner and
-        // Largest Position boxes sit closer to the card edges (hugging left &
-        // right) while still leaving breathing room. The full-width Open
-        // Portfolio CTA follows the same inset automatically.
-        padding: const EdgeInsets.all(TWSpace.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Header — icon + title + positions badge.
-            Row(
-              children: [
-                const Text('My Portfolio',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15)),
-                const Spacer(),
-                _Pill(text: '${positions.length} '
-                    '${positions.length == 1 ? 'Position' : 'Positions'}'),
-              ],
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+            // Banded header (matches Morning Brief / Top Movers).
+            TWBandedSectionHeader(
+              title: 'My Portfolio',
+              trailing: _Pill(text: '${positions.length} '
+                  '${positions.length == 1 ? 'Position' : 'Positions'}'),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: TWSpace.lg),
             // Portfolio Value spans the full width for breathing room.
-            const Text('Portfolio Value',
-                style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
+            Text('Portfolio Value',
+                style: TWType.caption.copyWith(
+                    color: TWColors.textSecondary,
                     fontWeight: FontWeight.w600)),
             const SizedBox(height: 6),
             FittedBox(
@@ -1635,7 +1609,7 @@ class _PortfolioCard extends StatelessWidget {
                   // Match the Market Pulse index price scale (title2 = 20) so
                   // the headline USD figure no longer dwarfs the rest of Home.
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: TWColors.textPrimary,
                     fontSize: 20,
                     fontWeight: FontWeight.w900,
                     height: 1.0,
@@ -1669,11 +1643,17 @@ class _PortfolioCard extends StatelessWidget {
               ],
             ),
             // Today's P/L now spans full width below Portfolio Value, above
-            // the Top Winner / Largest Position metric cards.
-            const SizedBox(height: 14),
+            // the Top Winner / Largest Position metric rows.
+            const SizedBox(height: TWSpace.md),
+            const Divider(
+                height: 1, thickness: 1, color: TWColors.hairlineTop),
+            const SizedBox(height: TWSpace.md),
             _todayCard(todayPnl, todayPct, a.currency, positions),
             if (winner != null || largest != null) ...[
-              const SizedBox(height: 14),
+              const SizedBox(height: TWSpace.md),
+              const Divider(
+                  height: 1, thickness: 1, color: TWColors.hairlineTop),
+              const SizedBox(height: TWSpace.md),
               Row(
                 children: [
                   if (winner != null)
@@ -1702,7 +1682,10 @@ class _PortfolioCard extends StatelessWidget {
                 ],
               ),
             ],
-            const SizedBox(height: 18),
+            const SizedBox(height: TWSpace.md),
+            const Divider(
+                height: 1, thickness: 1, color: TWColors.hairlineTop),
+            const SizedBox(height: TWSpace.md),
             GestureDetector(
               onTap: onOpenPortfolio,
               child: Container(
@@ -1732,10 +1715,8 @@ class _PortfolioCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text('Simulation only \u00b7 not a brokerage account.',
-                style: TWType.caption.copyWith(color: Colors.white60)),
-          ],
-        ),
-      ),
+                style: TWType.caption.copyWith(color: TWColors.textTertiary)),
+      ],
     );
   }
 
@@ -1747,9 +1728,9 @@ class _PortfolioCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
+        color: TWColors.bgElevated.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(TWRadius.card),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+        border: Border.all(color: TWColors.hairlineTop),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1758,10 +1739,9 @@ class _PortfolioCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text("Today's P/L",
-                    style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 12,
+                Text("Today's P/L",
+                    style: TWType.caption.copyWith(
+                        color: TWColors.textSecondary,
                         fontWeight: FontWeight.w600)),
                 const SizedBox(height: 6),
                 FittedBox(
@@ -1875,12 +1855,12 @@ class _Pill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.18),
+        color: TWColors.accent.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(text,
           style: const TextStyle(
-              color: Colors.white,
+              color: TWColors.accentBright,
               fontWeight: FontWeight.w700,
               fontSize: 12)),
     );
@@ -1909,14 +1889,14 @@ class _PortfolioMetricCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final valueColor = up == null
-        ? Colors.white
+        ? TWColors.textPrimary
         : (up! ? TWColors.up : TWColors.down);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
+        color: TWColors.bgElevated.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(TWRadius.card),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+        border: Border.all(color: TWColors.hairlineTop),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -1929,7 +1909,7 @@ class _PortfolioMetricCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                        color: Colors.white60,
+                        color: TWColors.textTertiary,
                         fontSize: 12,
                         fontWeight: FontWeight.w600)),
                 const SizedBox(height: 6),
@@ -1937,7 +1917,7 @@ class _PortfolioMetricCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                        color: Colors.white,
+                        color: TWColors.textPrimary,
                         fontWeight: FontWeight.w800,
                         fontSize: 15)),
                 const SizedBox(height: 3),
@@ -2006,7 +1986,7 @@ class _DonutPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = stroke
       ..strokeCap = StrokeCap.round
-      ..color = Colors.white.withValues(alpha: 0.18);
+      ..color = TWColors.hairlineTop;
     canvas.drawCircle(center, radius, track);
 
     final arc = Paint()
