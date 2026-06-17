@@ -1613,7 +1613,7 @@ class _PortfolioCard extends StatelessWidget {
                   Text('Portfolio Value',
                       style: TWType.caption.copyWith(
                           color: TWColors.textSecondary,
-                          fontWeight: FontWeight.w600)),
+                          fontWeight: FontWeight.w700)),
                   const SizedBox(height: 6),
                   FittedBox(
                     fit: BoxFit.scaleDown,
@@ -1622,7 +1622,7 @@ class _PortfolioCard extends StatelessWidget {
                         style: const TextStyle(
                           color: TWColors.textPrimary,
                           fontSize: 15,
-                          fontWeight: FontWeight.w700,
+                          fontWeight: FontWeight.w800,
                           height: 1.0,
                           fontFeatures: [FontFeature.tabularFigures()],
                         )),
