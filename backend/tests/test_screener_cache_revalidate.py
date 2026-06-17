@@ -99,13 +99,19 @@ class _Engine:
         )
 
 
-def _service(store, engine, *, data_ts):
-    """Build a service with an injected, cache-only data-timestamp probe."""
+def _service(store, engine, *, data_ts, write_ts=None):
+    """Build a service with an injected, cache-only data-timestamp probe.
+
+    ``write_ts`` injects the Opsi A intraday write-time probe; defaults to None
+    (disabled) so the existing day-boundary revalidation tests stay
+    deterministic and unaffected by live cache-registry write-times.
+    """
     return ScreenerCacheService(
         store,
         engine.run_screen,
         now_provider=lambda _m: CLOSED_TIME,
         latest_data_timestamp=data_ts,
+        latest_write_timestamp=write_ts,
     )
 
 
@@ -194,16 +200,19 @@ def test_indeterminate_probe_keeps_existing_snapshot():
     assert second.matches[0].price == 100.0
 
 
-def test_real_registry_probe_keeps_snapshot_on_same_day_cache_rewrite(tmp_path):
-    """End-to-end with the default cache-registry probe + a real OHLCV cache.
+def test_real_registry_probe_refreshes_snapshot_on_same_day_price_fetch(tmp_path):
+    """End-to-end Opsi A: a fresher SAME-day price fetch refreshes the snapshot.
 
-    Regression for "screener results keep changing while the market is closed":
-    a CLOSED-session snapshot must STAY frozen when the OHLCV cache is merely
-    re-written on the SAME trading date (cache write-time / fetched_at moves but
-    the candle date does not). Previously the probe also considered fetched_at,
-    so any cache rewrite -- e.g. opening a stock detail page -- rebuilt the
-    snapshot, and each rebuild re-screened the universe with whatever yfinance
-    availability existed at that instant, shifting the result set/ranking.
+    User-facing case (GULA 640 -> 665): while CLOSED, a post-close last price
+    can be re-fetched into the OHLCV cache on the SAME trading date (the candle
+    date is unchanged, but ``fetched_at`` advances and the close value moves).
+    The Detail page (/analyze) shows the fresh price immediately, so the
+    Screener list (/screen) must track it instead of serving a frozen snapshot.
+
+    The default write-time probe (``latest_market_write_ts``) reads the live
+    cache registry's ``fetched_at``; when it leads the snapshot's
+    ``generated_at``, the snapshot rebuilds + re-saves exactly once (the new
+    ``generated_at`` advances past the write-time), so it does not thrash.
     """
     import time
 
@@ -251,16 +260,23 @@ def test_real_registry_probe_keeps_snapshot_on_same_day_cache_rewrite(tmp_path):
     p0 = first.matches[0].price
 
     # Same trading date: cache is cleared + rewritten (fetched_at advances),
-    # but the candle DATE is unchanged.
+    # the candle DATE is unchanged, but the close value moves 100 -> 110.
     time.sleep(1.1)
     state["close"] = 110.0
     cache.clear(symbol="0700")
     engine.analyze("0700.HK", Market.HKEX)
 
-    # The CLOSED snapshot must be served unchanged (frozen), not rebuilt.
+    # Opsi A: the fresher same-day price must refresh the CLOSED snapshot.
     second = svc.get(Market.HKEX, KEY)
-    assert second.cached is True
-    assert second.matches[0].price == p0
+    assert second.cached is False
+    assert second.matches[0].price != p0
+    assert second.matches[0].price == 110.0
+
+    # ...and a subsequent request (no new fetch) reuses the rebuilt snapshot,
+    # i.e. Opsi A does not re-screen on every request.
+    third = svc.get(Market.HKEX, KEY)
+    assert third.cached is True
+    assert third.matches[0].price == 110.0
 
 
 def test_force_refresh_while_closed_rebuilds_regardless():
@@ -278,6 +294,66 @@ def test_force_refresh_while_closed_rebuilds_regardless():
     assert engine.calls == 2
     assert forced.cached is False
     assert forced.matches[0].price == 110.0
+
+
+def test_opsi_a_rebuilds_when_write_time_leads_generated_at():
+    """Opsi A: a same-day cache WRITE after generation rebuilds the snapshot."""
+    store = InMemoryScreenerSnapshotStore()
+    engine = _Engine()
+    # Build the first snapshot @100 (generated_at = real now()).
+    svc = _service(
+        store,
+        engine,
+        data_ts=lambda _m: _SAME_DAY_CANDLE,
+        # Write-time well AFTER generation -> stale -> rebuild.
+        write_ts=lambda _m: _iso(60),
+    )
+    first = svc.get(Market.HKEX, KEY)
+    assert first.cached is False
+    assert engine.calls == 1
+
+    engine.price = 110.0
+    second = svc.get(Market.HKEX, KEY)
+    assert second.cached is False  # rebuilt
+    assert engine.calls == 2
+    assert second.matches[0].price == 110.0
+
+
+def test_opsi_a_keeps_snapshot_when_write_time_predates_generation():
+    """Opsi A guard: an OLD write-time (before generation) must NOT rebuild."""
+    store = InMemoryScreenerSnapshotStore()
+    engine = _Engine()
+    svc = _service(
+        store,
+        engine,
+        data_ts=lambda _m: _SAME_DAY_CANDLE,
+        # Write-time BEFORE generation (the screen's own cache write) -> reuse.
+        write_ts=lambda _m: _iso(-60),
+    )
+    first = svc.get(Market.HKEX, KEY)
+    assert first.cached is False
+    assert engine.calls == 1
+
+    engine.price = 110.0
+    second = svc.get(Market.HKEX, KEY)
+    assert second.cached is True  # frozen
+    assert engine.calls == 1
+    assert second.matches[0].price == first.matches[0].price
+
+
+def test_opsi_a_disabled_probe_keeps_snapshot():
+    """With no write-time probe (None), Opsi A is inert -> snapshot frozen."""
+    store = InMemoryScreenerSnapshotStore()
+    engine = _Engine()
+    svc = _service(
+        store, engine, data_ts=lambda _m: _SAME_DAY_CANDLE, write_ts=None
+    )
+    first = svc.get(Market.HKEX, KEY)
+    assert first.cached is False
+    engine.price = 110.0
+    second = svc.get(Market.HKEX, KEY)
+    assert second.cached is True
+    assert engine.calls == 1
 
 
 def test_closed_screen_is_stable_across_requests_despite_engine_variance():

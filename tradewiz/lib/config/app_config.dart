@@ -28,7 +28,7 @@ class AppConfig {
 
   static const String _baseUrlFromEnv = String.fromEnvironment(
     'TRADEWIZ_API_BASE_URL',
-    defaultValue: 'https://api.tradewiz.app/v1',
+    defaultValue: 'https://api.tradewizz.my.id/v1',
   );
 
   static const String _cdnBaseUrlFromEnv = String.fromEnvironment(

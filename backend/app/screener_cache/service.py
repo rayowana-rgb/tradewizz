@@ -89,6 +89,39 @@ def latest_market_candle_ts(
     return best
 
 
+def latest_market_write_ts(market_code: str) -> Optional[str]:
+    """Newest cache **write time** (``fetched_at``) for a market, ISO UTC.
+
+    Distinct from :func:`latest_market_candle_ts`: this returns ONLY the cache
+    write timestamps (when the OHLCV files were last (re)written), never the
+    candle trading-date timestamps. The Opsi A intraday-refresh check needs a
+    pure write-time signal so it can detect a fresher post-close price fetch on
+    the SAME trading day without being confused by today's daily candle
+    timestamp (whose UTC clock-time can land later than the screen's wall-clock
+    generation time -- the original "rebuild on every request" regression).
+
+    Returns the maximum ``fetched_at`` across all cached symbols for the market
+    (normalized to ISO-8601 UTC), or ``None`` when nothing is cached yet.
+    """
+    from ..cache import all_caches  # noqa: WPS433
+
+    want = (market_code or "").upper().strip()
+    best: Optional[str] = None
+    for cache in all_caches():
+        try:
+            entries = cache.entries()
+        except Exception:  # noqa: BLE001 - never let a probe break /screen
+            continue
+        for entry in entries:
+            mkt = str(entry.get("market") or "").upper()
+            if want and mkt != want:
+                continue
+            norm = _epoch_to_iso_utc(entry.get("fetched_at"))
+            if norm and (best is None or norm > best):
+                best = norm
+    return best
+
+
 def _epoch_to_iso_utc(epoch: object) -> Optional[str]:
     """Convert an epoch-seconds float to an ISO-8601 UTC string, or None."""
     try:
@@ -125,6 +158,12 @@ def _parse_iso(value: object) -> Optional[datetime]:
     return dt.astimezone(timezone.utc)
 
 # Human-readable, stable copy used by both the API and the Flutter app.
+# Minimum seconds the cache write-time must lead the snapshot's generated_at
+# before the snapshot is considered stale (Opsi A). Guards against the screen
+# run's OWN cache writes (made just before generated_at is stamped) triggering
+# an immediate rebuild loop.
+_WRITE_TIME_EPSILON_S = 0.5
+
 REASON_OPEN = "Using latest market-close screening result"
 NEXT_REFRESH_RULE = "Will refresh after next market close"
 FORCE_REFRESH_DENIED = (
@@ -183,10 +222,17 @@ class ScreenerCacheService:
         latest_data_timestamp: Optional[LatestDataTimestamp] = (
             latest_market_candle_ts
         ),
+        latest_write_timestamp: Optional[
+            Callable[[str], Optional[str]]
+        ] = latest_market_write_ts,
     ):
         self._store = store
         self._run_screen = run_screen
         self._now_provider = now_provider
+        # Cache-only probe for the newest cache WRITE time (Opsi A). Used to
+        # detect a fresher price fetch on the SAME trading day. Injectable for
+        # tests; None disables the intraday-refresh path.
+        self._latest_write_timestamp = latest_write_timestamp
         # Cache-only probe used to detect that the underlying OHLCV/analyze
         # data refreshed AFTER a CLOSED snapshot was generated. When it reports
         # a newer candle than the saved snapshot, the snapshot is rebuilt so
@@ -233,6 +279,17 @@ class ScreenerCacheService:
         existing = self._store.get_for_date(market.value, cache_key, today)
         if existing is not None:
             if self._data_is_newer_than(market, existing):
+                return self._run_and_save(market, cache_key, status, today)
+            # Opsi A: even on the SAME trading day, if the underlying OHLCV
+            # cache was (re)written AFTER this snapshot was generated -- e.g.
+            # a fresher post-close last price was fetched -- the frozen
+            # snapshot would show stale prices (the GULA 640-vs-665 case).
+            # Rebuild + re-save so /screen tracks /analyze. This only runs
+            # while CLOSED (never during market hours), and the rebuild
+            # advances the snapshot's generated_at past the cache write-time,
+            # so it will not rebuild again until the NEXT fetch -- bounding
+            # the work to at most one re-screen per data refresh.
+            if self._data_written_after(market, existing):
                 return self._run_and_save(market, cache_key, status, today)
             return self._from_record(existing, cached=True, status=status)
 
@@ -287,6 +344,39 @@ class ScreenerCacheService:
         if not snap_date or not candle_trading_date:
             return False
         return candle_trading_date > snap_date
+
+    def _data_written_after(
+        self, market: Market, rec: ScreenerSnapshotRecord
+    ) -> bool:
+        """True when cached OHLCV data was (re)written AFTER the snapshot ran.
+
+        Opsi A intraday-refresh check (CLOSED-only). Uses the cache **write
+        time** (``fetched_at``), not the candle trading date, so a fresher
+        last-price fetch on the SAME trading day -- which leaves the trading
+        date unchanged but updates the price -- still invalidates a frozen
+        snapshot. Compared against the snapshot's ``generated_at`` (the instant
+        the screen actually ran). A small epsilon avoids treating the screen's
+        OWN cache writes (made microseconds before generated_at is stamped) as
+        "newer", which would otherwise rebuild on every request.
+
+        Returns False (keep existing snapshot) whenever the comparison cannot
+        be made, so behavior is unchanged when the probe is indeterminate.
+        """
+        if self._latest_write_timestamp is None:
+            return False
+        try:
+            latest = self._latest_write_timestamp(market.value)
+        except Exception:  # noqa: BLE001 - never let a probe break /screen
+            return False
+        if not latest:
+            return False
+        written_dt = _parse_iso(latest)
+        gen_dt = _parse_iso(rec.generated_at)
+        if written_dt is None or gen_dt is None:
+            return False
+        # Require the data write to be meaningfully after generation so the
+        # screen run's own cache writes don't trigger an immediate rebuild.
+        return (written_dt - gen_dt).total_seconds() > _WRITE_TIME_EPSILON_S
 
     def _serve_open(
         self,

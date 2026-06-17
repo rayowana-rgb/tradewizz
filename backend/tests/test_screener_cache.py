@@ -82,6 +82,11 @@ _SAME_DAY_CANDLE = "2026-06-08T12:00:00+00:00"  # trading_date_str(HKEX) == 2026
 
 def _service(store, run, now: datetime, **kw) -> ScreenerCacheService:
     kw.setdefault("latest_data_timestamp", lambda _m: _SAME_DAY_CANDLE)
+    # Disable the Opsi A intraday write-time probe by default so these tests
+    # (which assert the day-boundary reuse/rebuild behavior) stay deterministic
+    # and are not affected by the live cache registry write-times leaking from
+    # other tests. Opsi A is covered by dedicated tests below.
+    kw.setdefault("latest_write_timestamp", None)
     return ScreenerCacheService(
         store, run, now_provider=lambda _m: now, **kw
     )
