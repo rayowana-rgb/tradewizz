@@ -222,12 +222,13 @@ def test_cache_avoids_repeated_fetches():
         clock=lambda: t["now"],
         now_provider=_closed_now,
     )
-    # Each fetchable index triggers a DAILY fetch plus a best-effort INTRADAY
-    # fetch (used to surface today's level when the daily candle lags). Markets
-    # with no working Yahoo symbol (e.g. Vietnam) skip the fetch entirely.
+    # Each fetchable index triggers a DAILY fetch, a best-effort INTRADAY fetch
+    # (used to surface today's level when the daily candle lags), and a
+    # best-effort 1mo SPARKLINE fetch for the Home chart. Markets with no
+    # working Yahoo symbol (e.g. Vietnam) skip the fetch entirely.
     from app.market.service import INDEX_SPECS
     n_indices = sum(1 for s in INDEX_SPECS if s.fetchable)
-    per_refresh = n_indices * 2  # daily + intraday
+    per_refresh = n_indices * 3  # daily + intraday + sparkline
     svc.get_indices()
     assert calls["n"] == per_refresh
     # Within TTL: served from cache, no new fetches.

@@ -244,13 +244,33 @@ def test_real_registry_probe_refreshes_snapshot_on_same_day_price_fetch(tmp_path
     )
     engine = AnalysisEngine(fetcher=cache.get)
     store = InMemoryScreenerSnapshotStore()
+
+    # Deterministic write-time probe driven by an explicit clock the test
+    # controls, instead of the real wall-clock cache ``fetched_at`` (which is
+    # sub-millisecond-fragile against the screen run's own writes and leaks
+    # from other tests). ``state['wt']`` is advanced ONLY when this test
+    # simulates a genuine fresher data fetch, so the rebuild->reuse boundary is
+    # exercised without timing flakiness. Mirrors the production semantics:
+    # write-time leads generated_at -> rebuild; otherwise reuse.
+    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+
+    state["wt"] = _dt.now(_tz.utc) - _td(seconds=30)  # old: before first build
+
+    def _scoped_write_ts(_market_code: str):
+        return state["wt"].isoformat()
+
     svc = ScreenerCacheService(
         store,
         lambda: engine.screen(
             Market.HKEX, symbols=["0700.HK"], limit=50
         ),
         now_provider=lambda _m: CLOSED_TIME,
-        # default latest_data_timestamp = live cache-registry probe
+        latest_write_timestamp=_scoped_write_ts,
+        # Pin the candle (trading-date) probe to the SAME trading day so the
+        # day-boundary path never rebuilds here. Without this, index caches
+        # dated "today" left in the global registry by other tests would make
+        # _data_is_newer_than fire and mask the Opsi A write-time behavior.
+        latest_data_timestamp=lambda _m: _SAME_DAY_CANDLE,
     )
 
     # Prime the OHLCV cache (so a candle exists) and build the snapshot @100.
@@ -259,12 +279,12 @@ def test_real_registry_probe_refreshes_snapshot_on_same_day_price_fetch(tmp_path
     assert first.cached is False
     p0 = first.matches[0].price
 
-    # Same trading date: cache is cleared + rewritten (fetched_at advances),
-    # the candle DATE is unchanged, but the close value moves 100 -> 110.
-    time.sleep(1.1)
+    # Same trading date: a fresher last price is fetched (close 100 -> 110) and
+    # the data write-time advances PAST the first snapshot's generation.
     state["close"] = 110.0
     cache.clear(symbol="0700")
     engine.analyze("0700.HK", Market.HKEX)
+    state["wt"] = _dt.now(_tz.utc) + _td(seconds=30)  # fresh: after first build
 
     # Opsi A: the fresher same-day price must refresh the CLOSED snapshot.
     second = svc.get(Market.HKEX, KEY)
@@ -272,8 +292,12 @@ def test_real_registry_probe_refreshes_snapshot_on_same_day_price_fetch(tmp_path
     assert second.matches[0].price != p0
     assert second.matches[0].price == 110.0
 
-    # ...and a subsequent request (no new fetch) reuses the rebuilt snapshot,
-    # i.e. Opsi A does not re-screen on every request.
+    # No further data fetch happens after the rebuild, so the write-time now
+    # predates the rebuilt snapshot's generated_at.
+    state["wt"] = _dt.now(_tz.utc) - _td(seconds=30)
+
+    # ...so a subsequent request reuses the rebuilt snapshot, i.e. Opsi A does
+    # not re-screen on every request (bounded to one rebuild per data refresh).
     third = svc.get(Market.HKEX, KEY)
     assert third.cached is True
     assert third.matches[0].price == 110.0

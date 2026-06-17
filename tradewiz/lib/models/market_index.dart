@@ -15,6 +15,8 @@ class MarketIndex {
     this.change,
     this.changePercent,
     this.updatedAt,
+    this.sparkline = const [],
+    this.prevClose,
   });
 
   final String symbol;
@@ -33,11 +35,31 @@ class MarketIndex {
   final double? changePercent;
   final String? updatedAt;
 
+  /// Recent daily closes (oldest -> newest) for the Home sparkline. Empty when
+  /// the backend could not build a trustworthy series.
+  final List<double> sparkline;
+
+  /// Previous daily close — the dashed reference line on the chart. Null when
+  /// unavailable.
+  final double? prevClose;
+
   bool get isUp => (change ?? 0) >= 0;
   bool get hasData => available && price != null;
 
+  /// True only when there is enough series data to draw a meaningful chart.
+  bool get hasSparkline => sparkline.length >= 2;
+
   static double? _toDouble(Object? v) =>
       v == null ? null : (v as num).toDouble();
+
+  static List<double> _toDoubleList(Object? v) {
+    if (v is! List) return const [];
+    final out = <double>[];
+    for (final e in v) {
+      if (e is num) out.add(e.toDouble());
+    }
+    return out;
+  }
 
   factory MarketIndex.fromJson(Map<String, dynamic> j) => MarketIndex(
         symbol: j['symbol'] as String? ?? '',
@@ -51,6 +73,8 @@ class MarketIndex {
         change: _toDouble(j['change']),
         changePercent: _toDouble(j['change_percent']),
         updatedAt: j['updated_at'] as String?,
+        sparkline: _toDoubleList(j['sparkline']),
+        prevClose: _toDouble(j['prev_close']),
       );
 }
 

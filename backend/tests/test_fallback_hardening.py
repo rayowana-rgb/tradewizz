@@ -173,7 +173,7 @@ def test_vietnam_index_unavailable_without_fetch():
     # The VN symbol was never fetched (no 404 spam).
     # Only fetchable indices hit the fetcher, and each does a daily + a
     # best-effort intraday fetch (to surface today's level when daily lags).
-    assert calls["n"] == sum(1 for s in INDEX_SPECS if s.fetchable) * 2
+    assert calls["n"] == sum(1 for s in INDEX_SPECS if s.fetchable) * 3
 
 
 def test_one_failed_index_does_not_affect_others():

@@ -1057,6 +1057,19 @@ class _MarketPulseCard extends StatelessWidget {
             key: const Key('home_index_unavailable'),
             style: TWType.bodySm.copyWith(color: TWColors.textTertiary),
           ),
+        // Stockbit-style index trend: a gradient area chart with a dashed
+        // previous-close reference line. Only shown when the backend supplies a
+        // trustworthy daily series (>= 2 points), so it never draws garbage.
+        if (idx != null && idx.hasData && idx.hasSparkline) ...[
+          const SizedBox(height: TWSpace.lg),
+          TWSparkline(
+            key: const Key('home_index_sparkline'),
+            points: idx.sparkline,
+            up: idx.isUp,
+            height: 64,
+            referenceValue: idx.prevClose,
+          ),
+        ],
         const SizedBox(height: TWSpace.lg),
         // Stats grid — same two-column rhythm in every state.
         Row(

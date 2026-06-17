@@ -172,6 +172,12 @@ class IndexQuote:
     change_percent: Optional[float]
     updated_at: str
     available: bool
+    # Last ~30 daily closes (oldest -> newest) for a Home index sparkline.
+    # Empty when unavailable; additive + backward compatible.
+    sparkline: tuple[float, ...] = ()
+    # Previous daily close (the dashed reference line on the chart). None when
+    # there is no prior candle to compare against.
+    prev_close: Optional[float] = None
 
     def to_dict(self) -> dict:
         return {
@@ -185,6 +191,8 @@ class IndexQuote:
             "status": self.status,
             "updated_at": self.updated_at,
             "available": self.available,
+            "sparkline": list(self.sparkline),
+            "prev_close": self.prev_close,
         }
 
 
@@ -292,7 +300,67 @@ class MarketIndicesService:
             change_percent=quote.change_percent,
             updated_at=quote.updated_at,
             available=quote.available,
+            sparkline=quote.sparkline,
+            prev_close=quote.prev_close,
         )
+
+    def _sparkline_for(
+        self,
+        spec: MarketIndexSpec,
+        price: float,
+        change: Optional[float],
+    ) -> tuple[tuple[float, ...], Optional[float]]:
+        """(sparkline, prev_close) for the Home chart -- never raises.
+
+        Fetched separately from the price path so a charting failure or a
+        mis-scaled series can never corrupt the validated quote. Each close is
+        sanity-checked against the validated ``price`` (same order of
+        magnitude); a series that fails the check is discarded entirely.
+
+        ``prev_close`` is the second-to-last close (genuine "yesterday") when
+        the series is usable, otherwise derived from ``price - change``.
+        """
+        derived_prev = (
+            round(price - change, 2) if change is not None else None
+        )
+        try:
+            df = self._fetch(spec.symbol, "1mo", "1d")
+            raw = self._build_sparkline(df)
+        except Exception:  # noqa: BLE001 - charting must never break the quote
+            return ((), derived_prev)
+        # Reject a mis-scaled / corrupt series: every point must be within the
+        # same order of magnitude as the validated price (e.g. drop a 0.22
+        # series when the index trades ~6000).
+        usable = [
+            c
+            for c in raw
+            if c > 0 and _level_is_consistent(c, price)
+        ]
+        if len(usable) < 2 or len(usable) < len(raw):
+            # Partial/inconsistent series -> do not trust it for the chart.
+            return ((), derived_prev)
+        prev_close = round(usable[-2], 2)
+        return (tuple(round(c, 2) for c in usable), prev_close)
+
+    @staticmethod
+    def _build_sparkline(df: pd.DataFrame, points: int = 30) -> tuple[float, ...]:
+        """Last ``points`` valid daily closes (oldest -> newest) for the chart.
+
+        Index-tolerant: only ``Close`` is needed; NaN rows are dropped. Returns
+        an empty tuple when there is no usable series, so the app simply omits
+        the sparkline rather than drawing garbage.
+        """
+        if df is None or df.empty or "Close" not in df.columns:
+            return ()
+        try:
+            closes = [
+                float(c)
+                for c in df["Close"].dropna().tolist()
+                if c is not None and float(c) > 0
+            ]
+        except Exception:  # noqa: BLE001 - never let charting break the quote
+            return ()
+        return tuple(closes[-points:])
 
     def _fetch_quote(self, spec: MarketIndexSpec) -> IndexQuote:
         status = self._status(spec)
@@ -301,6 +369,10 @@ class MarketIndicesService:
         if not spec.fetchable:
             return self._unavailable(spec, status)
         try:
+            # Keep the PROVEN 5d/1d fetch for price/change (do not widen this:
+            # a longer period has been observed to return a mis-scaled series
+            # that slips past guards). The Home sparkline is fetched separately
+            # below with its own guard so it can NEVER corrupt the quote.
             df = self._fetch(spec.symbol, "5d", "1d")
             price, change, change_pct = self._extract(df)
             # Daily-level sanity: reject a corrupt daily Close that is wildly off
@@ -350,6 +422,10 @@ class MarketIndicesService:
             and abs(change_pct) > _MAX_INDEX_DAILY_MOVE_PCT
         ) or price <= 0:
             return self._unavailable(spec, status)
+        # Build the Home sparkline from a SEPARATE, fully guarded fetch. Any
+        # failure / mis-scaled series here just yields an empty sparkline and a
+        # derived prev_close -- it never affects the validated price/change.
+        sparkline, prev_close = self._sparkline_for(spec, price, change)
         return IndexQuote(
             symbol=spec.symbol,
             market=spec.market,
@@ -363,6 +439,8 @@ class MarketIndicesService:
             else None,
             updated_at=_now_iso(),
             available=True,
+            sparkline=sparkline,
+            prev_close=prev_close,
         )
 
     @staticmethod
