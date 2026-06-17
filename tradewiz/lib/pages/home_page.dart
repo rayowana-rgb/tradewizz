@@ -681,13 +681,15 @@ class _BriefCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final insights = _insights();
-    return TWFloatingCard(
+    // Flat section (no card/box): keep the AI-brief identity (orb + title)
+    // but drop the floating card frame so it matches the other home sections.
+    return Column(
       key: const Key('home_brief'),
-      gradient: TWColors.briefGradient,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+          Padding(
+            padding: const EdgeInsets.only(top: TWSpace.xs),
+            child: Row(
             children: [
               const TWAiOrb(size: 28, glow: false),
               const SizedBox(width: TWSpace.sm),
@@ -713,6 +715,7 @@ class _BriefCard extends StatelessWidget {
                 child: Text('15s read', style: TWType.caption),
               ),
             ],
+          ),
           ),
           const SizedBox(height: TWSpace.lg),
           if (insights.isEmpty)
@@ -746,7 +749,6 @@ class _BriefCard extends StatelessWidget {
               style:
                   TWType.caption.copyWith(color: TWColors.textTertiary)),
         ],
-      ),
     );
   }
 
