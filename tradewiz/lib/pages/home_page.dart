@@ -1610,8 +1610,8 @@ class _PortfolioCard extends StatelessWidget {
                   // the headline USD figure no longer dwarfs the rest of Home.
                   style: const TextStyle(
                     color: TWColors.textPrimary,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w500,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
                     height: 1.0,
                     fontFeatures: [FontFeature.tabularFigures()],
                   )),
@@ -1634,8 +1634,8 @@ class _PortfolioCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: TWColors.up,
-                      fontWeight: FontWeight.w500,
-                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
                       fontFeatures: [FontFeature.tabularFigures()],
                     ),
                   ),
@@ -1752,7 +1752,7 @@ class _PortfolioCard extends StatelessWidget {
                     style: TextStyle(
                       color: upColor,
                       fontWeight: FontWeight.w800,
-                      fontSize: 20,
+                      fontSize: 15,
                       height: 1.0,
                       fontFeatures: const [FontFeature.tabularFigures()],
                     ),
