@@ -2253,49 +2253,70 @@ class _IdeasSection extends StatelessWidget {
             body: 'Fresh ideas arrive at the next market open.',
           )
         else
-          for (final idea in ideas.top(8))
-            Padding(
-              padding: const EdgeInsets.only(bottom: TWSpace.md),
-              child: TWFloatingCard(
-                key: Key('home_idea_${idea.symbol}'),
-                onTap: () => onTap(idea),
-                // Tighter padding + a smaller score ring shrink the idea cards
-                // so the ranked list reads compact instead of oversized.
-                padding: const EdgeInsets.all(TWSpace.md),
-                child: Row(
-                  children: [
-                    // Final score visually dominant (the ring), tags secondary.
-                    TWScoreRing(score: idea.score, size: 42, stroke: 3.5),
-                    const SizedBox(width: TWSpace.md),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Text(idea.symbol, style: TWType.title3),
-                              const SizedBox(width: TWSpace.sm),
-                              _Source(label: idea.source.label),
-                            ],
-                          ),
-                          const SizedBox(height: 3),
-                          Text(idea.reason,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TWType.caption
-                                  .copyWith(color: TWColors.textTertiary)),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: TWSpace.md),
-                    TWSignalPill(signal: idea.signal),
-                  ],
-                ),
-              ),
-            ),
+          // Compact list rows (Stockbit-style) separated by hairlines instead
+          // of stacked cards, while keeping the idea-specific score ring,
+          // source tag and signal pill.
+          for (var i = 0; i < ideas.top(8).length; i++) ...[
+            if (i > 0)
+              const Divider(
+                  height: 1, thickness: 1, color: TWColors.hairlineTop),
+            _IdeaRow(idea: ideas.top(8)[i], onTap: onTap),
+          ],
         if (onSeeAll != null && ideas.top(8).isNotEmpty)
           TWSeeAllFooter(label: 'Explore all stocks', onTap: onSeeAll!),
       ],
+    );
+  }
+}
+
+/// One compact Today's Ideas row: score ring + symbol/reason + signal pill,
+/// laid out like a list row (no card) so the ranked feed reads like the
+/// watchlist list rather than a stack of cards.
+class _IdeaRow extends StatelessWidget {
+  const _IdeaRow({required this.idea, required this.onTap});
+  final TradeIdea idea;
+  final ValueChanged<TradeIdea> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      key: Key('home_idea_${idea.symbol}'),
+      onTap: () => onTap(idea),
+      borderRadius: TWRadius.rSm,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: TWSpace.sm),
+        child: Row(
+          children: [
+            TWScoreRing(score: idea.score, size: 42, stroke: 3.5),
+            const SizedBox(width: TWSpace.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(idea.symbol,
+                          style: TWType.body.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: TWColors.textPrimary)),
+                      const SizedBox(width: TWSpace.sm),
+                      _Source(label: idea.source.label),
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(idea.reason,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TWType.caption
+                          .copyWith(color: TWColors.textTertiary)),
+                ],
+              ),
+            ),
+            const SizedBox(width: TWSpace.md),
+            TWSignalPill(signal: idea.signal),
+          ],
+        ),
+      ),
     );
   }
 }
