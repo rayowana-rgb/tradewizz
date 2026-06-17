@@ -842,14 +842,15 @@ class _InsightColumn extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Section title (numbered badge removed per design).
+        // Section title (numbered badge removed). Larger than the body for a
+        // clear title-vs-content hierarchy.
         Text(i.title.toUpperCase(),
             maxLines: 2,
             style: TWType.bodySm.copyWith(
                 color: TWColors.accentBright,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 1.1)),
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.8)),
         const SizedBox(height: TWSpace.sm),
         ..._content(i),
       ],
@@ -862,10 +863,11 @@ class _InsightColumn extends StatelessWidget {
         return [
           if (i.body != null)
             Text(i.body!,
+                textAlign: TextAlign.justify,
                 style: TWType.bodySm.copyWith(
                     color: TWColors.textPrimary,
                     fontSize: 12,
-                    height: 1.3)),
+                    height: 1.35)),
           if (i.opportunityLabel != null) ...[
             const SizedBox(height: 4),
             Text(i.opportunityLabel!,
@@ -935,10 +937,11 @@ class _InsightColumn extends StatelessWidget {
                     ),
                     Expanded(
                       child: Text(b,
+                          textAlign: TextAlign.justify,
                           style: TWType.bodySm.copyWith(
                               color: TWColors.textSecondary,
                               fontSize: 12,
-                              height: 1.3)),
+                              height: 1.35)),
                     ),
                   ],
                 ),
@@ -957,8 +960,9 @@ class _InsightColumn extends StatelessWidget {
           if (i.body != null) ...[
             const SizedBox(height: 4),
             Text(i.body!,
+                textAlign: TextAlign.justify,
                 style: TWType.bodySm.copyWith(
-                    color: TWColors.textPrimary, fontSize: 12)),
+                    color: TWColors.textPrimary, fontSize: 12, height: 1.35)),
           ],
         ];
     }
