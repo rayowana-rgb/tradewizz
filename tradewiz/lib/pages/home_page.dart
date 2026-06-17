@@ -2212,7 +2212,9 @@ class _IdeasSection extends StatelessWidget {
             entry: bestIndex,
             onTap: onTapIndex == null ? null : () => onTapIndex!(bestIndex),
           ),
-          const SizedBox(height: TWSpace.md),
+          if (!ideas.isEmpty)
+            const Divider(
+                height: 1, thickness: 1, color: TWColors.hairlineTop),
         ],
         if (ideas.isEmpty)
           TWEmptyState(
@@ -2221,8 +2223,7 @@ class _IdeasSection extends StatelessWidget {
           )
         else
           // Compact list rows (Stockbit-style) separated by hairlines instead
-          // of stacked cards, while keeping the idea-specific score ring,
-          // source tag and signal pill.
+          // of stacked cards, with the source tag and signal pill.
           for (var i = 0; i < ideas.top(8).length; i++) ...[
             if (i > 0)
               const Divider(
@@ -2316,12 +2317,14 @@ class _BestIndexCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final rec = entry.recommendation.toUpperCase();
     final color = recColor(rec);
-    return TWFloatingCard(
+    // Flat row matching the Today's Ideas rows below (no card frame).
+    return InkWell(
       key: const Key('home_best_index'),
       onTap: onTap,
-      // Match the tighter idea cards below it.
-      padding: const EdgeInsets.all(TWSpace.md),
-      child: Row(
+      borderRadius: TWRadius.rSm,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: TWSpace.sm),
+        child: Row(
         children: [
           Expanded(
             child: Column(
@@ -2334,17 +2337,19 @@ class _BestIndexCard extends StatelessWidget {
                         '${entry.market.flag} ${entry.market.name}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TWType.title3,
+                        style: TWType.body.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: TWColors.textPrimary),
                       ),
                     ),
                     const SizedBox(width: TWSpace.sm),
                     const _Source(label: 'Best Index'),
                   ],
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 2),
                 Text(
                   'Top-ranked market in today\u2019s Global Rotation.',
-                  maxLines: 2,
+                  maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TWType.caption
                       .copyWith(color: TWColors.textTertiary),
@@ -2367,6 +2372,7 @@ class _BestIndexCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
       ),
     );
   }
