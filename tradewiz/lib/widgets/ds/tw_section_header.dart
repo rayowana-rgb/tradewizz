@@ -43,6 +43,63 @@ class TWSectionHeader extends StatelessWidget {
   }
 }
 
+/// Banded section header (Stockbit-style): a subtle full-width tonal band with
+/// a thin accent bar on the left and a single bold title. Demarcates where a
+/// new section starts against the page background without adding a full card.
+/// Stays within the locked type scale (title uses [TWType.title2] = 20px).
+class TWBandedSectionHeader extends StatelessWidget {
+  const TWBandedSectionHeader({
+    super.key,
+    required this.title,
+    this.trailing,
+    this.accent,
+  });
+
+  final String title;
+
+  /// Optional trailing action (e.g. a "See all" text button).
+  final Widget? trailing;
+
+  /// Left accent-bar color. Defaults to the brand accent.
+  final Color? accent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(
+          horizontal: TWSpace.md, vertical: TWSpace.md),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: TWRadius.rSm,
+        border: Border.all(color: TWColors.hairlineTop, width: 1),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 3,
+            height: 18,
+            decoration: BoxDecoration(
+              color: accent ?? TWColors.accent,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: TWSpace.sm),
+          Expanded(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TWType.title2,
+            ),
+          ),
+          ?trailing,
+        ],
+      ),
+    );
+  }
+}
+
 /// Standalone uppercase eyebrow label.
 class TWEyebrow extends StatelessWidget {
   const TWEyebrow(this.text, {super.key, this.color});

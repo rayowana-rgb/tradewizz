@@ -2061,10 +2061,9 @@ class _WatchlistStrip extends StatelessWidget {
       key: const Key('home_watchlist'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: TWSpace.md),
-          child: TWSectionHeader(
-              title: 'Your Watchlist', eyebrow: 'Watchlist Insights'),
+        const Padding(
+          padding: EdgeInsets.only(bottom: TWSpace.md),
+          child: TWBandedSectionHeader(title: 'Your Watchlist'),
         ),
         if (items.isEmpty)
           Text('Add symbols to see daily highlights.',
@@ -2121,7 +2120,7 @@ class _IdeasSection extends StatelessWidget {
       children: [
         const Padding(
           padding: EdgeInsets.only(top: TWSpace.xs, bottom: TWSpace.md),
-          child: TWSectionHeader(title: "Today's Ideas", eyebrow: 'Ranked'),
+          child: TWBandedSectionHeader(title: "Today's Ideas"),
         ),
         // Best index first (Global Rotation), then the best stocks: "where to
         // be" before "what to buy".
