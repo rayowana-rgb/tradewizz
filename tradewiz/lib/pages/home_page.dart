@@ -1596,57 +1596,69 @@ class _PortfolioCard extends StatelessWidget {
                   '${positions.length == 1 ? 'Position' : 'Positions'}'),
             ),
             const SizedBox(height: TWSpace.lg),
-            // Portfolio Value spans the full width for breathing room.
-            Text('Portfolio Value',
-                style: TWType.caption.copyWith(
-                    color: TWColors.textSecondary,
-                    fontWeight: FontWeight.w600)),
-            const SizedBox(height: 6),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(_money(a.equity, a.currency),
-                  // Match the Market Pulse index price scale (title2 = 20) so
-                  // the headline USD figure no longer dwarfs the rest of Home.
-                  style: const TextStyle(
-                    color: TWColors.textPrimary,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    height: 1.0,
-                    fontFeatures: [FontFeature.tabularFigures()],
-                  )),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Icon(
-                    totalUp ? Icons.arrow_upward : Icons.arrow_downward,
-                    color: TWColors.up,
-                    size: 15),
-                const SizedBox(width: 2),
-                Flexible(
-                  child: Text(
-                    '${totalUp ? '+' : '-'}'
-                    '${_money(totalPnl.abs(), a.currency)}  '
-                    '(${totalUp ? '+' : ''}'
-                    '${totalPct.toStringAsFixed(2)}%)',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: TWColors.up,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12,
-                      fontFeatures: [FontFeature.tabularFigures()],
-                    ),
+            // Portfolio Value sits in its own box to match the Today's P/L
+            // card below it for a tidy, consistent layout.
+            Container(
+              width: double.infinity,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: TWColors.bgElevated.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(TWRadius.card),
+                border: Border.all(color: TWColors.hairlineTop),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Portfolio Value',
+                      style: TWType.caption.copyWith(
+                          color: TWColors.textSecondary,
+                          fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 6),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(_money(a.equity, a.currency),
+                        style: const TextStyle(
+                          color: TWColors.textPrimary,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          height: 1.0,
+                          fontFeatures: [FontFeature.tabularFigures()],
+                        )),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(
+                          totalUp
+                              ? Icons.arrow_upward
+                              : Icons.arrow_downward,
+                          color: TWColors.up,
+                          size: 15),
+                      const SizedBox(width: 2),
+                      Flexible(
+                        child: Text(
+                          '${totalUp ? '+' : '-'}'
+                          '${_money(totalPnl.abs(), a.currency)}  '
+                          '(${totalUp ? '+' : ''}'
+                          '${totalPct.toStringAsFixed(2)}%)',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: TWColors.up,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                            fontFeatures: [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-            // Today's P/L now spans full width below Portfolio Value, above
-            // the Top Winner / Largest Position metric rows.
-            const SizedBox(height: TWSpace.md),
-            const Divider(
-                height: 1, thickness: 1, color: TWColors.hairlineTop),
+            // Today's P/L box stacks directly below the Portfolio Value box.
             const SizedBox(height: TWSpace.md),
             _todayCard(todayPnl, todayPct, a.currency, positions),
             if (winner != null || largest != null) ...[
