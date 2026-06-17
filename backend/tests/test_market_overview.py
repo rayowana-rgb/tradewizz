@@ -76,6 +76,41 @@ def test_top_gainer_and_loser():
     assert ov.top_loser.change_percent == -7.5
 
 
+def test_top_movers_lists():
+    """Top Movers grid: gainers desc, losers asc, most-active by value."""
+    svc = MarketOverviewService(_fixed_screen(_universe(_SAMPLE)))
+    ov = svc.get(Market.IDX)
+    # Gainers: only positive %, sorted high->low.
+    assert [m.symbol for m in ov.top_gainers] == ["AAA", "BBB"]
+    assert ov.top_gainers[0].change_percent == 5.0
+    # Losers: only negative %, sorted low->high (most negative first).
+    assert [m.symbol for m in ov.top_losers] == ["EEE", "DDD"]
+    assert ov.top_losers[0].change_percent == -7.5
+    # Most active: by value traded, high->low (unchanged rows allowed here).
+    assert [m.symbol for m in ov.most_active] == [
+        "EEE", "DDD", "BBB", "AAA", "CCC"
+    ]
+    assert ov.most_active[0].value_traded == 4000.0
+
+
+def test_movers_lists_serialize_in_payload():
+    svc = MarketOverviewService(_fixed_screen(_universe(_SAMPLE)))
+    body = svc.get(Market.IDX).to_dict()
+    assert [m["symbol"] for m in body["top_gainers"]] == ["AAA", "BBB"]
+    assert [m["symbol"] for m in body["top_losers"]] == ["EEE", "DDD"]
+    assert body["most_active"][0]["symbol"] == "EEE"
+    assert body["most_active"][0]["value_traded"] == 4000.0
+
+
+def test_movers_lists_empty_when_unavailable():
+    svc = MarketOverviewService(_fixed_screen(_universe([])))
+    ov = svc.get(Market.IDX)
+    assert ov.available is False
+    assert ov.top_gainers == ()
+    assert ov.top_losers == ()
+    assert ov.most_active == ()
+
+
 def test_total_value_traded_is_sum():
     svc = MarketOverviewService(_fixed_screen(_universe(_SAMPLE)))
     ov = svc.get(Market.IDX)

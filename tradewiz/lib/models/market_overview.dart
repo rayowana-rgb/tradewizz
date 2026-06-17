@@ -13,18 +13,21 @@ class MoverRef {
     required this.name,
     required this.price,
     required this.changePercent,
+    this.valueTraded = 0,
   });
 
   final String symbol;
   final String name;
   final double price;
   final double changePercent;
+  final double valueTraded;
 
   factory MoverRef.fromJson(Map<String, dynamic> j) => MoverRef(
         symbol: j['symbol'] as String? ?? '',
         name: j['name'] as String? ?? '',
         price: _toDouble(j['price']) ?? 0,
         changePercent: _toDouble(j['change_percent']) ?? 0,
+        valueTraded: _toDouble(j['value_traded']) ?? 0,
       );
 }
 
@@ -59,6 +62,9 @@ class MarketOverview {
     this.totalValueTraded,
     this.topGainer,
     this.topLoser,
+    this.topGainers = const [],
+    this.topLosers = const [],
+    this.mostActive = const [],
     this.foreignFlow,
     this.updatedAt,
   });
@@ -74,14 +80,24 @@ class MarketOverview {
   final double? totalValueTraded;
   final MoverRef? topGainer;
   final MoverRef? topLoser;
+  final List<MoverRef> topGainers;
+  final List<MoverRef> topLosers;
+  final List<MoverRef> mostActive;
   final ForeignFlow? foreignFlow;
   final String? updatedAt;
+
+  bool get hasMovers =>
+      topGainers.isNotEmpty || topLosers.isNotEmpty || mostActive.isNotEmpty;
 
   factory MarketOverview.fromJson(Map<String, dynamic> j) {
     final breadth = (j['breadth'] as Map<String, dynamic>?) ?? const {};
     final gainer = j['top_gainer'] as Map<String, dynamic>?;
     final loser = j['top_loser'] as Map<String, dynamic>?;
     final ff = j['foreign_flow'] as Map<String, dynamic>?;
+    List<MoverRef> movers(Object? raw) => (raw as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(MoverRef.fromJson)
+        .toList(growable: false);
     return MarketOverview(
       market: j['market'] as String? ?? '',
       available: j['available'] as bool? ?? false,
@@ -94,6 +110,9 @@ class MarketOverview {
       totalValueTraded: _toDouble(j['total_value_traded']),
       topGainer: gainer == null ? null : MoverRef.fromJson(gainer),
       topLoser: loser == null ? null : MoverRef.fromJson(loser),
+      topGainers: movers(j['top_gainers']),
+      topLosers: movers(j['top_losers']),
+      mostActive: movers(j['most_active']),
       foreignFlow: ff == null ? null : ForeignFlow.fromJson(ff),
       updatedAt: j['updated_at'] as String?,
     );

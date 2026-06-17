@@ -228,6 +228,16 @@ class _HomePageState extends State<HomePage> {
               condition: _condition,
               ideas: ideas,
             ),
+            // Top Movers grid (Gainers / Losers / Most Active) — only when the
+            // overview carries real movers; otherwise the section is omitted.
+            if (_overview != null && _overview!.hasMovers) ...[
+              const SizedBox(height: TWSpace.lg),
+              _TopMoversCard(
+                market: widget.market,
+                overview: _overview!,
+                onTap: _openSymbol,
+              ),
+            ],
             const SizedBox(height: TWSpace.lg),
             // Morning Brief — inline section (no card) below Market Pulse.
             _BriefCard(brief: brief),
@@ -269,6 +279,19 @@ class _HomePageState extends State<HomePage> {
       builder: (_) => AnalysisDetailPage(
         symbol: idea.symbol,
         market: idea.market,
+        repository: _repo,
+      ),
+    ));
+  }
+
+  // Open a symbol's analysis from the Top Movers grid (uses the active market).
+  void _openSymbol(String symbol) {
+    if (symbol.isEmpty) return;
+    ActivationScope.maybeOf(context)?.ideaTapped(symbol);
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => AnalysisDetailPage(
+        symbol: symbol,
+        market: widget.market,
         repository: _repo,
       ),
     ));
@@ -1146,6 +1169,221 @@ String _compactMoney(Market m, double? v) {
     body = v.toStringAsFixed(0);
   }
   return '$cur$body';
+}
+
+// =========================================================================
+// Top Movers grid (Gainers / Losers / Most Active)
+// Stockbit-style heatmap feel, but every tile is a REAL stock from the same
+// market-overview screen (no sectors, no mock rows). Additive section.
+// =========================================================================
+enum _MoversTab { gainers, losers, active }
+
+class _TopMoversCard extends StatefulWidget {
+  const _TopMoversCard({
+    required this.market,
+    required this.overview,
+    required this.onTap,
+  });
+
+  final Market market;
+  final MarketOverview overview;
+  final void Function(String symbol) onTap;
+
+  @override
+  State<_TopMoversCard> createState() => _TopMoversCardState();
+}
+
+class _TopMoversCardState extends State<_TopMoversCard> {
+  late _MoversTab _tab = _firstNonEmptyTab();
+
+  _MoversTab _firstNonEmptyTab() {
+    if (widget.overview.topGainers.isNotEmpty) return _MoversTab.gainers;
+    if (widget.overview.topLosers.isNotEmpty) return _MoversTab.losers;
+    return _MoversTab.active;
+  }
+
+  List<MoverRef> get _rows => switch (_tab) {
+        _MoversTab.gainers => widget.overview.topGainers,
+        _MoversTab.losers => widget.overview.topLosers,
+        _MoversTab.active => widget.overview.mostActive,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = _rows;
+    return TWFloatingCard(
+      child: Column(
+        key: const Key('home_top_movers'),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const TWEyebrow('Top Movers'),
+          const SizedBox(height: TWSpace.md),
+          _tabs(),
+          const SizedBox(height: TWSpace.md),
+          if (rows.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: TWSpace.md),
+              child: Text(
+                'No movers available.',
+                style: TWType.bodySm
+                    .copyWith(color: TWColors.textTertiary),
+              ),
+            )
+          else
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              padding: EdgeInsets.zero,
+              itemCount: rows.length,
+              gridDelegate:
+                  const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                mainAxisSpacing: TWSpace.sm,
+                crossAxisSpacing: TWSpace.sm,
+                mainAxisExtent: 64,
+              ),
+              itemBuilder: (_, i) => _MoverTile(
+                market: widget.market,
+                mover: rows[i],
+                showValue: _tab == _MoversTab.active,
+                onTap: () => widget.onTap(rows[i].symbol),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _tabs() {
+    final ov = widget.overview;
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: TWRadius.rSm,
+      ),
+      child: Row(
+        children: [
+          _tabButton('Gainers', _MoversTab.gainers,
+              ov.topGainers.isNotEmpty),
+          _tabButton('Losers', _MoversTab.losers,
+              ov.topLosers.isNotEmpty),
+          _tabButton('Most Active', _MoversTab.active,
+              ov.mostActive.isNotEmpty),
+        ],
+      ),
+    );
+  }
+
+  Widget _tabButton(String label, _MoversTab tab, bool enabled) {
+    final selected = _tab == tab;
+    return Expanded(
+      child: GestureDetector(
+        onTap: enabled ? () => setState(() => _tab = tab) : null,
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.symmetric(vertical: TWSpace.sm),
+          decoration: BoxDecoration(
+            color: selected
+                ? Colors.white.withValues(alpha: 0.12)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TWType.label.copyWith(
+              color: enabled
+                  ? (selected
+                      ? TWColors.textPrimary
+                      : TWColors.textTertiary)
+                  : TWColors.textTertiary.withValues(alpha: 0.4),
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MoverTile extends StatelessWidget {
+  const _MoverTile({
+    required this.market,
+    required this.mover,
+    required this.showValue,
+    required this.onTap,
+  });
+
+  final Market market;
+  final MoverRef mover;
+  final bool showValue;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final up = mover.changePercent >= 0;
+    final accent = mover.changePercent == 0
+        ? TWColors.neutral
+        : (up ? TWColors.up : TWColors.down);
+    final pct = '${up ? '+' : ''}${mover.changePercent.toStringAsFixed(2)}%';
+    final sub = showValue
+        ? _compactMoney(market, mover.valueTraded)
+        : '${_currencySymbol(market)}${mover.price.toStringAsFixed(2)}';
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+            horizontal: TWSpace.md, vertical: TWSpace.sm),
+        decoration: BoxDecoration(
+          color: accent.withValues(alpha: 0.10),
+          borderRadius: TWRadius.rSm,
+          border: Border.all(
+            color: accent.withValues(alpha: 0.30),
+            width: 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              mover.symbol,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TWType.bodySm.copyWith(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 2),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    sub,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TWType.caption
+                        .copyWith(color: TWColors.textTertiary),
+                  ),
+                ),
+                const SizedBox(width: TWSpace.xs),
+                Text(
+                  pct,
+                  maxLines: 1,
+                  style: TWType.tabular(TWType.caption)
+                      .copyWith(color: accent, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 Color _conditionColor(String condition) => switch (condition) {

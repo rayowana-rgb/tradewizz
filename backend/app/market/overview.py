@@ -36,6 +36,10 @@ from ..screener_cache.service import (  # noqa: E402
 )
 
 
+# How many rows each Top-Movers tab (Gainers / Losers / Most Active) returns.
+_MOVERS_LIMIT = 8
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -59,6 +63,10 @@ class MoverRef:
     name: str
     price: float
     change_percent: float
+    # Daily turnover (close * volume) in the market currency. Additive/optional
+    # so the single top_gainer/top_loser refs stay backward-compatible; the
+    # Most-Active movers list sorts by this.
+    value_traded: float = 0.0
 
     def to_dict(self) -> dict:
         return {
@@ -66,6 +74,7 @@ class MoverRef:
             "name": self.name,
             "price": self.price,
             "change_percent": self.change_percent,
+            "value_traded": self.value_traded,
         }
 
 
@@ -100,6 +109,13 @@ class MarketOverview:
     top_loser: Optional[MoverRef]
     foreign_flow: Optional[ForeignFlow]
     updated_at: str
+    # --- Top Movers grid (additive, optional) ----------------------------
+    # Ranked top-N lists derived from the SAME universe screen that backs
+    # breadth/top_gainer/top_loser (no new data source). Default empty so
+    # older snapshots/clients render unchanged.
+    top_gainers: tuple["MoverRef", ...] = ()
+    top_losers: tuple["MoverRef", ...] = ()
+    most_active: tuple["MoverRef", ...] = ()
 
     def to_dict(self) -> dict:
         return {
@@ -116,6 +132,9 @@ class MarketOverview:
             "currency": self.currency,
             "top_gainer": self.top_gainer.to_dict() if self.top_gainer else None,
             "top_loser": self.top_loser.to_dict() if self.top_loser else None,
+            "top_gainers": [m.to_dict() for m in self.top_gainers],
+            "top_losers": [m.to_dict() for m in self.top_losers],
+            "most_active": [m.to_dict() for m in self.most_active],
             "foreign_flow":
                 self.foreign_flow.to_dict() if self.foreign_flow else None,
             "updated_at": self.updated_at,
@@ -238,6 +257,26 @@ class MarketOverviewService:
         top_gainer = self._mover(max(matches, key=lambda m: m.change_percent))
         top_loser = self._mover(min(matches, key=lambda m: m.change_percent))
 
+        # Top-N movers grid (Gainers / Losers / Most Active), derived from the
+        # same universe screen. Real rows only -- never promote mock fallbacks.
+        live = [m for m in matches if getattr(m, "data_source", "live") != "mock"]
+        pool = live or matches
+        gainers = sorted(pool, key=lambda m: m.change_percent, reverse=True)
+        losers = sorted(pool, key=lambda m: m.change_percent)
+        active = sorted(pool, key=lambda m: (m.value_traded or 0.0), reverse=True)
+        top_gainers = tuple(
+            self._mover(m) for m in gainers[:_MOVERS_LIMIT]
+            if m.change_percent > 0
+        )
+        top_losers = tuple(
+            self._mover(m) for m in losers[:_MOVERS_LIMIT]
+            if m.change_percent < 0
+        )
+        most_active = tuple(
+            self._mover(m) for m in active[:_MOVERS_LIMIT]
+            if (m.value_traded or 0.0) > 0
+        )
+
         foreign = self._foreign_flow(market)
 
         return MarketOverview(
@@ -252,6 +291,9 @@ class MarketOverviewService:
             currency=currency,
             top_gainer=top_gainer,
             top_loser=top_loser,
+            top_gainers=top_gainers,
+            top_losers=top_losers,
+            most_active=most_active,
             foreign_flow=foreign,
             updated_at=_now_iso(),
         )
@@ -263,6 +305,7 @@ class MarketOverviewService:
             name=m.name or m.symbol,
             price=round(m.price, 2),
             change_percent=round(m.change_percent, 2),
+            value_traded=round(m.value_traded or 0.0, 2),
         )
 
     def _unavailable(
