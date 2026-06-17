@@ -89,6 +89,18 @@ class MarketOverview {
   bool get hasMovers =>
       topGainers.isNotEmpty || topLosers.isNotEmpty || mostActive.isNotEmpty;
 
+  /// Look up a real quote for [symbol] across all mover lists, or null when
+  /// this overview carries no live row for it (never fabricates a value).
+  MoverRef? quoteFor(String symbol) {
+    final s = symbol.toUpperCase();
+    for (final list in [topGainers, mostActive, topLosers]) {
+      for (final m in list) {
+        if (m.symbol.toUpperCase() == s) return m;
+      }
+    }
+    return null;
+  }
+
   factory MarketOverview.fromJson(Map<String, dynamic> j) {
     final breadth = (j['breadth'] as Map<String, dynamic>?) ?? const {};
     final gainer = j['top_gainer'] as Map<String, dynamic>?;

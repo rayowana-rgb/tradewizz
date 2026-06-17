@@ -250,7 +250,11 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: TWSpace.lg),
             // Watchlist as a light inline strip (no card) — reduces card count
             // before the ranked ideas list.
-            _WatchlistStrip(market: widget.market),
+            _WatchlistStrip(
+              market: widget.market,
+              overview: _overview,
+              onTap: _openSymbol,
+            ),
             const SizedBox(height: TWSpace.lg),
             _IdeasSection(
               ideas: ideas,
@@ -2050,13 +2054,20 @@ class _DonutPainter extends CustomPainter {
 //    background instead of yet another floating surface.
 // =========================================================================
 class _WatchlistStrip extends StatelessWidget {
-  const _WatchlistStrip({required this.market});
+  const _WatchlistStrip({
+    required this.market,
+    this.overview,
+    this.onTap,
+  });
   final Market market;
+  final MarketOverview? overview;
+  final ValueChanged<String>? onTap;
 
   @override
   Widget build(BuildContext context) {
     final store = WatchlistScope.maybeOf(context);
     final items = store?.forMarket(market) ?? const <WatchlistItem>[];
+    final shown = items.take(6).toList();
     return Column(
       key: const Key('home_watchlist'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2065,17 +2076,24 @@ class _WatchlistStrip extends StatelessWidget {
           padding: EdgeInsets.only(bottom: TWSpace.md),
           child: TWBandedSectionHeader(title: 'Your Watchlist'),
         ),
-        if (items.isEmpty)
+        if (shown.isEmpty)
           Text('Add symbols to see daily highlights.',
               style: TWType.bodySm.copyWith(color: TWColors.textTertiary))
         else ...[
-          Wrap(
-            spacing: TWSpace.sm,
-            runSpacing: TWSpace.sm,
-            children: [
-              for (final i in items.take(6)) TWTagChip(label: i.symbol),
-            ],
-          ),
+          // Stockbit-style two-line rows separated by hairline dividers. The
+          // right-side quote is shown ONLY when the overview carries a real
+          // row for the symbol -- never fabricated.
+          for (var i = 0; i < shown.length; i++) ...[
+            if (i > 0)
+              const Divider(
+                  height: 1, thickness: 1, color: TWColors.hairlineTop),
+            _WatchlistRow(
+              market: market,
+              item: shown[i],
+              quote: overview?.quoteFor(shown[i].symbol),
+              onTap: onTap,
+            ),
+          ],
           const SizedBox(height: TWSpace.md),
           Row(
             children: [
@@ -2083,7 +2101,7 @@ class _WatchlistStrip extends StatelessWidget {
               const SizedBox(width: TWSpace.xs),
               Expanded(
                 child: Text(
-                  'AI Alert: ${items.first.symbol} approaching a key level.',
+                  'AI Alert: ${shown.first.symbol} approaching a key level.',
                   style:
                       TWType.bodySm.copyWith(color: TWColors.textSecondary),
                 ),
@@ -2092,6 +2110,81 @@ class _WatchlistStrip extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// One compact two-line watchlist row: symbol + company name on the left, an
+/// optional real price/%change on the right (omitted when no live quote).
+class _WatchlistRow extends StatelessWidget {
+  const _WatchlistRow({
+    required this.market,
+    required this.item,
+    this.quote,
+    this.onTap,
+  });
+  final Market market;
+  final WatchlistItem item;
+  final MoverRef? quote;
+  final ValueChanged<String>? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final q = quote;
+    return InkWell(
+      onTap: onTap == null ? null : () => onTap!(item.symbol),
+      borderRadius: TWRadius.rSm,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: TWSpace.sm),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(item.symbol,
+                      style: TWType.body.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: TWColors.textPrimary),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+                  if (item.name.isNotEmpty)
+                    Text(item.name,
+                        style: TWType.caption
+                            .copyWith(color: TWColors.textTertiary),
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                ],
+              ),
+            ),
+            if (q != null) ...[
+              const SizedBox(width: TWSpace.sm),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '${_currencySymbol(market)}${q.price.toStringAsFixed(2)}',
+                    style: TWType.bodySm.copyWith(
+                        color: TWColors.textPrimary,
+                        fontFeatures: const [FontFeature.tabularFigures()]),
+                  ),
+                  Text(
+                    '${q.changePercent >= 0 ? '+' : ''}'
+                    '${q.changePercent.toStringAsFixed(2)}%',
+                    style: TWType.caption.copyWith(
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                      color: q.changePercent > 0
+                          ? TWColors.up
+                          : (q.changePercent < 0
+                              ? TWColors.down
+                              : TWColors.neutral),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
