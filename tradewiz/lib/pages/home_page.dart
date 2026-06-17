@@ -2254,8 +2254,6 @@ class _IdeaRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: TWSpace.sm),
         child: Row(
           children: [
-            TWScoreRing(score: idea.score, size: 42, stroke: 3.5),
-            const SizedBox(width: TWSpace.md),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2325,8 +2323,6 @@ class _BestIndexCard extends StatelessWidget {
       padding: const EdgeInsets.all(TWSpace.md),
       child: Row(
         children: [
-          TWScoreRing(score: entry.rotationScore, size: 42, stroke: 3.5),
-          const SizedBox(width: TWSpace.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
