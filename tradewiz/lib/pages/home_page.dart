@@ -1611,7 +1611,7 @@ class _PortfolioCard extends StatelessWidget {
                   style: const TextStyle(
                     color: TWColors.textPrimary,
                     fontSize: 20,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w500,
                     height: 1.0,
                     fontFeatures: [FontFeature.tabularFigures()],
                   )),
@@ -1634,7 +1634,7 @@ class _PortfolioCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: TWColors.up,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w500,
                       fontSize: 15,
                       fontFeatures: [FontFeature.tabularFigures()],
                     ),
