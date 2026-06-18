@@ -163,6 +163,26 @@ class BrokerService {
       // clean symbol page (e.g. Moomoo on an unlisted market). Only the real
       // https link uses the Universal/App Link launch mode.
       if (uri.scheme == 'https') {
+        // iOS Universal Links are unreliable: when Apple's app↔domain
+        // association doesn't match (e.g. the regional Moomoo SG app), iOS
+        // silently opens Safari instead of the installed app. So on iOS, if
+        // the broker's app is detectably installed via its custom scheme,
+        // open the app via that scheme first and only fall back to the https
+        // Universal Link when the app isn't installed.
+        if (_launcher.isIOS) {
+          final appUri = Uri.parse(broker.launchUrl); // e.g. moomoo://
+          var appInstalled = false;
+          try {
+            appInstalled = await _launcher.canOpen(appUri);
+          } catch (_) {
+            appInstalled = false;
+          }
+          if (appInstalled && await _safeOpen(appUri)) {
+            _track(broker, symbol, market, true,
+                BrokerOpenOutcome.launchedApp);
+            return BrokerOpenOutcome.launchedApp;
+          }
+        }
         final ok = await _safeOpen(uri, appLink: true);
         final outcome =
             ok ? BrokerOpenOutcome.launchedApp : BrokerOpenOutcome.failed;

@@ -10,7 +10,11 @@ class _FakeLauncher implements BrokerLauncher {
   _FakeLauncher({
     this.installedSchemes = const {},
     this.failOpenFor = const {},
+    this.ios = false,
   });
+
+  /// Pretend to be iOS (so the custom-scheme-first path is exercised).
+  final bool ios;
 
   /// URL schemes (e.g. 'stockbit') that report as installed via canOpen().
   final Set<String> installedSchemes;
@@ -22,9 +26,9 @@ class _FakeLauncher implements BrokerLauncher {
   final List<Uri> openCalls = [];
 
   @override
-  bool get isAndroid => true;
+  bool get isAndroid => !ios;
   @override
-  bool get isIOS => false;
+  bool get isIOS => ios;
 
   @override
   Future<bool> canOpen(Uri uri) async {
@@ -287,6 +291,47 @@ void main() {
           'https://www.moomoo.com/stock/AAPL-US');
       expect(fake.canOpenCalls, isEmpty);
       expect(events, ['broker_open_confirmed']);
+    });
+
+    test(
+        'iOS: installed Moomoo opens via custom scheme, not the https '
+        'Universal Link (avoids the Safari bounce)', () async {
+      // The Moomoo app is installed (its moomoo:// scheme resolves). On iOS we
+      // should open the app via the custom scheme instead of the https link,
+      // because iOS Universal Links silently fall back to Safari when the
+      // app↔domain association doesn't match (the reported MOMO SG bug).
+      final fake = _FakeLauncher(installedSchemes: {'moomoo'}, ios: true);
+      final events = <String>[];
+      final svc = BrokerService(
+        launcher: fake,
+        analytics: (e, {required properties}) => events.add(e),
+      );
+      final outcome = await svc.open(
+        broker: BrokerApp.moomoo,
+        symbol: 'D05',
+        market: Market.singapore,
+      );
+      expect(outcome, BrokerOpenOutcome.launchedApp);
+      // Probed the custom scheme, then opened it (no https open at all).
+      expect(fake.canOpenCalls.single.toString(), 'moomoo://');
+      expect(fake.openCalls.single.toString(), 'moomoo://');
+      expect(events, ['broker_open_confirmed']);
+    });
+
+    test('iOS: Moomoo not installed falls back to the https Universal Link',
+        () async {
+      final fake = _FakeLauncher(installedSchemes: const {}, ios: true);
+      final svc = BrokerService(launcher: fake);
+      final outcome = await svc.open(
+        broker: BrokerApp.moomoo,
+        symbol: 'D05',
+        market: Market.singapore,
+      );
+      expect(outcome, BrokerOpenOutcome.launchedApp);
+      // Probed the custom scheme (not installed), then opened the https link.
+      expect(fake.canOpenCalls.single.toString(), 'moomoo://');
+      expect(fake.openCalls.single.toString(),
+          'https://www.moomoo.com/stock/D05-SG');
     });
 
     test('isInstalled reflects the launcher canOpen result', () async {
