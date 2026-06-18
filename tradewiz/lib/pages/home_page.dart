@@ -436,29 +436,20 @@ class _HeroCard extends StatelessWidget {
       child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-          Row(
+          Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const TWAiOrb(size: 36),
-              const SizedBox(width: TWSpace.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(greeting,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TWType.bodySm.copyWith(
-                            color: TWColors.textSecondary,
-                            fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 1),
-                    Text("Today's Best Idea",
-                        style: TWType.overline.copyWith(
-                            color: TWColors.accentBright,
-                            letterSpacing: 0.6)),
-                  ],
-                ),
-              ),
+              Text(greeting,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TWType.bodySm.copyWith(
+                      color: TWColors.textSecondary,
+                      fontWeight: FontWeight.w600)),
+              const SizedBox(height: 1),
+              Text("Today's Best Idea",
+                  style: TWType.overline.copyWith(
+                      color: TWColors.accentBright,
+                      letterSpacing: 0.6)),
             ],
           ),
           // Best Index first (Global Rotation): the top market to be in right
