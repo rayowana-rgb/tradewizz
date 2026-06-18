@@ -1712,7 +1712,7 @@ class _PortfolioCard extends StatelessWidget {
                     style: TextStyle(
                       color: upColor,
                       fontWeight: FontWeight.w800,
-                      fontSize: 15,
+                      fontSize: 13,
                       height: 1.0,
                       fontFeatures: const [FontFeature.tabularFigures()],
                     ),

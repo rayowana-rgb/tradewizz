@@ -17,7 +17,10 @@ class MarketSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      // The DropdownButton reserves extra internal space before its chevron,
+      // so the right side reads looser than the left. Trim the right padding
+      // to balance the flag/text inset on the left against the chevron.
+      padding: const EdgeInsets.fromLTRB(12, 2, 4, 2),
       decoration: BoxDecoration(
         color: TWColors.bgElevated,
         borderRadius: BorderRadius.circular(12),
