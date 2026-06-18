@@ -399,7 +399,6 @@ class _HeroCard extends StatelessWidget {
     final symbol = idea?.symbol ?? fallback?.symbol;
     final name = idea?.name ?? fallback?.name ?? '';
     final signal = idea?.signal ?? fallback?.signal ?? 'WATCH';
-    final score = idea?.score ?? fallback?.score ?? 0;
     final reason = idea?.reason ??
         fallback?.reason ??
         'Your personalized idea will appear here after the next market open.';
@@ -508,35 +507,24 @@ class _HeroCard extends StatelessWidget {
                 TWSignalPill(signal: signal),
               ],
             ),
-            const SizedBox(height: TWSpace.lg),
-            // Tags row (Momentum / Strong Liquidity / ...) with the Confidence
-            // indicator moved here from the top-right of the card.
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: tags.isNotEmpty
-                      ? Wrap(
-                          key: const Key('home_hero_tags'),
-                          spacing: TWSpace.sm,
-                          runSpacing: TWSpace.sm,
-                          children: [
-                            for (final t in tags) TWTagChip(label: t)
-                          ],
-                        )
-                      : const SizedBox.shrink(),
-                ),
-                const SizedBox(width: TWSpace.md),
-                _Confidence(score: score),
-              ],
-            ),
+            if (tags.isNotEmpty) ...[
+              const SizedBox(height: TWSpace.lg),
+              // Tags row (Momentum / Strong Liquidity / ...). The Confidence
+              // indicator was removed per design.
+              Wrap(
+                key: const Key('home_hero_tags'),
+                spacing: TWSpace.sm,
+                runSpacing: TWSpace.sm,
+                children: [for (final t in tags) TWTagChip(label: t)],
+              ),
+            ],
             const SizedBox(height: TWSpace.lg),
             Text(reason,
                 key: const Key('home_hero_reason'),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: TWType.bodySm.copyWith(
-                    color: TWColors.textPrimary, height: 1.35)),
+                style: TWType.caption.copyWith(
+                    color: TWColors.textSecondary, height: 1.35)),
             const SizedBox(height: TWSpace.lg),
             TWGradientButton(
               key: const Key('home_hero_cta'),
@@ -642,39 +630,6 @@ class _HeroBestIndex extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _Confidence extends StatelessWidget {
-  const _Confidence({required this.score});
-  final double score;
-  @override
-  Widget build(BuildContext context) {
-    final color = TWColors.confidence(score);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        Text('Confidence', style: TWType.overline.copyWith(fontSize: 12)),
-        const SizedBox(height: 2),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 7, height: 7,
-              margin: const EdgeInsets.only(right: 6, bottom: 3),
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-            ),
-            // Bare number kept as its own Text so tests can assert on it.
-            Text(score.toStringAsFixed(0),
-                style: TWType.tabular(TWType.title2).copyWith(color: color)),
-            Text('%',
-                style: TWType.label.copyWith(color: TWColors.textTertiary)),
-          ],
-        ),
-      ],
     );
   }
 }

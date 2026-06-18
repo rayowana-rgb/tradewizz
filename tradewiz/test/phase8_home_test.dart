@@ -130,9 +130,8 @@ void main() {
       'Bank Central Asia',
     );
     expect(find.text('BBCA'), findsWidgets); // ticker subtitle
-    expect(find.text('92'), findsWidgets); // confidence
-    // The old "Score N" pill was removed from the HERO; only Confidence
-    // remains there. (Other surfaces like Today's Ideas may still show a score.)
+    // The old "Score N" pill AND the Confidence indicator were both removed
+    // from the HERO. (Other surfaces like Today's Ideas may still show a score.)
     expect(
       find.descendant(
         of: find.byKey(const Key('home_hero')),
@@ -145,7 +144,7 @@ void main() {
         of: find.byKey(const Key('home_hero')),
         matching: find.text('Confidence'),
       ),
-      findsOneWidget,
+      findsNothing,
     );
     expect(
         find.text('Strong momentum and accumulation detected.'), findsWidgets);
