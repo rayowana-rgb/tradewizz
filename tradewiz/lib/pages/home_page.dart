@@ -817,9 +817,9 @@ class _InsightColumn extends StatelessWidget {
             maxLines: 2,
             style: TWType.bodySm.copyWith(
                 color: TWColors.accentBright,
-                fontSize: 15,
+                fontSize: 12,
                 fontWeight: FontWeight.w700,
-                letterSpacing: 0.8)),
+                letterSpacing: 0.6)),
         const SizedBox(height: TWSpace.sm),
         ..._content(i),
       ],
@@ -835,13 +835,13 @@ class _InsightColumn extends StatelessWidget {
                 textAlign: TextAlign.justify,
                 style: TWType.bodySm.copyWith(
                     color: TWColors.textPrimary,
-                    fontSize: 12,
+                    fontSize: 11,
                     height: 1.35)),
           if (i.opportunityLabel != null) ...[
             const SizedBox(height: 4),
             Text(i.opportunityLabel!,
                 style: TWType.bodySm.copyWith(
-                    color: TWColors.textSecondary, fontSize: 12)),
+                    color: TWColors.textSecondary, fontSize: 11)),
             const SizedBox(height: 2),
             RichText(
               text: TextSpan(children: [
@@ -849,14 +849,14 @@ class _InsightColumn extends StatelessWidget {
                     text: i.ticker ?? '',
                     style: TWType.bodySm.copyWith(
                         color: TWColors.accentBright,
-                        fontSize: 15,
+                        fontSize: 13,
                         fontWeight: FontWeight.w700)),
                 if (i.tickerMeta != null)
                   TextSpan(
                       text: ' ${i.tickerMeta}',
                       style: TWType.bodySm.copyWith(
                           color: TWColors.textPrimary,
-                          fontSize: 12,
+                          fontSize: 11,
                           fontWeight: FontWeight.w700)),
               ]),
             ),
@@ -869,7 +869,7 @@ class _InsightColumn extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: TWType.title3.copyWith(
                   color: TWColors.accentBright,
-                  fontSize: 20,
+                  fontSize: 16,
                   fontWeight: FontWeight.w700)),
           if (i.scorePill != null) ...[
             const SizedBox(height: 4),
@@ -883,6 +883,7 @@ class _InsightColumn extends StatelessWidget {
               child: Text(i.scorePill!,
                   style: TWType.tabular(TWType.caption).copyWith(
                       color: TWColors.accentBright,
+                      fontSize: 11,
                       fontWeight: FontWeight.w700)),
             ),
           ],
@@ -909,7 +910,7 @@ class _InsightColumn extends StatelessWidget {
                           textAlign: TextAlign.justify,
                           style: TWType.bodySm.copyWith(
                               color: TWColors.textSecondary,
-                              fontSize: 12,
+                              fontSize: 11,
                               height: 1.35)),
                     ),
                   ],
@@ -923,7 +924,7 @@ class _InsightColumn extends StatelessWidget {
               maxLines: 2,
               style: TWType.bodySm.copyWith(
                   color: TWColors.accentBright,
-                  fontSize: 15,
+                  fontSize: 13,
                   fontWeight: FontWeight.w700,
                   height: 1.2)),
           if (i.body != null) ...[
@@ -931,7 +932,7 @@ class _InsightColumn extends StatelessWidget {
             Text(i.body!,
                 textAlign: TextAlign.justify,
                 style: TWType.bodySm.copyWith(
-                    color: TWColors.textPrimary, fontSize: 12, height: 1.35)),
+                    color: TWColors.textPrimary, fontSize: 11, height: 1.35)),
           ],
         ];
     }
