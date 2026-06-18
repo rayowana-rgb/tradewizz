@@ -21,11 +21,39 @@ callable so this layer stays a thin cache around the existing engine.
 
 from __future__ import annotations
 
+import threading
 from datetime import datetime, timezone
-from typing import Callable, Optional
+from typing import Callable, Dict, Optional, Tuple
 
 from ..models import Market, ScreenerResult
 from .store import ScreenerSnapshotRecord, ScreenerSnapshotStore
+
+# --- Single-flight (thundering-herd) guard for CLOSED-market engine runs ---- #
+#
+# ``ScreenerCacheService`` is constructed per request in main.py, so any lock
+# that protected the heavy engine run must be SHARED across instances or it
+# would be useless. These module-level structures are that shared state:
+#   * ``_RUN_LOCKS`` maps a (market, cache_key) pair to a dedicated lock so
+#     concurrent requests for the SAME snapshot serialize on the SAME lock,
+#     while requests for DIFFERENT snapshots stay fully parallel.
+#   * ``_RUN_LOCKS_GUARD`` protects creation/lookup of those per-key locks.
+#
+# This guard ONLY applies to CLOSED-market engine runs (``_run_and_save``):
+# when the market is OPEN we never run the engine for steady-state requests,
+# so there is no herd to collapse there.
+_RUN_LOCKS_GUARD = threading.Lock()
+_RUN_LOCKS: Dict[Tuple[str, str], threading.Lock] = {}
+
+
+def _run_lock_for(market_value: str, cache_key: str) -> threading.Lock:
+    """Return the shared lock for a (market, cache_key), creating it once."""
+    key = (market_value, cache_key)
+    with _RUN_LOCKS_GUARD:
+        lock = _RUN_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _RUN_LOCKS[key] = lock
+        return lock
 
 # Imported as read-only helpers (no scoring/engine behavior changes).
 from ..engine import _is_market_open, _market_now  # noqa: E402
@@ -269,7 +297,9 @@ class ScreenerCacheService:
         # --- Market CLOSED ----------------------------------------------- #
         if force_refresh:
             # Allowed only when closed: run once, save, return fresh.
-            return self._run_and_save(market, cache_key, status, today)
+            return self._run_and_save(
+                market, cache_key, status, today, force_refresh=True
+            )
 
         # Reuse today's market-close snapshot if it already exists -- but only
         # if the underlying OHLCV/analyze data has not refreshed since it was
@@ -425,17 +455,45 @@ class ScreenerCacheService:
         cache_key: str,
         status: str,
         market_date: str,
+        *,
+        force_refresh: bool = False,
     ) -> ScreenerResult:
-        fresh = self._run_screen()
-        payload = fresh.model_dump(mode="json")
-        rec = self._store.save(
-            market=market.value,
-            category=cache_key,
-            market_date=market_date,
-            market_status=status,
-            payload=payload,
-        )
-        return self._from_record(rec, cached=False, status=status)
+        """Run the heavy engine once and persist the snapshot (CLOSED only).
+
+        Single-flight: concurrent requests for the SAME (market, cache_key)
+        serialize on a shared lock so the engine runs ONCE for the herd, not
+        once per request. After acquiring the lock we re-check the store
+        (double-checked locking): if another request already saved today's
+        snapshot while we were waiting, we reuse it instead of re-running the
+        engine. ``force_refresh`` skips that reuse (it is an explicit,
+        CLOSED-only request for a brand-new run) but still holds the lock so
+        two forced refreshes don't run the engine in parallel.
+        """
+        lock = _run_lock_for(market.value, cache_key)
+        with lock:
+            if not force_refresh:
+                # Another request in the herd may have just saved this exact
+                # snapshot for today while we waited on the lock -- reuse it
+                # rather than re-running the heavy engine.
+                existing = self._store.get_for_date(
+                    market.value, cache_key, market_date
+                )
+                if existing is not None and not self._data_is_newer_than(
+                    market, existing
+                ) and not self._data_written_after(market, existing):
+                    return self._from_record(
+                        existing, cached=True, status=status
+                    )
+            fresh = self._run_screen()
+            payload = fresh.model_dump(mode="json")
+            rec = self._store.save(
+                market=market.value,
+                category=cache_key,
+                market_date=market_date,
+                market_status=status,
+                payload=payload,
+            )
+            return self._from_record(rec, cached=False, status=status)
 
     def _from_record(
         self,

@@ -264,3 +264,87 @@ def test_force_refresh_denied_when_open():
     assert run.calls == 1  # did NOT screen
     assert res.cached is True
     assert res.warning == FORCE_REFRESH_DENIED
+
+
+# --------------------------------------------------------------------------- #
+# Single-flight: thundering-herd guard for CLOSED-market engine runs          #
+# --------------------------------------------------------------------------- #
+def test_single_flight_collapses_concurrent_closed_runs():
+    """Many concurrent CLOSED requests for the SAME key run the engine ONCE.
+
+    Mirrors production: each request builds its OWN ScreenerCacheService (they
+    share the module-level lock + the same store). A blocking run_screen lets
+    the herd pile up before the first run finishes; the rest must reuse the
+    just-saved snapshot instead of re-running the engine.
+    """
+    import threading
+    import app.screener_cache.service as svc_mod
+
+    # Isolate from any locks created by other tests in this process.
+    with svc_mod._RUN_LOCKS_GUARD:
+        svc_mod._RUN_LOCKS.clear()
+
+    store = InMemoryScreenerSnapshotStore()
+    started = threading.Event()
+    release = threading.Event()
+    calls = {"n": 0}
+    calls_lock = threading.Lock()
+
+    def blocking_run() -> ScreenerResult:
+        with calls_lock:
+            calls["n"] += 1
+        started.set()
+        # Hold the lock long enough for the whole herd to queue behind it.
+        release.wait(timeout=5)
+        return _result(market=Market.HKEX)
+
+    def worker(results, idx):
+        svc = _service(store, blocking_run, CLOSED_TIME)
+        results[idx] = svc.get(Market.HKEX, KEY)
+
+    n_workers = 12
+    results = [None] * n_workers
+    threads = [
+        threading.Thread(target=worker, args=(results, i))
+        for i in range(n_workers)
+    ]
+    for t in threads:
+        t.start()
+
+    # Wait until the FIRST run is in-flight, then let the herd pile up and
+    # release the engine so the holder finishes + saves.
+    assert started.wait(timeout=5)
+    release.set()
+    for t in threads:
+        t.join(timeout=5)
+
+    # The engine ran exactly once for the herd; everyone got a result.
+    assert calls["n"] == 1
+    assert store.save_count == 1
+    assert all(r is not None for r in results)
+
+
+def test_single_flight_parallel_keys_run_independently():
+    """Different cache keys must NOT serialize on each other (stay parallel)."""
+    import app.screener_cache.service as svc_mod
+
+    with svc_mod._RUN_LOCKS_GUARD:
+        svc_mod._RUN_LOCKS.clear()
+
+    store = InMemoryScreenerSnapshotStore()
+    run = _Counter()
+
+    key_a = make_cache_key(
+        category="", limit=50, min_score=0.0, min_value_traded=0.0
+    )
+    key_b = make_cache_key(
+        category="bullish", limit=50, min_score=0.0, min_value_traded=0.0
+    )
+    assert key_a != key_b
+
+    _service(store, run, CLOSED_TIME).get(Market.HKEX, key_a)
+    _service(store, run, CLOSED_TIME).get(Market.HKEX, key_b)
+
+    # Two distinct keys -> two independent runs (different locks).
+    assert run.calls == 2
+    assert store.save_count == 2
