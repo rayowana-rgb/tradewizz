@@ -1107,7 +1107,8 @@ class _MarketPulseCard extends StatelessWidget {
           const SizedBox(height: TWSpace.md),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(TWSpace.sm),
+            padding: const EdgeInsets.symmetric(
+                horizontal: TWSpace.md, vertical: TWSpace.sm),
             decoration: BoxDecoration(
               color: TWColors.bgElevated,
               borderRadius: TWRadius.rChip,
@@ -1115,6 +1116,7 @@ class _MarketPulseCard extends StatelessWidget {
             child: Text(
               condition.reason,
               key: const Key('home_condition_reason'),
+              textAlign: TextAlign.center,
               style: TWType.caption.copyWith(height: 1.3),
             ),
           ),
