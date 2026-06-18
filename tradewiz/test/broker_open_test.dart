@@ -312,15 +312,19 @@ void main() {
         market: Market.singapore,
       );
       expect(outcome, BrokerOpenOutcome.launchedApp);
-      // Probed the custom scheme, then opened it (no https open at all).
-      expect(fake.canOpenCalls.single.toString(), 'moomoo://');
+      // Opened the custom scheme directly (no canOpen gate, no https open).
       expect(fake.openCalls.single.toString(), 'moomoo://');
       expect(events, ['broker_open_confirmed']);
     });
 
     test('iOS: Moomoo not installed falls back to the https Universal Link',
         () async {
-      final fake = _FakeLauncher(installedSchemes: const {}, ios: true);
+      // The custom scheme fails to open (no app) -> fall back to https.
+      final fake = _FakeLauncher(
+        installedSchemes: const {},
+        failOpenFor: {'moomoo://'},
+        ios: true,
+      );
       final svc = BrokerService(launcher: fake);
       final outcome = await svc.open(
         broker: BrokerApp.moomoo,
@@ -328,9 +332,9 @@ void main() {
         market: Market.singapore,
       );
       expect(outcome, BrokerOpenOutcome.launchedApp);
-      // Probed the custom scheme (not installed), then opened the https link.
-      expect(fake.canOpenCalls.single.toString(), 'moomoo://');
-      expect(fake.openCalls.single.toString(),
+      // Tried the custom scheme first, then opened the https link.
+      expect(fake.openCalls.first.toString(), 'moomoo://');
+      expect(fake.openCalls.last.toString(),
           'https://www.moomoo.com/stock/D05-SG');
     });
 

@@ -170,14 +170,15 @@ class BrokerService {
         // open the app via that scheme first and only fall back to the https
         // Universal Link when the app isn't installed.
         if (_launcher.isIOS) {
+          // Try the broker's custom scheme directly. We deliberately do NOT
+          // gate on canOpen() here: on iOS canLaunchUrl can return a false
+          // negative for an installed app (scheme not whitelisted, privacy
+          // limits), which would wrongly send the user to Safari. launchUrl
+          // on a custom scheme simply fails (false/throws) when no app can
+          // handle it, so attempting it is safe and only succeeds when the
+          // app is actually installed.
           final appUri = Uri.parse(broker.launchUrl); // e.g. moomoo://
-          var appInstalled = false;
-          try {
-            appInstalled = await _launcher.canOpen(appUri);
-          } catch (_) {
-            appInstalled = false;
-          }
-          if (appInstalled && await _safeOpen(appUri)) {
+          if (await _safeOpen(appUri)) {
             _track(broker, symbol, market, true,
                 BrokerOpenOutcome.launchedApp);
             return BrokerOpenOutcome.launchedApp;
