@@ -68,9 +68,18 @@ def test_miss_then_hit_avoids_second_fetch(tmp_path):
 
 
 def test_expiry_triggers_refetch(tmp_path):
+    import datetime as _dt
+
     fetcher = CountingFetcher()
     clock = FakeClock()
-    cache = OhlcvCache(fetcher, cache_dir=tmp_path, ttl_seconds=3600, clock=clock)
+    # Pin "now" to the fixture's last bar (make_df ends 2024-01-10) so the
+    # cache's settled data-date == today (the realistic invariant). This
+    # isolates the test to TTL behavior, not the close-not-yet-settled retry.
+    _now = _dt.datetime(2024, 1, 10, 18, 0, tzinfo=_dt.timezone.utc)
+    cache = OhlcvCache(
+        fetcher, cache_dir=tmp_path, ttl_seconds=3600, clock=clock,
+        now_provider=lambda _m: _now,
+    )
 
     cache.get("0700.HK", "1y", "1d")
     assert fetcher.calls == 1
@@ -161,11 +170,17 @@ def test_ttl_from_env(tmp_path, monkeypatch):
 
 def test_callable_ttl_is_evaluated_each_check(tmp_path):
     """A callable TTL lets the cache shorten while a market session is open."""
+    import datetime as _dt
+
     fetcher = CountingFetcher()
     clock = FakeClock()
     state = {"ttl": 300}  # 5 min (e.g. "market open")
+    # Pin "now" to the fixture's last bar so settled data-date == today; this
+    # isolates the test to TTL behavior, not the close-not-yet-settled retry.
+    _now = _dt.datetime(2024, 1, 10, 18, 0, tzinfo=_dt.timezone.utc)
     cache = OhlcvCache(
-        fetcher, cache_dir=tmp_path, ttl_seconds=lambda: state["ttl"], clock=clock
+        fetcher, cache_dir=tmp_path, ttl_seconds=lambda: state["ttl"], clock=clock,
+        now_provider=lambda _m: _now,
     )
 
     cache.get("BBCA.JK", "1y", "1d")
@@ -225,3 +240,104 @@ def test_corrupt_duplicate_column_cache_is_rejected_and_refetched(tmp_path):
     assert fetcher.calls == 2  # corrupt entry rejected -> refetch
     assert list(df2.columns).count("Close") == 1
     assert df2["Close"].ndim == 1
+
+
+# --------------------------------------------------------------------------- #
+# Regression: provider returns an UNSETTLED (NaN-close) bar for today, so the
+# cache must (a) not advertise today as its data date and (b) re-fetch (bounded)
+# once the real close lands. This is the "screener shows yesterday's close under
+# today's date" bug.
+# --------------------------------------------------------------------------- #
+
+from app.cache import _latest_index_ts, _settled_trading_date  # noqa: E402
+
+
+def _df_with_trailing_nan_close():
+    """Daily frame whose LAST row (today) has Close=NaN (unsettled bar)."""
+    idx = pd.to_datetime(["2026-06-16", "2026-06-17", "2026-06-18"])
+    return pd.DataFrame(
+        {
+            "Open": [100.0, 101.0, 102.0],
+            "High": [101.0, 102.0, 103.0],
+            "Low": [99.0, 100.0, 101.0],
+            "Close": [100.0, 101.0, float("nan")],  # 18 Jun not settled
+            "Volume": [1000.0, 1100.0, 0.0],
+        },
+        index=idx,
+    )
+
+
+def _df_all_settled():
+    idx = pd.to_datetime(["2026-06-16", "2026-06-17", "2026-06-18"])
+    return pd.DataFrame(
+        {
+            "Open": [100.0, 101.0, 102.0],
+            "High": [101.0, 102.0, 103.0],
+            "Low": [99.0, 100.0, 101.0],
+            "Close": [100.0, 101.0, 105.0],  # 18 Jun now settled
+            "Volume": [1000.0, 1100.0, 1200.0],
+        },
+        index=idx,
+    )
+
+
+def test_latest_index_ts_skips_trailing_nan_close():
+    df = _df_with_trailing_nan_close()
+    # Anchors to the last SETTLED close (17 Jun), not the NaN 18-Jun row.
+    assert _latest_index_ts(df).startswith("2026-06-17")
+    assert _settled_trading_date(df) == "2026-06-17"
+    # Fully settled frame anchors to the newest row.
+    assert _settled_trading_date(_df_all_settled()) == "2026-06-18"
+
+
+class _StagedFetcher:
+    """First call returns an unsettled-today frame, later calls the settled one."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def __call__(self, ticker, period, interval):
+        self.calls += 1
+        return _df_all_settled() if self.calls >= 2 else _df_with_trailing_nan_close()
+
+
+def test_unsettled_today_bar_refetches_when_close_lands(tmp_path):
+    import datetime as _dt
+
+    fetcher = _StagedFetcher()
+    clock = FakeClock()
+    # Pin "now" to 18 Jun so trading_date_for() == 2026-06-18.
+    now = _dt.datetime(2026, 6, 18, 18, 0, tzinfo=_dt.timezone.utc)
+    cache = OhlcvCache(
+        fetcher,
+        cache_dir=tmp_path,
+        ttl_seconds=3600,
+        clock=clock,
+        now_provider=lambda _m: now,
+    )
+
+    df1 = cache.get("BBCA.JK", "1y", "1d")
+    assert fetcher.calls == 1
+    # Fetched FOR 18 Jun, but only 17 Jun is settled -> the gap is recorded.
+    key = cache._key("BBCA.JK", "1y", "1d")
+    _, meta_path = cache._paths(key)
+    import json as _json
+    meta = _json.loads(meta_path.read_text())
+    assert meta["trading_date"] == "2026-06-18"
+    assert meta["settled_date"] == "2026-06-17"
+    assert meta["latest_ts"].startswith("2026-06-17")
+    assert df1["Close"].dropna().iloc[-1] == 101.0  # serves 17 Jun close
+
+    # Within the lag-refetch interval: still served from cache (no fetch storm).
+    clock.advance(60)
+    cache.get("BBCA.JK", "1y", "1d")
+    assert fetcher.calls == 1
+
+    # After the lag interval, re-fetch picks up the now-settled 18 Jun close.
+    clock.advance(600)
+    df2 = cache.get("BBCA.JK", "1y", "1d")
+    assert fetcher.calls == 2
+    assert df2["Close"].dropna().iloc[-1] == 105.0  # 18 Jun close now served
+    meta2 = _json.loads(meta_path.read_text())
+    assert meta2["trading_date"] == "2026-06-18"
+    assert meta2["settled_date"] == "2026-06-18"  # gap closed

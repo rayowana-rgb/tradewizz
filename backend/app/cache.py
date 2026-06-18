@@ -40,6 +40,14 @@ logger = logging.getLogger("tradewiz.cache")
 
 DEFAULT_TTL_SECONDS = 6 * 60 * 60  # 6 hours
 
+# Minimum age before a cache whose data date lags the current session's date is
+# re-fetched. Bounds how often we re-hit the provider while it is still serving
+# an unsettled (NaN-close) bar for today: at most once per this interval per
+# symbol, instead of on every request. Settled data arrives within minutes of
+# the close in practice, so 10 minutes keeps prices current without hammering
+# the provider.
+_LAG_REFETCH_MIN_S = int(os.environ.get("TRADEWIZ_CACHE_LAG_REFETCH_S", "600"))
+
 # Inner fetcher: (ticker, period, interval) -> OHLCV DataFrame, or raises.
 InnerFetcher = Callable[[str, str, str], pd.DataFrame]
 # Optional provider-latest-timestamp probe: ticker -> ISO timestamp string of
@@ -84,12 +92,51 @@ def _ttl_from_env(default: int = DEFAULT_TTL_SECONDS) -> int:
 
 
 def _latest_index_ts(df: pd.DataFrame) -> Optional[str]:
-    """ISO timestamp of the newest row in an OHLCV frame, or None."""
+    """ISO timestamp of the newest *settled* row in an OHLCV frame, or None.
+
+    Critical correctness fix (the "prices one day stale" bug): yfinance often
+    returns a row for the in-progress / just-closed session whose ``Close`` is
+    still ``NaN`` (the bar hasn't settled at fetch time). The engine reads the
+    price from ``Close.dropna().iloc[-1]`` -- i.e. the last row WITH a real
+    close -- so it serves the prior session's price. If ``latest_ts`` instead
+    pointed at that trailing NaN row, the cache would record a newer candle
+    timestamp than the price it can actually serve. Every downstream freshness
+    probe (cache ``newer_provider_candle`` check, screener-snapshot
+    revalidation) would then believe the cache is up to date and never
+    re-fetch, freezing the stale price even after the real close lands.
+
+    So anchor ``latest_ts`` to the newest row that carries a usable ``Close``,
+    matching exactly what the engine prices off of. When a later fetch brings a
+    settled close for the newer session, ``provider_ts`` advances past this
+    value and the cache correctly invalidates.
+    """
     try:
         if df is None or df.empty:
             return None
+        if "Close" in df.columns:
+            settled = df["Close"].dropna()
+            if not settled.empty:
+                return pd.Timestamp(settled.index[-1]).isoformat()
         idx = df.index[-1]
         return pd.Timestamp(idx).isoformat()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _settled_trading_date(df: pd.DataFrame) -> Optional[str]:
+    """YYYY-MM-DD of the newest row with a settled ``Close``, or None.
+
+    Mirrors :func:`_latest_index_ts` but returns just the calendar date, used to
+    anchor the cache's ``trading_date`` to the data it can actually serve rather
+    than the wall clock (see :meth:`OhlcvCache._write`).
+    """
+    try:
+        if df is None or df.empty or "Close" not in df.columns:
+            return None
+        settled = df["Close"].dropna()
+        if settled.empty:
+            return None
+        return pd.Timestamp(settled.index[-1]).date().isoformat()
     except Exception:  # noqa: BLE001
         return None
 
@@ -228,13 +275,29 @@ class OhlcvCache:
         age = self._clock() - fetched_at
         cached_ts = meta.get("latest_ts")
         cached_trading_date = meta.get("trading_date")
+        settled_date = meta.get("settled_date")
         provider_ts = self._provider_ts(ticker)
 
         reason = None
         if not (0 <= age < self._ttl_seconds()):
             reason = "ttl_expired"
         elif cached_trading_date and cached_trading_date != trading_date:
+            # A new trading session has begun since we fetched: re-fetch now to
+            # pick up the new day's data (unchanged behavior).
             reason = "trading_day_rolled"
+        elif (
+            settled_date
+            and cached_trading_date
+            and settled_date < cached_trading_date
+            and age >= _LAG_REFETCH_MIN_S
+        ):
+            # We fetched FOR this session but the provider only had the prior
+            # day's settled close (it returned an unsettled NaN bar for today).
+            # Once today's close lands, a re-fetch picks it up. Bounded by
+            # _LAG_REFETCH_MIN_S so a provider that keeps returning NaN can't
+            # cause a per-request fetch storm. This fixes the "yesterday's close
+            # served under today's date" staleness.
+            reason = "close_not_yet_settled"
         elif provider_ts and cached_ts and provider_ts > cached_ts:
             reason = "newer_provider_candle"
 
@@ -383,9 +446,17 @@ class OhlcvCache:
                trading_date: str, *, ticker: str = "", market: str = "",
                period: str = "", interval: str = "") -> None:
         df.to_csv(csv_path)
+        # ``trading_date`` is the session we FETCHED FOR (clock-derived). We
+        # also record ``settled_date`` = the date of the newest row that has a
+        # usable Close. They differ when the provider returns an unsettled
+        # (NaN-close) bar for today: we fetched FOR today but only have
+        # yesterday's settled close. The freshness check uses this gap to retry
+        # (bounded) until today's close lands, instead of freezing yesterday's
+        # price under today's date (the "one day stale" bug).
         meta = {
             "fetched_at": self._clock(),
             "trading_date": trading_date,
+            "settled_date": _settled_trading_date(df),
             "latest_ts": _latest_index_ts(df),
             "ticker": ticker,
             "market": market,
