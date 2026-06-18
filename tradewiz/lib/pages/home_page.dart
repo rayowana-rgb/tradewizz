@@ -1445,15 +1445,10 @@ class _HorizonChip extends StatelessWidget {
     final known = horizon.isKnown;
     final color =
         known ? _conditionColor(horizon.condition) : TWColors.neutral;
-    return Container(
+    // No box: just color-coded text (same treatment as Top Gainers/Losers).
+    return Padding(
       key: Key('home_horizon_${horizon.horizon}'),
-      padding: const EdgeInsets.symmetric(
-          horizontal: TWSpace.xs, vertical: TWSpace.xs),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: TWRadius.rChip,
-        border: Border.all(color: color.withValues(alpha: 0.4)),
-      ),
+      padding: const EdgeInsets.symmetric(vertical: TWSpace.xs),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.center,
