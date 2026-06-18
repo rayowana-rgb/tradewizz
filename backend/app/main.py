@@ -960,9 +960,49 @@ def _warm_fetch_symbol(symbol, market):
     return engine._fetch(ticker, "1y", "1d")  # noqa: SLF001 — pre-warm shared cache
 
 
+def _prewarm_default_screener(market: Market, trading_date: str) -> None:
+    """Lapis 2: pre-compute + persist the DEFAULT screener snapshot post-warm.
+
+    Runs the heavy engine ONCE for the default (anonymous) parameter set right
+    after a market's OHLCV cache is warmed, and saves the snapshot. This turns
+    the first real user request into a cache HIT instead of a cold-start engine
+    run. Uses the same cache key the public /screen endpoint computes for
+    default params, and force_refresh=True so it always runs+saves once (the
+    warmer only fires after close, so CLOSED is satisfied).
+    """
+    floor = default_min_value_traded(market)
+    cache_key = make_cache_key(
+        category="",
+        limit=DEFAULT_LIMIT,
+        min_score=0.0,
+        min_value_traded=floor,
+    )
+
+    def _run() -> ScreenerResult:
+        return engine.screen(
+            market,
+            limit=DEFAULT_LIMIT,
+            min_score=0.0,
+            categories=None,
+            min_value_traded=floor,
+        )
+
+    service = ScreenerCacheService(
+        screener_snapshot_store,
+        _run,
+        now_provider=_screener_now_override,
+    )
+    service.get(market, cache_key, force_refresh=True)
+    logger.info(
+        "warmer: pre-warmed default screener snapshot for %s (%s)",
+        market.value, trading_date,
+    )
+
+
 _cache_warmer = DailyCacheWarmer(
     fetch_symbol=_warm_fetch_symbol,
     symbols_for=lambda mk: engine._universe.symbols(mk),  # noqa: SLF001
+    on_warmed=_prewarm_default_screener,
 )
 
 if warmer_enabled():  # pragma: no cover

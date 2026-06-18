@@ -170,3 +170,130 @@ def test_force_market_warms_even_when_open():
 def test_warmer_disabled_under_pytest():
     # PYTEST_CURRENT_TEST is set while tests run -> always disabled.
     assert warmer_enabled() is False
+
+
+# --------------------------------------------------------------------------- #
+# Lapis 2: on_warmed hook (pre-compute default screener snapshot)             #
+# --------------------------------------------------------------------------- #
+def test_on_warmed_hook_fires_after_market_is_warmed():
+    rec = _Recorder()
+    fired = []
+
+    def on_warmed(market, trading_date):
+        fired.append((market.value, trading_date))
+
+    w = DailyCacheWarmer(
+        fetch_symbol=rec.fetch,
+        symbols_for=_universe({Market.IDX: ["AAA", "BBB"]}),
+        markets=[Market.IDX],
+        fetch_delay_seconds=0.0,
+        now_provider=lambda m: _now(m, tz="Asia/Jakarta", h=18),
+        on_warmed=on_warmed,
+    )
+    assert w.tick() == ["IDX"]
+    # Hook fired once for the warmed market, AFTER its symbols were fetched.
+    assert len(fired) == 1
+    assert fired[0][0] == "IDX"
+    assert rec.calls == [("IDX", "AAA"), ("IDX", "BBB")]
+    assert w.last_warm["IDX"]["prewarmed_screener"] is True
+
+
+def test_on_warmed_hook_error_never_breaks_the_warm():
+    rec = _Recorder()
+
+    def on_warmed(market, trading_date):
+        raise RuntimeError("screener pre-warm blew up")
+
+    w = DailyCacheWarmer(
+        fetch_symbol=rec.fetch,
+        symbols_for=_universe({Market.IDX: ["AAA"]}),
+        markets=[Market.IDX],
+        fetch_delay_seconds=0.0,
+        now_provider=lambda m: _now(m, tz="Asia/Jakarta", h=18),
+        on_warmed=on_warmed,
+    )
+    # Warm still succeeds; the failing hook is swallowed and flagged.
+    assert w.tick() == ["IDX"]
+    assert rec.calls == [("IDX", "AAA")]
+    assert w.last_warm["IDX"]["prewarmed_screener"] is False
+
+
+def test_no_on_warmed_hook_leaves_prewarmed_none():
+    rec = _Recorder()
+    w = DailyCacheWarmer(
+        fetch_symbol=rec.fetch,
+        symbols_for=_universe({Market.IDX: ["AAA"]}),
+        markets=[Market.IDX],
+        fetch_delay_seconds=0.0,
+        now_provider=lambda m: _now(m, tz="Asia/Jakarta", h=18),
+    )
+    assert w.tick() == ["IDX"]
+    assert w.last_warm["IDX"]["prewarmed_screener"] is None
+
+
+def test_prewarm_default_snapshot_makes_first_request_a_cache_hit():
+    """Integration: the on_warmed hook pre-runs the default screener once;
+    a subsequent default /screen request reuses it (no second engine run)."""
+    from app.screener_cache import InMemoryScreenerSnapshotStore
+    from app.screener_cache.service import ScreenerCacheService, make_cache_key
+    from app.models import ScreenerMatch, ScreenerResult
+
+    store = InMemoryScreenerSnapshotStore()
+    engine_calls = {"n": 0}
+    DEFAULT_LIMIT = 50
+    FLOOR = 2_000_000_000.0
+
+    def _result():
+        return ScreenerResult(
+            market=Market.IDX,
+            matches=[
+                ScreenerMatch(
+                    symbol="AAA", name="A", score=90.0, signal="BUY",
+                    price=100.0, change_percent=1.0,
+                )
+            ],
+            generated_at="2026-06-17T18:30:00+00:00",
+            total_count=1,
+            returned_count=1,
+            limit=DEFAULT_LIMIT,
+        )
+
+    def _run():
+        engine_calls["n"] += 1
+        return _result()
+
+    default_key = make_cache_key(
+        category="", limit=DEFAULT_LIMIT, min_score=0.0, min_value_traded=FLOOR
+    )
+    # Always CLOSED so force_refresh is allowed and reuse paths apply.
+    closed = datetime(2026, 6, 17, 18, 0, tzinfo=ZoneInfo("Asia/Jakarta"))
+
+    def _service():
+        return ScreenerCacheService(
+            store, _run,
+            now_provider=lambda _m: closed,
+            latest_data_timestamp=lambda _m: None,
+            latest_write_timestamp=None,
+        )
+
+    # on_warmed: pre-compute + persist default snapshot (force run once).
+    def on_warmed(market, trading_date):
+        _service().get(market, default_key, force_refresh=True)
+
+    rec = _Recorder()
+    w = DailyCacheWarmer(
+        fetch_symbol=rec.fetch,
+        symbols_for=_universe({Market.IDX: ["AAA"]}),
+        markets=[Market.IDX],
+        fetch_delay_seconds=0.0,
+        now_provider=lambda m: _now(m, tz="Asia/Jakarta", h=18),
+        on_warmed=on_warmed,
+    )
+    w.tick()
+    assert engine_calls["n"] == 1  # pre-warm ran the engine once
+
+    # First real user request for default params -> served from the pre-warmed
+    # snapshot, NO additional engine run.
+    res = _service().get(Market.IDX, default_key)
+    assert res.cached is True
+    assert engine_calls["n"] == 1

@@ -129,6 +129,7 @@ class DailyCacheWarmer:
         clock=time.monotonic,
         now_provider: Optional[Callable[[Market], object]] = None,
         archive: Optional[DailyOhlcvArchive] = None,
+        on_warmed: Optional[Callable[[Market, str], None]] = None,
     ) -> None:
         self._fetch_symbol = fetch_symbol
         self._symbols_for = symbols_for
@@ -148,6 +149,12 @@ class DailyCacheWarmer:
         self._tick_seconds = tick_seconds
         self._clock = clock
         self._now_provider = now_provider
+        # Optional hook fired AFTER a market's OHLCV cache is fully warmed for a
+        # trading date. Lapis 2 uses it to pre-compute + persist the default
+        # screener snapshot so user requests never trigger a cold-start engine
+        # run. Best-effort: any error is swallowed so it can never break the
+        # warm loop or the data archive.
+        self._on_warmed = on_warmed
         self._thread: Optional[threading.Thread] = None
         self._stop = threading.Event()
         # (market_code, trading_date) already warmed this process lifetime.
@@ -242,11 +249,26 @@ class DailyCacheWarmer:
                     purged = self._archive.purge_old()
                 except Exception:  # noqa: BLE001
                     pass
+            # Lapis 2: now that this market's OHLCV cache is warm, pre-compute
+            # and persist the default screener snapshot so the first user
+            # request is a cache HIT (no cold-start engine run). Best-effort
+            # and fully isolated from the warm/archive bookkeeping.
+            prewarmed = None
+            if self._on_warmed is not None:
+                try:
+                    self._on_warmed(market, trading_date)
+                    prewarmed = True
+                except Exception:  # noqa: BLE001 — never break the warm loop
+                    logger.exception(
+                        "warmer: on_warmed hook failed for %s", market.value
+                    )
+                    prewarmed = False
             self.last_warm[market.value] = {
                 "trading_date": trading_date,
                 "symbols": n,
                 "archived": archived,
                 "purged_days": purged,
+                "prewarmed_screener": prewarmed,
                 "at": time.time(),
             }
         return warmed
