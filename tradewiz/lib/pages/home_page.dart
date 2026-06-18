@@ -1377,29 +1377,23 @@ class _ConditionBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = _conditionColor(condition.condition);
-    return Container(
+    // No box: color-coded text only (matches the horizon strip / movers).
+    return Column(
       key: const Key('home_condition_badge'),
-      padding: const EdgeInsets.symmetric(
-          horizontal: TWSpace.md, vertical: TWSpace.sm),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: TWRadius.rChip,
-        border: Border.all(color: color.withValues(alpha: 0.5)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
+      crossAxisAlignment: CrossAxisAlignment.end,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          condition.label,
+          style: TWType.label
+              .copyWith(color: color, fontWeight: FontWeight.w700),
+        ),
+        if (condition.isKnown)
           Text(
-            condition.label,
-            style: TWType.label.copyWith(color: color),
+            '${condition.score}/100',
+            style: TWType.tabular(TWType.caption).copyWith(color: color),
           ),
-          if (condition.isKnown)
-            Text(
-              '${condition.score}/100',
-              style: TWType.tabular(TWType.caption).copyWith(color: color),
-            ),
-        ],
-      ),
+      ],
     );
   }
 }
