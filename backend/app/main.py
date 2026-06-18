@@ -650,6 +650,35 @@ def _category_cache_token(cats: Optional[List[ScreenerCategory]]) -> str:
     return ",".join(sorted(c.value for c in cats))
 
 
+def _slice_screener_result(
+    result: ScreenerResult, *, limit: int, min_score: float
+) -> ScreenerResult:
+    """Lapis 3: derive a per-request view from a SUPERSET snapshot in memory.
+
+    The engine is cached at the superset (limit=MAX_LIMIT, min_score=0), so a
+    request only varies the run by ``category`` + ``min_value_traded``. We then
+    apply the user's ``min_score`` and ``limit`` here, with NO engine work, so
+    many param variants (limit=20/50/100, min_score=0/60/70) collapse onto one
+    cached run.
+
+    Matches in the snapshot are already filtered by the floor/categories and
+    sorted (Final Explore Score desc, value_traded desc, change_percent desc),
+    so we only need to drop rows below ``min_score`` (on the Base Score, per the
+    engine's documented semantics) and truncate. Metadata is recomputed so
+    ``total_count``/``returned_count``/``limit``/``min_score`` stay correct.
+    Cache/market metadata on the snapshot is preserved.
+    """
+    limit = max(1, min(int(limit), MAX_LIMIT))
+    kept = [m for m in result.matches if m.score >= min_score]
+    view = result.model_copy(deep=True)
+    view.total_count = len(kept)  # filtered count BEFORE the limit
+    view.matches = kept[:limit]
+    view.returned_count = len(view.matches)
+    view.limit = limit
+    view.min_score = min_score
+    return view
+
+
 @app.get(f"{API_PREFIX}/screen/{{market}}", response_model=ScreenerResult)
 def screen(
     market: str,
@@ -704,18 +733,22 @@ def screen(
         else min_value_traded
     )
     parsed_cats = _parse_categories(categories)
+    # Lapis 3: cache the engine at the SUPERSET (limit=MAX_LIMIT, min_score=0)
+    # so only category + min_value_traded vary the heavy run. The user's
+    # limit/min_score are applied in memory afterwards, collapsing many param
+    # variants onto one cached run.
     cache_key = make_cache_key(
         category=_category_cache_token(parsed_cats),
-        limit=limit,
-        min_score=min_score,
+        limit=MAX_LIMIT,
+        min_score=0.0,
         min_value_traded=floor,
     )
 
     def _run() -> ScreenerResult:
         return engine.screen(
             parsed_market,
-            limit=limit,
-            min_score=min_score,
+            limit=MAX_LIMIT,
+            min_score=0.0,
             categories=parsed_cats,
             min_value_traded=floor,
         )
@@ -725,8 +758,12 @@ def screen(
         _run,
         now_provider=_screener_now_override,
     )
-    return service.get(
+    superset = service.get(
         parsed_market, cache_key, force_refresh=force_refresh
+    )
+    # Apply the per-request view (tier cap already folded into ``limit``).
+    return _slice_screener_result(
+        superset, limit=limit, min_score=min_score
     )
 
 
@@ -966,14 +1003,15 @@ def _prewarm_default_screener(market: Market, trading_date: str) -> None:
     Runs the heavy engine ONCE for the default (anonymous) parameter set right
     after a market's OHLCV cache is warmed, and saves the snapshot. This turns
     the first real user request into a cache HIT instead of a cold-start engine
-    run. Uses the same cache key the public /screen endpoint computes for
-    default params, and force_refresh=True so it always runs+saves once (the
-    warmer only fires after close, so CLOSED is satisfied).
+    run. Uses the same SUPERSET cache key the public /screen endpoint now reads
+    (Lapis 3: limit=MAX_LIMIT, min_score=0; only category + floor vary the
+    run), and force_refresh=True so it always runs+saves once (the warmer only
+    fires after close, so CLOSED is satisfied).
     """
     floor = default_min_value_traded(market)
     cache_key = make_cache_key(
         category="",
-        limit=DEFAULT_LIMIT,
+        limit=MAX_LIMIT,
         min_score=0.0,
         min_value_traded=floor,
     )
@@ -981,7 +1019,7 @@ def _prewarm_default_screener(market: Market, trading_date: str) -> None:
     def _run() -> ScreenerResult:
         return engine.screen(
             market,
-            limit=DEFAULT_LIMIT,
+            limit=MAX_LIMIT,
             min_score=0.0,
             categories=None,
             min_value_traded=floor,
