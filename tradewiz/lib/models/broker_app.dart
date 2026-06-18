@@ -39,6 +39,14 @@ enum BrokerApp {
     // app. {market} is substituted in openUri(), not here.
     deepLinkTemplate: 'https://www.moomoo.com/stock/{symbol}-{market}',
     launchUrl: 'moomoo://',
+    // Moomoo ships regional builds (global "moomoo", SG, and the FUTU/moomoo
+    // lineage) that register different custom URL schemes. iOS Universal
+    // Links to www.moomoo.com don't reliably open these regional apps (they
+    // bounce to Safari), so on iOS we try each known scheme before falling
+    // back to the https link. Every scheme listed here MUST also appear in
+    // ios/Runner/Info.plist under LSApplicationQueriesSchemes, otherwise iOS
+    // refuses to even attempt the open.
+    iosSchemeCandidates: ['moomoo', 'futubull', 'moomoosg', 'ftnntrade'],
   ),
   ajaib(
     id: 'ajaib',
@@ -85,6 +93,7 @@ enum BrokerApp {
     required this.iosScheme,
     required this.deepLinkTemplate,
     required this.launchUrl,
+    this.iosSchemeCandidates = const [],
   });
 
   /// Stable id used for persistence + analytics meta. Never localized.
@@ -107,6 +116,25 @@ enum BrokerApp {
   /// Fallback launch URL (the app's base scheme) when there is no symbol deep
   /// link or symbol deep-linking is not desired.
   final String launchUrl;
+
+  /// Extra iOS custom URL schemes to try (in order) when this broker uses an
+  /// https Universal Link that may not open the installed (regional) app. Each
+  /// scheme must also be whitelisted in Info.plist's LSApplicationQueriesSchemes.
+  /// Empty for brokers that have a single, reliable scheme.
+  final List<String> iosSchemeCandidates;
+
+  /// Ordered list of `scheme://` launch URIs to try opening on iOS before
+  /// falling back to the https link. Starts with [launchUrl]'s scheme, then
+  /// any [iosSchemeCandidates], de-duplicated.
+  List<Uri> get iosLaunchCandidates {
+    final schemes = <String>[];
+    final base = Uri.tryParse(launchUrl)?.scheme;
+    if (base != null && base.isNotEmpty) schemes.add(base);
+    for (final s in iosSchemeCandidates) {
+      if (!schemes.contains(s)) schemes.add(s);
+    }
+    return [for (final s in schemes) Uri.parse('$s://')];
+  }
 
   /// Google Play Store listing for this broker (the not-installed fallback).
   Uri get playStoreUri =>

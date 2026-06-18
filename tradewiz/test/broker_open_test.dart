@@ -101,6 +101,16 @@ void main() {
       expect(uri.toString(), 'moomoo://');
     });
 
+    test('Moomoo lists regional iOS scheme candidates (moomoo first)', () {
+      final schemes = BrokerApp.moomoo.iosLaunchCandidates
+          .map((u) => u.toString())
+          .toList();
+      expect(schemes.first, 'moomoo://');
+      expect(schemes, contains('futubull://'));
+      expect(schemes, contains('moomoosg://'));
+      expect(schemes.toSet().length, schemes.length);
+    });
+
     test('IBKR opens the app (no guessed per-symbol deep link)', () {
       final uri =
           BrokerApp.ibkr.openUri(symbol: 'AAPL', market: Market.us);
@@ -317,9 +327,9 @@ void main() {
       expect(events, ['broker_open_confirmed']);
     });
 
-    test('iOS: Moomoo not installed falls back to the https Universal Link',
+    test(
+        'iOS: regional Moomoo (only futubull:// opens) still launches the app',
         () async {
-      // The custom scheme fails to open (no app) -> fall back to https.
       final fake = _FakeLauncher(
         installedSchemes: const {},
         failOpenFor: {'moomoo://'},
@@ -332,7 +342,35 @@ void main() {
         market: Market.singapore,
       );
       expect(outcome, BrokerOpenOutcome.launchedApp);
-      // Tried the custom scheme first, then opened the https link.
+      expect(fake.openCalls[0].toString(), 'moomoo://');
+      expect(fake.openCalls[1].toString(), 'futubull://');
+      expect(
+        fake.openCalls.map((u) => u.toString()),
+        isNot(contains('https://www.moomoo.com/stock/D05-SG')),
+      );
+    });
+
+    test('iOS: Moomoo not installed falls back to the https Universal Link',
+        () async {
+      // The custom scheme fails to open (no app) -> fall back to https.
+      final fake = _FakeLauncher(
+        installedSchemes: const {},
+        failOpenFor: {
+          'moomoo://',
+          'futubull://',
+          'moomoosg://',
+          'ftnntrade://',
+        },
+        ios: true,
+      );
+      final svc = BrokerService(launcher: fake);
+      final outcome = await svc.open(
+        broker: BrokerApp.moomoo,
+        symbol: 'D05',
+        market: Market.singapore,
+      );
+      expect(outcome, BrokerOpenOutcome.launchedApp);
+      // Tried every custom scheme first, then opened the https link.
       expect(fake.openCalls.first.toString(), 'moomoo://');
       expect(fake.openCalls.last.toString(),
           'https://www.moomoo.com/stock/D05-SG');

@@ -24,6 +24,18 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>stockbit</string>
+		<string>moomoo</string>
+		<string>ajaib</string>
+		<string>ipotgo</string>
+		<string>miraehots</string>
+		<string>ibkr</string>
+		<string>futubull</string>
+		<string>moomoosg</string>
+		<string>ftnntrade</string>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
@@ -53,17 +65,6 @@
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
-	<key>LSApplicationQueriesSchemes</key>
-	<array>
-		<!-- Read-only broker hand-off: allows canLaunchUrl() to detect whether
-		     each broker app is installed. No trades are executed by TradeWizz. -->
-		<string>stockbit</string>
-		<string>moomoo</string>
-		<string>ajaib</string>
-		<string>ipotgo</string>
-		<string>miraehots</string>
-		<string>ibkr</string>
-	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
