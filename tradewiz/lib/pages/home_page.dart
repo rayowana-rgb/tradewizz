@@ -988,14 +988,7 @@ class _MarketPulseCard extends StatelessWidget {
   final TodaysIdeas ideas;
 
   @override
-  Widget build(BuildContext context) {
-    return TWFloatingCard(
-      // Signature blue gradient (same family as the hero) but with the blue
-      // corner anchored at the BOTTOM-LEFT.
-      gradient: TWColors.pulseBlueGradient,
-      child: _pulseSection(context),
-    );
-  }
+  Widget build(BuildContext context) => _pulseSection(context);
 
   // ---- Market Pulse ----
   Widget _pulseSection(BuildContext context) {
@@ -1011,30 +1004,22 @@ class _MarketPulseCard extends StatelessWidget {
       key: const Key('home_index_card'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const TWEyebrow('Market Pulse'),
-                  const SizedBox(height: 3),
-                  Text(
-                    idx?.name ?? '${market.code} Index',
-                    key: const Key('home_index_name'),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TWType.title3.copyWith(fontSize: 15),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: TWSpace.sm),
-            _ConditionBadge(condition: condition),
-          ],
+        // Banded section header (matches the other Home sections), with the
+        // market-condition badge as the trailing element.
+        TWBandedSectionHeader(
+          title: 'Market Pulse',
+          trailing: _ConditionBadge(condition: condition),
         ),
-        const SizedBox(height: TWSpace.lg),
+        const SizedBox(height: TWSpace.md),
+        Text(
+          idx?.name ?? '${market.code} Index',
+          key: const Key('home_index_name'),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TWType.body
+              .copyWith(fontWeight: FontWeight.w700, color: TWColors.textPrimary),
+        ),
+        const SizedBox(height: TWSpace.sm),
         // Price + change, grouped on a baseline-aligned line of their own.
         if (idx != null && idx.hasData)
           Row(
@@ -1080,7 +1065,9 @@ class _MarketPulseCard extends StatelessWidget {
             referenceValue: idx.prevClose,
           ),
         ],
-        const SizedBox(height: TWSpace.lg),
+        const SizedBox(height: TWSpace.md),
+        const Divider(height: 1, thickness: 1, color: TWColors.hairlineTop),
+        const SizedBox(height: TWSpace.md),
         // Stats grid — same two-column rhythm in every state.
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
