@@ -169,7 +169,7 @@ class BrokerService {
         // the broker's app is detectably installed via its custom scheme,
         // open the app via that scheme first and only fall back to the https
         // Universal Link when the app isn't installed.
-        if (_launcher.isIOS) {
+        if (_launcher.isIOS && broker.iosPrefersCustomScheme) {
           // Try the broker's custom scheme(s) directly. We deliberately do NOT
           // gate on canOpen() here: on iOS canLaunchUrl can return a false
           // negative for an installed app (scheme not whitelisted, privacy

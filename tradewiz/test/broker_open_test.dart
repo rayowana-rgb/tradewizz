@@ -172,6 +172,30 @@ void main() {
       expect(events, ['broker_open_confirmed']);
     });
 
+    test(
+        'iOS: Stockbit opens the https symbol link directly (no base-scheme '
+        'hijack)', () async {
+      // Regression: the Moomoo iOS custom-scheme path must NOT apply to
+      // Stockbit (working Universal Link), or it would open the app home
+      // instead of the BBCA symbol page.
+      final fake = _FakeLauncher(installedSchemes: {'stockbit'}, ios: true);
+      final svc = BrokerService(launcher: fake);
+      final outcome = await svc.open(
+        broker: BrokerApp.stockbit,
+        symbol: 'bbca',
+        market: Market.idx,
+      );
+      expect(outcome, BrokerOpenOutcome.launchedApp);
+      expect(BrokerApp.stockbit.iosPrefersCustomScheme, isFalse);
+      // Opened the per-symbol https link, never stockbit://.
+      expect(fake.openCalls.single.toString(),
+          'https://stockbit.com/symbol/BBCA');
+      expect(
+        fake.openCalls.map((u) => u.toString()),
+        isNot(contains('stockbit://')),
+      );
+    });
+
     test('installed broker deep-links + emits broker_open_confirmed', () async {
       final fake = _FakeLauncher(installedSchemes: {'ajaib'});
       final events = <String>[];

@@ -47,6 +47,11 @@ enum BrokerApp {
     // ios/Runner/Info.plist under LSApplicationQueriesSchemes, otherwise iOS
     // refuses to even attempt the open.
     iosSchemeCandidates: ['moomoo', 'futubull', 'moomoosg', 'ftnntrade'],
+    // Only Moomoo's regional iOS Universal Link is unreliable (bounces to
+    // Safari). Other https-deep-link brokers (e.g. Stockbit) have working
+    // Universal Links, so we must NOT hijack them with a base-scheme launch
+    // (which would open the app's home instead of the symbol page).
+    iosPrefersCustomScheme: true,
   ),
   ajaib(
     id: 'ajaib',
@@ -94,6 +99,7 @@ enum BrokerApp {
     required this.deepLinkTemplate,
     required this.launchUrl,
     this.iosSchemeCandidates = const [],
+    this.iosPrefersCustomScheme = false,
   });
 
   /// Stable id used for persistence + analytics meta. Never localized.
@@ -122,6 +128,13 @@ enum BrokerApp {
   /// scheme must also be whitelisted in Info.plist's LSApplicationQueriesSchemes.
   /// Empty for brokers that have a single, reliable scheme.
   final List<String> iosSchemeCandidates;
+
+  /// When true, on iOS we attempt the custom scheme(s) BEFORE the https
+  /// Universal Link. Only set for brokers whose Universal Link doesn't open
+  /// the installed app reliably (e.g. Moomoo's regional builds). Brokers with
+  /// working Universal Links leave this false so the per-symbol https link is
+  /// honoured and opens the app on the right symbol page.
+  final bool iosPrefersCustomScheme;
 
   /// Ordered list of `scheme://` launch URIs to try opening on iOS before
   /// falling back to the https link. Starts with [launchUrl]'s scheme, then
