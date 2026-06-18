@@ -1068,7 +1068,9 @@ class _MarketPulseCard extends StatelessWidget {
                 horizontal: TWSpace.md, vertical: TWSpace.sm),
             decoration: BoxDecoration(
               color: TWColors.bgElevated,
-              borderRadius: TWRadius.rChip,
+              // Banded shape (matches the Morning Brief header) instead of a
+              // full pill -- colour/padding/content unchanged.
+              borderRadius: TWRadius.rSm,
             ),
             child: Text(
               condition.reason,
