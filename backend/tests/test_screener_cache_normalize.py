@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 import functools
 
 from app import main
-from app.models import Market, ScreenerMatch, ScreenerResult
+from app.models import Market, ScreenerCategory, ScreenerMatch, ScreenerResult
 from app.screener_cache import InMemoryScreenerSnapshotStore
 from app.screener_cache.service import ScreenerCacheService
 
@@ -29,7 +29,11 @@ CLOSED_TIME = datetime(2026, 6, 8, 18, 0, tzinfo=HK)  # Mon 18:00 HKT -> CLOSED
 
 
 def _superset(n: int = 20) -> ScreenerResult:
-    """A wide, pre-sorted (score desc) result like the engine's superset run."""
+    """A wide, pre-sorted (score desc) result like the engine's superset run.
+
+    Even-indexed rows carry the ``bullish`` tag so a category filter has
+    something to slice against.
+    """
     matches = [
         ScreenerMatch(
             symbol=f"S{i:02d}",
@@ -39,6 +43,7 @@ def _superset(n: int = 20) -> ScreenerResult:
             price=100.0 + i,
             change_percent=1.0,
             value_traded=1e9,
+            categories=[ScreenerCategory.bullish] if i % 2 == 0 else [],
         )
         for i in range(n)
     ]
@@ -119,6 +124,24 @@ def test_varied_limit_and_min_score_collapse_to_one_engine_run(monkeypatch):
     assert all(m["score"] >= 80 for m in c["matches"])
     # First match is the highest score (already sorted desc in the snapshot).
     assert c["matches"][0]["symbol"] == "S00"
+
+
+def test_category_filter_slices_the_shared_all_superset(monkeypatch):
+    calls = _install_counting_engine(monkeypatch)
+
+    allcats = client.get("/v1/screen/HKEX", params={"limit": 200}).json()
+    bullish = client.get(
+        "/v1/screen/HKEX", params={"limit": 200, "categories": "bullish"}
+    ).json()
+
+    # A category filter must NOT trigger a second heavy engine run -- it slices
+    # the same shared ``_all`` superset in memory (the fix for Explore falling
+    # back to mock data when a per-category cold run exceeded the app timeout).
+    assert calls["n"] == 1
+    # Even-indexed rows (S00, S02, ...) carry the bullish tag: 10 of 20.
+    assert len(allcats["matches"]) == 20
+    assert bullish["total_count"] == 10
+    assert all("bullish" in m["categories"] for m in bullish["matches"])
 
 
 def test_min_score_slice_is_faithful_to_engine_semantics(monkeypatch):

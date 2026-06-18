@@ -640,42 +640,53 @@ def _parse_categories(raw: Optional[str]) -> Optional[List[ScreenerCategory]]:
     return out or None
 
 
-def _category_cache_token(cats: Optional[List[ScreenerCategory]]) -> str:
-    """Stable, order-independent category token for the screener cache key.
-
-    Empty/None filter -> "" (the "all categories" snapshot).
-    """
-    if not cats:
-        return ""
-    return ",".join(sorted(c.value for c in cats))
-
-
 def _slice_screener_result(
-    result: ScreenerResult, *, limit: int, min_score: float
+    result: ScreenerResult,
+    *,
+    limit: int,
+    min_score: float,
+    categories: Optional[List[ScreenerCategory]] = None,
 ) -> ScreenerResult:
     """Lapis 3: derive a per-request view from a SUPERSET snapshot in memory.
 
-    The engine is cached at the superset (limit=MAX_LIMIT, min_score=0), so a
-    request only varies the run by ``category`` + ``min_value_traded``. We then
-    apply the user's ``min_score`` and ``limit`` here, with NO engine work, so
-    many param variants (limit=20/50/100, min_score=0/60/70) collapse onto one
-    cached run.
+    The engine is cached at the superset (limit=MAX_LIMIT, min_score=0,
+    categories=None), so a request only varies the heavy run by
+    ``min_value_traded`` (the liquidity floor, which the engine applies during
+    the run). The user's ``min_score``, ``categories``, and ``limit`` are all
+    applied here with NO engine work, so many param variants (limit=20/50/100,
+    min_score=0/60/70, any category filter) collapse onto a single cached run.
 
-    Matches in the snapshot are already filtered by the floor/categories and
-    sorted (Final Explore Score desc, value_traded desc, change_percent desc),
-    so we only need to drop rows below ``min_score`` (on the Base Score, per the
-    engine's documented semantics) and truncate. Metadata is recomputed so
-    ``total_count``/``returned_count``/``limit``/``min_score`` stay correct.
-    Cache/market metadata on the snapshot is preserved.
+    Why category is sliced here, not keyed: the engine computes EVERY category
+    in one pass and tags each match with its ``categories``; the category
+    filter is a pure post-filter (``wanted.intersection(m.categories)``). Keying
+    by category therefore forced a full, multi-second engine re-run the first
+    time each category was opened in Explore -- which, when it exceeded the
+    app's 25s request timeout, made the app fall back to MOCK screener data
+    ("not the latest close"). Slicing categories from the shared ``_all``
+    superset removes that per-category cold path entirely.
+
+    Matches in the snapshot are already sorted (Final Explore Score desc,
+    value_traded desc, change_percent desc) and already past the liquidity
+    floor, so we only drop rows below ``min_score`` (on the Base Score, per the
+    engine's documented semantics) and outside ``categories``, then truncate.
+    Metadata is recomputed so ``total_count``/``returned_count``/``limit``/
+    ``min_score``/``categories`` stay correct; cache/market metadata is kept.
     """
     limit = max(1, min(int(limit), MAX_LIMIT))
-    kept = [m for m in result.matches if m.score >= min_score]
+    wanted = set(categories or [])
+    kept = [
+        m
+        for m in result.matches
+        if m.score >= min_score
+        and (not wanted or wanted.intersection(m.categories))
+    ]
     view = result.model_copy(deep=True)
     view.total_count = len(kept)  # filtered count BEFORE the limit
     view.matches = kept[:limit]
     view.returned_count = len(view.matches)
     view.limit = limit
     view.min_score = min_score
+    view.categories = list(categories or [])
     return view
 
 
@@ -733,12 +744,15 @@ def screen(
         else min_value_traded
     )
     parsed_cats = _parse_categories(categories)
-    # Lapis 3: cache the engine at the SUPERSET (limit=MAX_LIMIT, min_score=0)
-    # so only category + min_value_traded vary the heavy run. The user's
-    # limit/min_score are applied in memory afterwards, collapsing many param
-    # variants onto one cached run.
+    # Lapis 3: cache the engine at the SUPERSET (limit=MAX_LIMIT, min_score=0,
+    # categories=None) so ONLY the liquidity floor (min_value_traded) varies the
+    # heavy run. The user's limit/min_score/categories are applied in memory
+    # afterwards, collapsing every param + category variant onto a single cached
+    # run. (Category is a pure post-filter in the engine, so re-running per
+    # category was wasted work that could exceed the app's timeout and trigger a
+    # mock-data fallback in Explore.)
     cache_key = make_cache_key(
-        category=_category_cache_token(parsed_cats),
+        category="",
         limit=MAX_LIMIT,
         min_score=0.0,
         min_value_traded=floor,
@@ -749,7 +763,7 @@ def screen(
             parsed_market,
             limit=MAX_LIMIT,
             min_score=0.0,
-            categories=parsed_cats,
+            categories=None,
             min_value_traded=floor,
         )
 
@@ -763,7 +777,7 @@ def screen(
     )
     # Apply the per-request view (tier cap already folded into ``limit``).
     return _slice_screener_result(
-        superset, limit=limit, min_score=min_score
+        superset, limit=limit, min_score=min_score, categories=parsed_cats
     )
 
 
