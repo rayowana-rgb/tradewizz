@@ -406,23 +406,37 @@ class _HeroCard extends StatelessWidget {
     final hasIdea = symbol != null;
 
     final tags = _heroTags(reason, signal);
+    // Stockbit-style: the heavy gradient card frame is gone. The AI hero stays
+    // the standout block on Home, but signals its importance with a restrained
+    // highlight instead of a chunky card: a left accent bar (the AI's signature
+    // mark), a whisper-faint accent wash, and a soft top glow. No outer card
+    // border, modest rounding, tighter padding so it sits flatter on the page.
     return Container(
       key: const Key('home_hero'),
       width: double.infinity,
-      // Roomier padding (xl -> xxl) so the densest card on Home breathes like a
-      // premium hero rather than feeling text-packed edge to edge.
-      padding: const EdgeInsets.all(TWSpace.xxl),
+      padding: const EdgeInsets.fromLTRB(
+          TWSpace.lg, TWSpace.lg, TWSpace.lg, TWSpace.lg),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(TWRadius.cardLg),
-        // Same indigo/violet/electric-blue family as the My Portfolio card, but
-        // with the blue corner mirrored to the TOP-LEFT.
-        gradient: TWColors.heroBlueGradient,
-        border: Border.all(color: TWColors.hairlineTop, width: 1),
-        boxShadow: const [...TWShadow.ambient, ...TWShadow.accentGlow],
+        borderRadius: const BorderRadius.horizontal(
+            right: Radius.circular(TWRadius.card)),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            TWColors.accent.withValues(alpha: 0.10),
+            TWColors.accent.withValues(alpha: 0.02),
+          ],
+        ),
+        // Left accent bar — the AI hero's signature highlight, drawn as a
+        // thick left border so it tracks the section height without an
+        // IntrinsicHeight layout pass.
+        border: const Border(
+          left: BorderSide(color: TWColors.accentBright, width: 3),
+        ),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -538,7 +552,7 @@ class _HeroCard extends StatelessWidget {
             Text(reason,
                 style: TWType.body.copyWith(color: TWColors.textSecondary)),
           ],
-        ],
+                ],
       ),
     );
   }
