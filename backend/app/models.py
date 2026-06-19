@@ -121,6 +121,12 @@ class ScreenerMatch(BaseModel):
     avg_volume_20d: Optional[float] = None
     volume_ratio_20d: Optional[float] = None
     value_traded_ratio_20d: Optional[float] = None
+    # Order-book tradability proxy (0..1) from OHLCV microstructure: 1.0 == a
+    # clean, tight, continuously-traded tape; lower values flag a high-turnover
+    # name whose bid/offer queue is thin and gappy (price jumps per rupiah
+    # traded), so it is harder to enter/exit without moving price. Optional;
+    # older clients/snapshots that lack it render unchanged.
+    tradability: Optional[float] = None
 
 
 class ScreenerResult(BaseModel):
