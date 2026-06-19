@@ -499,81 +499,6 @@ def _expansion_points(ratio: Optional[float]) -> float:
     return 25.0        # weakening participation
 
 
-# --------------------------------------------------------------------------- #
-# Order-book tradability proxy (microstructure, from OHLCV only).             #
-#                                                                             #
-# Turnover alone (value traded) overstates how easy a name is to enter/exit. #
-# A stock can post big value from a few block prints while its bid/offer      #
-# queue is thin and gappy -- so price jumps for every order. With no Level-2  #
-# depth we approximate that "tightness" from three OHLCV-derived signals and  #
-# fold them into a 0..1 multiplier that DISCOUNTS the turnover-based          #
-# participation score for high-value-but-thin names.                         #
-#                                                                             #
-#   illiquidity_impact   : price move per unit turnover (Amihud). High = bad. #
-#   range_pct_20d        : daily High-Low swing %. High = jumpy/gappy tape.   #
-#   zero_volume_days_20d : no-trade sessions. High = dead queue.             #
-#                                                                             #
-# The factor is bounded so it can only TRIM a turnover score (never inflate   #
-# it) and degrades gracefully to 1.0 when the proxies are missing.           #
-# --------------------------------------------------------------------------- #
-# Thresholds calibrated against the real cross-market OHLCV distribution of
-# illiquidity_impact (|return|/turnover, scaled): median ~1.7, p90 ~350,
-# p99 ~7000. Normal names sit under ~2 (no penalty); the penalty ramps to full
-# by the p90 tail (~300) where turnover is tiny and the tape is thin/dead. The
-# range/zero-day distributions (median ~3.5%, p99 ~16%) anchor the other two.
-_TRADABILITY_FLOOR = 0.55      # most a thin book can be discounted (-45%)
-_IMPACT_SOFT = 2.0            # impact at/under this => no penalty (~median)
-_IMPACT_HARD = 300.0         # impact at/over this => full impact penalty (~p90)
-_RANGE_SOFT = 3.0             # daily swing %% at/under this => no penalty
-_RANGE_HARD = 12.0           # daily swing %% at/over this => full penalty
-
-
-def _lin_penalty(value: float, soft: float, hard: float) -> float:
-    """0.0 at/under ``soft`` rising linearly to 1.0 at/over ``hard``."""
-    if hard <= soft:
-        return 0.0
-    if value <= soft:
-        return 0.0
-    if value >= hard:
-        return 1.0
-    return (value - soft) / (hard - soft)
-
-
-def tradability_factor(ind: dict) -> float:
-    """0..1 multiplier discounting turnover for thin / gappy order books.
-
-    1.0 == clean, tight, continuously-traded tape. Approaches
-    ``_TRADABILITY_FLOOR`` for names whose price swings hard per rupiah traded
-    (thin queue), trade in big jumps (gappy book), or routinely do not trade.
-    Returns 1.0 when none of the proxies are available so it never
-    destabilises data-light rows.
-    """
-    impact = ind.get("illiquidity_impact")
-    range_pct = ind.get("range_pct_20d")
-    zero_days = ind.get("zero_volume_days_20d")
-
-    penalties = []
-    if impact is not None and impact >= 0:
-        penalties.append(_lin_penalty(float(impact), _IMPACT_SOFT, _IMPACT_HARD))
-    if range_pct is not None and range_pct >= 0:
-        penalties.append(_lin_penalty(float(range_pct), _RANGE_SOFT, _RANGE_HARD))
-    if zero_days is not None:
-        # Each no-trade day in 20 is a strong illiquidity tell; 4+ => full.
-        penalties.append(_lin_penalty(float(zero_days), 0.0, 4.0))
-
-    if not penalties:
-        return 1.0
-
-    # Worst single signal dominates (a thin book is a thin book even if one
-    # proxy looks ok), softened by the average so one borderline reading does
-    # not over-punish. 70%% worst / 30%% average.
-    worst = max(penalties)
-    avg = sum(penalties) / len(penalties)
-    penalty = 0.70 * worst + 0.30 * avg
-    factor = 1.0 - penalty * (1.0 - _TRADABILITY_FLOOR)
-    return max(_TRADABILITY_FLOOR, min(1.0, factor))
-
-
 def participation_score(ind: dict, market: Optional[Market]) -> float:
     """Liquidity & participation gauge (0..100) — the dominant scoring factor.
 
@@ -631,12 +556,6 @@ def participation_score(ind: dict, market: Optional[Market]) -> float:
         + 0.10 * vol_pts
         + 0.10 * avgvol_pts
     )
-
-    # Order-book tradability discount: a high-turnover name with a thin, gappy
-    # queue (price jumps per rupiah traded, frequent no-trade days) is NOT as
-    # liquid as its value traded suggests. Trim — never inflate — the score.
-    score *= tradability_factor(ind)
-
     return _clamp(score)
 
 

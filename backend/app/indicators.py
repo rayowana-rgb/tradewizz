@@ -246,43 +246,6 @@ def compute_all(df: pd.DataFrame) -> dict:
         else None
     )
 
-    # ------------------------------------------------------------------ #
-    # Microstructure liquidity proxies (order-book quality from OHLCV).   #
-    # A name can post high turnover yet still be hard to enter/exit       #
-    # without moving price when the bid/offer queue is thin and gappy.    #
-    # With only OHLCV (no Level-2 depth) we approximate that "tightness"  #
-    # from how much price swings per unit of money traded, plus how often #
-    # the name simply does not trade.                                     #
-    #                                                                     #
-    #   illiquidity_impact : Amihud-style 20d mean of                     #
-    #       |daily return| / turnover  (scaled). HIGH = illiquid (price   #
-    #       moves a lot per rupiah traded => thin, bolong order book).    #
-    #   range_pct_20d      : 20d mean of (High-Low)/Close * 100. HIGH =   #
-    #       gappy/jumpy tape (a tight book trades in small steps).        #
-    #   zero_volume_days_20d : no-trade sessions in the last 20 (dead      #
-    #       queue). HIGH = illiquid.                                       #
-    # All are additive keys; nothing existing is renamed or rescored.     #
-    # ------------------------------------------------------------------ #
-    high_s = df["High"]
-    low_s = df["Low"]
-    daily_ret_abs = close.pct_change(fill_method=None).abs()
-    daily_turnover = close * volume
-    # Per-day Amihud impact: |return| / turnover. Guard zero/NaN turnover.
-    impact_daily = (
-        daily_ret_abs / daily_turnover.replace(0.0, np.nan)
-    )
-    # Scale so the number is human-readable; the absolute scale is
-    # irrelevant downstream because scoring tiers on it per-market.
-    illiquidity_impact = last(
-        (impact_daily * 1e9).rolling(window=20, min_periods=5).mean()
-    )
-    range_pct_s = ((high_s - low_s) / close.replace(0.0, np.nan)) * 100.0
-    range_pct_20d = last(range_pct_s.rolling(window=20, min_periods=5).mean())
-    last20_vol = volume.tail(20)
-    zero_volume_days_20d = (
-        int((last20_vol.fillna(0) <= 0).sum()) if len(last20_vol) else None
-    )
-
     # Phase 1 additions (new keys only; existing keys unchanged).
     sma20_s = sma(close, 20)
     sma50_s = sma(close, 50)
@@ -385,10 +348,6 @@ def compute_all(df: pd.DataFrame) -> dict:
         "value_traded": (last_close * last_volume)
         if (last_close is not None and last_volume is not None)
         else None,
-        # Microstructure liquidity proxies (order-book quality from OHLCV).
-        "illiquidity_impact": illiquidity_impact,
-        "range_pct_20d": range_pct_20d,
-        "zero_volume_days_20d": zero_volume_days_20d,
         # --- Phase 2 support: rolling aggregates for category rules ---
         "high": last_high,
         "immediate_support": immediate_support,

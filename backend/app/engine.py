@@ -1227,7 +1227,6 @@ class AnalysisEngine:
                 value_traded_ratio_20d=_num(
                     ind.get("value_traded_ratio_20d")
                 ),
-                tradability=_num(scoring.tradability_factor(ind)),
             )
         except Exception as exc:  # noqa: BLE001
             # Keep the universe fully populated; response stays 200 "live".
