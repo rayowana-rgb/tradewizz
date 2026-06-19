@@ -1178,8 +1178,21 @@ class AnalysisEngine:
             # Phase 9A: additive Explore overlay (category bonus + conviction).
             # Illiquid names get NO bonus/conviction so they can't be lifted
             # into the top ranks (Rule 8 #6); their Final Score == Base Score.
+            # Bug fix: the additive overlay must also respect the LIQUIDITY CAP
+            # that constrained the Base Score. Without a ceiling, a thin name
+            # (20-day avg turnover below its value-traded tier, e.g. an IDX
+            # stock under Rp5B capped at 75) could be lifted back to a BUY-grade
+            # Final Score by the +bonus/+conviction overlay, defeating the cap.
+            # Re-derive the same liquidity tier and pass it as a hard ceiling.
+            cap_ceiling, _, _ = scoring.liquidity_cap_for(
+                scoring._value_traded(ind), market
+            )
             overlay = explore.compute_overlay(
-                score, cats, ind, allow_bonus=not illiquid
+                score,
+                cats,
+                ind,
+                allow_bonus=not illiquid,
+                score_ceiling=cap_ceiling,
             )
             # Phase 11B: surface the liquidity participation score + the raw
             # turnover/volume figures so Explore can show the liquidity

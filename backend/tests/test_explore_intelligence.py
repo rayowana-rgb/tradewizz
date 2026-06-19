@@ -136,6 +136,35 @@ def test_category_bonus_lifts_final_above_base():
     assert overlay["final_score"] == 68.0
 
 
+def test_overlay_respects_liquidity_score_ceiling():
+    """Regression: the additive overlay must not breach the liquidity cap.
+
+    A thin name whose Base Score was capped at its value-traded tier (e.g. IDX
+    <Rp5B -> 75) must keep a Final Score at/under that ceiling even when the
+    category bonus + conviction would otherwise lift it higher.
+    """
+    base = 75.0  # already capped at the <Rp5B tier
+    cats = [C.bullish, C.accumulation]  # +13 worth of bonus
+    ind = {  # full conviction would add up to +20
+        "cmf": 0.3,
+        "obv": 1.0,
+        "obv_prev": 0.0,
+        "adx": 40.0,
+    }
+    # Without a ceiling the overlay lifts the final well above 75.
+    uncapped = explore.compute_overlay(base, cats, ind)
+    assert uncapped["final_score"] > 75.0
+    # With the liquidity ceiling supplied, the final is clamped to it; the
+    # bonus/conviction read-outs are still surfaced for transparency.
+    capped = explore.compute_overlay(base, cats, ind, score_ceiling=75.0)
+    assert capped["final_score"] == 75.0
+    assert capped["category_bonus"] > 0
+    assert capped["conviction_score"] > 0
+    # A ceiling never *raises* a score that is already below it.
+    low = explore.compute_overlay(50.0, [], {}, score_ceiling=75.0)
+    assert low["final_score"] == 50.0
+
+
 # --------------------------------------------------------------------------- #
 # Rule 8 #4 — conviction score works                                          #
 # --------------------------------------------------------------------------- #

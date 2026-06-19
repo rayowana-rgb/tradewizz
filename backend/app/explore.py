@@ -171,6 +171,7 @@ def compute_overlay(
     ind: dict,
     *,
     allow_bonus: bool = True,
+    score_ceiling: Optional[float] = None,
 ) -> dict:
     """Compute the full Explore overlay for one match.
 
@@ -178,6 +179,14 @@ def compute_overlay(
     the category bonus and the conviction score to 0 so a fabricated row can
     never out-rank a real one (Rule 8 #7). The Final Score then equals the
     Base Score and no tags are emitted.
+
+    ``score_ceiling`` is the liquidity cap that already constrained the Base
+    Score. The additive category bonus + conviction must NOT lift the Final
+    Score back above that liquidity tier -- otherwise a thin name (e.g. an IDX
+    stock with a 20-day average turnover under Rp5B, capped at 75) could be
+    pushed to a BUY-grade score by the overlay, defeating the cap. When a
+    ceiling is supplied the Final Score is clamped to it (the bonus can still
+    fill any headroom *up to* the cap, but never breach it).
     """
     if not allow_bonus:
         return {
@@ -189,10 +198,13 @@ def compute_overlay(
         }
     bonus = category_bonus(cats)
     conviction = conviction_score(ind)
+    final = explore_score(base_score, bonus, conviction)
+    if score_ceiling is not None:
+        final = round(min(final, float(score_ceiling)), 1)
     return {
         "base_score": round(float(base_score), 1),
         "category_bonus": bonus,
         "conviction_score": conviction,
-        "final_score": explore_score(base_score, bonus, conviction),
+        "final_score": final,
         "explore_tags": explore_tags(cats, ind),
     }
