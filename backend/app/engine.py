@@ -984,6 +984,36 @@ class AnalysisEngine:
             logger.warning("analyze fell back to mock for %s: %s", ticker, exc)
             return mock_data.mock_analyze(symbol, market)
 
+    def _close_from_df(self, df) -> Optional[float]:
+        try:
+            close = df["Close"].dropna()
+        except Exception:  # noqa: BLE001
+            return None
+        if close.empty:
+            return None
+        return float(close.iloc[-1])
+
+    def latest_price_cached(
+        self, symbol: str, market: Market
+    ) -> Optional[float]:
+        """Latest cached close WITHOUT a network fetch (best-effort, instant).
+
+        Reads only what is already on disk (regardless of TTL). Returns None
+        when nothing is cached. Used by latency-sensitive callers (simulated
+        order pricing) that must never block on a slow/blocked data provider.
+        """
+        cache = getattr(self._fetch, "cache", None)
+        if cache is None:
+            return None
+        ticker = yf_symbol(symbol, market)
+        try:
+            df = cache.read_cached_only(ticker, "1mo", "1d")
+        except Exception:  # noqa: BLE001 - best-effort
+            return None
+        if df is None:
+            return None
+        return self._close_from_df(df)
+
     def latest_price(self, symbol: str, market: Market) -> Optional[float]:
         """Latest close price for a symbol via the unified cached fetch path.
 
@@ -995,10 +1025,7 @@ class AnalysisEngine:
         ticker = yf_symbol(symbol, market)
         try:
             df = self._fetch(ticker, "1mo", "1d")
-            close = df["Close"].dropna()
-            if close.empty:
-                return None
-            return float(close.iloc[-1])
+            return self._close_from_df(df)
         except Exception as exc:  # noqa: BLE001 - price is best-effort
             logger.warning("latest_price failed for %s: %s", ticker, exc)
             return None

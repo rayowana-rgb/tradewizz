@@ -124,8 +124,26 @@ from .simulation.router import set_service as _set_sim_service  # noqa: E402
 from .simulation.service import SimulationService  # noqa: E402
 
 app.include_router(sim_router)
+
+
+def _sim_price(symbol, market):
+    """Price source for simulated orders: cache-only first, never block.
+
+    A simulated BUY/SELL is priced from the latest CACHED close so the order
+    fills instantly. It only falls back to a (possibly slow) live fetch when
+    nothing is cached for the symbol at all -- otherwise a slow/blocked data
+    provider would stall or time out the order (preview + place each priced a
+    symbol, so a cold fetch was paid twice). The warmer/screener keeps prices
+    warm, so the fallback is rare.
+    """
+    cached = engine.latest_price_cached(symbol, market)
+    if cached is not None:
+        return cached
+    return engine.latest_price(symbol, market)
+
+
 _sim_service = SimulationService(
-    price_provider=lambda symbol, market: engine.latest_price(symbol, market),
+    price_provider=_sim_price,
     universe=engine._universe,
 )
 _set_sim_service(_sim_service)

@@ -258,6 +258,29 @@ class OhlcvCache:
             )
             return df
 
+    def read_cached_only(
+        self, ticker: str, period: str = "1y", interval: str = "1d"
+    ) -> Optional[pd.DataFrame]:
+        """Return whatever is cached on disk WITHOUT ever fetching.
+
+        Unlike :meth:`get`, this never triggers a network call: it returns the
+        cached DataFrame if a cache file exists (regardless of TTL/freshness),
+        or ``None`` when nothing is cached. Used by latency-sensitive,
+        best-effort callers (e.g. simulated order pricing) that must not block
+        on a slow/blocked data provider. Freshness is the warmer's job; a
+        slightly stale cached close is far better than a multi-second stall or
+        a timeout on a simulated trade.
+        """
+        key = self._key(ticker, period, interval)
+        csv_path, _meta_path = self._paths(key)
+        if not csv_path.exists():
+            return None
+        try:
+            return self._read(csv_path)
+        except Exception as exc:  # noqa: BLE001 - corrupt entry -> None
+            logger.warning("cached-only read failed for %s: %s", ticker, exc)
+            return None
+
     def _try_read_fresh(
         self, ticker: str, market: str, trading_date: str,
         key: str, csv_path: Path, meta_path: Path,
@@ -491,4 +514,12 @@ def make_cached_fetcher(
         latest_provider_timestamp=latest_provider_timestamp,
         now_provider=now_provider,
     )
-    return cache.get
+    def fetcher(
+        ticker: str, period: str = "1y", interval: str = "1d"
+    ) -> pd.DataFrame:
+        return cache.get(ticker, period, interval)
+
+    # Expose the backing cache so latency-sensitive callers can read the cached
+    # close without forcing a network fetch (see OhlcvCache.read_cached_only).
+    fetcher.cache = cache  # type: ignore[attr-defined]
+    return fetcher
