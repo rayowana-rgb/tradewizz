@@ -261,15 +261,23 @@ class MarketIndicesService:
             else "CLOSED"
 
     def _get_one(self, spec: MarketIndexSpec) -> IndexQuote:
+        last_good: Optional[float] = None
         with self._lock:
             entry = self._cache.get(spec.symbol)
             if entry is not None:
                 fetched_at, quote = entry
+                if quote.available and quote.price and quote.price > 0:
+                    last_good = quote.price
                 if 0 <= (self._clock() - fetched_at) < self._ttl:
                     # Status is cheap + time-sensitive: recompute on read so a
                     # market opening/closing within the cache window is correct.
                     return self._with_status(quote, self._status(spec))
-        quote = self._fetch_quote(spec)
+        # Pass the last-good price as an INDEPENDENT yardstick. Yahoo sometimes
+        # hands back an entire 5d series that is uniformly mis-scaled (e.g. IHSG
+        # ~21 when it trades ~6177); such a series is internally self-consistent
+        # so the in-df median guard cannot catch it. A level wildly off the
+        # previously-trusted price is rejected here instead.
+        quote = self._fetch_quote(spec, last_good=last_good)
         # If a fresh fetch came back unavailable (e.g. rejected absurd candle or
         # a transient Yahoo failure) but we still hold a previously-good quote,
         # keep serving the last-good value instead of regressing to a blank/null
@@ -362,7 +370,9 @@ class MarketIndicesService:
             return ()
         return tuple(closes[-points:])
 
-    def _fetch_quote(self, spec: MarketIndexSpec) -> IndexQuote:
+    def _fetch_quote(
+        self, spec: MarketIndexSpec, *, last_good: Optional[float] = None
+    ) -> IndexQuote:
         status = self._status(spec)
         # Markets with no working Yahoo index symbol: skip the fetch and report
         # a clean unavailable state (no 404 spam, isolated to this index).
@@ -380,6 +390,16 @@ class MarketIndicesService:
             # which slips past the change% guard when BOTH rows are mis-scaled).
             daily_ref = self._reference_level(df)
             if price is not None and not _level_is_consistent(price, daily_ref):
+                return self._unavailable(spec, status)
+            # Independent yardstick: reject a price wildly off the last-good
+            # cached level. Catches a UNIFORMLY mis-scaled Yahoo series (the
+            # whole 5d window ~21 vs a real ~6177) that the in-df median guard
+            # above passes because the corrupt rows agree with each other.
+            if (
+                price is not None
+                and last_good is not None
+                and not _level_is_consistent(price, last_good)
+            ):
                 return self._unavailable(spec, status)
             # Yahoo's DAILY index candle lags: after the session closes, today's
             # 1d candle often is not published for hours, so _extract returns
@@ -411,6 +431,12 @@ class MarketIndicesService:
         except Exception:  # noqa: BLE001 - any failure -> safe unavailable
             return self._unavailable(spec, status)
         if price is None:
+            return self._unavailable(spec, status)
+        # Final independent yardstick AFTER the intraday override: even an
+        # intraday tick is rejected if it is wildly off the last-good level
+        # (the intraday guard above compares against last_daily_close, which is
+        # itself corrupt in a uniformly mis-scaled series).
+        if last_good is not None and not _level_is_consistent(price, last_good):
             return self._unavailable(spec, status)
         # Sanity guard: a real equity index never gaps +/-25% in one session.
         # Yahoo occasionally returns a rate-limited / partial candle that parses

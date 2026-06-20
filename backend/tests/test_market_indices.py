@@ -491,3 +491,42 @@ def test_corrupt_intraday_tick_is_ignored_keeping_daily_level():
     q = {q.market: q for q in svc.get_indices()}[Market.IDX]
     assert q.available is True
     assert q.price == 6007.66  # kept the trusted daily level
+
+
+def test_uniformly_misscaled_series_rejected_keeps_last_good():
+    """A whole 5d series that is uniformly mis-scaled is rejected, last-good kept.
+
+    Real incident: Yahoo returned the entire ^JKSE 5d window at ~21 (vs the real
+    ~6177). Such a series is internally self-consistent, so the in-frame median
+    guard passes it. The independent last-good yardstick catches it: the fresh
+    price is >3x off the previously-trusted level, so it is rejected and the
+    prior good value keeps being served (Market Pulse no longer shows garbage).
+    """
+    state = {"closes": [6172.34, 6177.14]}  # real IHSG level
+
+    def fetch(ticker, period="5d", interval="1d"):
+        if ticker != "^JKSE":
+            raise ValueError(f"unexpected ticker {ticker}")
+        idx = pd.date_range("2026-06-18", periods=len(state["closes"]), freq="D")
+        return pd.DataFrame({"Close": list(state["closes"])}, index=idx)
+
+    svc = MarketIndicesService(fetcher=fetch, now_provider=_closed_now)
+    spec = INDEX_BY_MARKET[Market.IDX]
+
+    # 1) First fetch: good real level -> cached as last-good.
+    first = svc._get_one(spec)
+    assert first.available is True
+    assert first.price == 6177.14
+
+    # 2) Yahoo now hands back a uniformly mis-scaled series (~21). Force a
+    #    re-fetch by expiring the cache, then read again.
+    state["closes"] = [18.62, 21.0]
+    # Expire the cached entry so _get_one re-fetches (ttl default 300s).
+    with svc._lock:
+        ts, q = svc._cache[spec.symbol]
+        svc._cache[spec.symbol] = (ts - 10_000.0, q)  # stale -> refetch
+
+    second = svc._get_one(spec)
+    # The corrupt ~21 series is rejected; the last-good 6177 is served instead.
+    assert second.available is True
+    assert second.price == 6177.14
