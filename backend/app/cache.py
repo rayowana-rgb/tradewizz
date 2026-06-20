@@ -464,6 +464,17 @@ class OhlcvCache:
             "interval": interval,
         }
         meta_path.write_text(json.dumps(meta))
+        # A fresh OHLCV write changes the market's data-freshness timestamp, so
+        # drop the memoized freshness-probe results that the screener-cache
+        # staleness check reads (otherwise a new candle could go undetected for
+        # up to the probe TTL). Imported lazily to avoid an import cycle.
+        try:
+            from .screener_cache.service import (
+                invalidate_freshness_probe_cache,
+            )
+            invalidate_freshness_probe_cache()
+        except Exception:  # noqa: BLE001 - never let cache write break on this
+            pass
 
 
 def make_cached_fetcher(

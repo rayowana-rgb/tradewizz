@@ -22,11 +22,51 @@ callable so this layer stays a thin cache around the existing engine.
 from __future__ import annotations
 
 import threading
+import time as _time
 from datetime import datetime, timezone
 from typing import Callable, Dict, Optional, Tuple
 
 from ..models import Market, ScreenerResult
 from .store import ScreenerSnapshotRecord, ScreenerSnapshotStore
+
+# --- Data-freshness probe cache --------------------------------------------- #
+#
+# ``latest_market_candle_ts`` / ``latest_market_write_ts`` scan EVERY cached
+# OHLCV ``*.meta.json`` file on disk (tens of thousands across all markets) to
+# find the newest candle / write timestamp. ``service.get`` calls these probes
+# on the staleness-validation path, so every steady-state request (e.g. the
+# Dashboard market overview) was re-reading ~50k+ small files from disk -- the
+# dominant cost (multi-second latency) even though nothing was being fetched.
+#
+# These timestamps only change when the warmer/engine (re)writes the OHLCV
+# cache, which happens at most a few times per minute, so a short TTL memo is
+# safe: it never serves a snapshot built from data older than the probe knew,
+# and at most delays freshness detection by ``_PROBE_TTL_SECONDS``.
+_PROBE_TTL_SECONDS = 30.0
+_PROBE_CACHE_GUARD = threading.Lock()
+# key: (func_name, market_code, include_write_time) -> (expires_at, value)
+_PROBE_CACHE: Dict[Tuple[str, str, bool], Tuple[float, Optional[str]]] = {}
+
+
+def _probe_cache_get(key: Tuple[str, str, bool]) -> Tuple[bool, Optional[str]]:
+    """Return ``(hit, value)`` for a cached probe result within its TTL."""
+    now = _time.monotonic()
+    with _PROBE_CACHE_GUARD:
+        entry = _PROBE_CACHE.get(key)
+        if entry is not None and entry[0] > now:
+            return True, entry[1]
+    return False, None
+
+
+def _probe_cache_put(key: Tuple[str, str, bool], value: Optional[str]) -> None:
+    with _PROBE_CACHE_GUARD:
+        _PROBE_CACHE[key] = (_time.monotonic() + _PROBE_TTL_SECONDS, value)
+
+
+def invalidate_freshness_probe_cache() -> None:
+    """Drop all memoized freshness-probe results (call after a cache write)."""
+    with _PROBE_CACHE_GUARD:
+        _PROBE_CACHE.clear()
 
 # --- Single-flight (thundering-herd) guard for CLOSED-market engine runs ---- #
 #
@@ -97,6 +137,10 @@ def latest_market_candle_ts(
     from ..cache import all_caches  # noqa: WPS433
 
     want = (market_code or "").upper().strip()
+    ck = ("candle", want, bool(include_write_time))
+    hit, cached = _probe_cache_get(ck)
+    if hit:
+        return cached
     best: Optional[str] = None
     for cache in all_caches():
         try:
@@ -114,6 +158,7 @@ def latest_market_candle_ts(
                 norm = _to_iso_utc(raw)
                 if norm and (best is None or norm > best):
                     best = norm
+    _probe_cache_put(ck, best)
     return best
 
 
@@ -134,6 +179,10 @@ def latest_market_write_ts(market_code: str) -> Optional[str]:
     from ..cache import all_caches  # noqa: WPS433
 
     want = (market_code or "").upper().strip()
+    ck = ("write", want, False)
+    hit, cached = _probe_cache_get(ck)
+    if hit:
+        return cached
     best: Optional[str] = None
     for cache in all_caches():
         try:
@@ -147,6 +196,7 @@ def latest_market_write_ts(market_code: str) -> Optional[str]:
             norm = _epoch_to_iso_utc(entry.get("fetched_at"))
             if norm and (best is None or norm > best):
                 best = norm
+    _probe_cache_put(ck, best)
     return best
 
 

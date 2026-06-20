@@ -20,6 +20,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Protocol
 
+# How many recent snapshots to retain per (market, category) key. Only the
+# newest is ever served; a small buffer keeps a little history for debugging
+# without letting the table grow unbounded.
+_KEEP_PER_KEY = 3
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -135,6 +140,23 @@ class SqliteScreenerSnapshotStore:
                 ),
             )
             new_id = int(cur.lastrowid)
+            # Retention: only the latest few snapshots per (market, category)
+            # are ever read (``latest`` / ``get_for_date`` use ORDER BY id DESC
+            # LIMIT 1). Without pruning the table grew unbounded -- hundreds of
+            # ~128KB payloads per market accumulated to a 60MB+ DB, bloating
+            # backups and disk. Keep the newest ``_KEEP_PER_KEY`` rows for this
+            # key and delete the rest.
+            conn.execute(
+                """
+                DELETE FROM screener_snapshots
+                WHERE market = ? AND category = ? AND id NOT IN (
+                    SELECT id FROM screener_snapshots
+                    WHERE market = ? AND category = ?
+                    ORDER BY id DESC LIMIT ?
+                )
+                """,
+                (market, category, market, category, _KEEP_PER_KEY),
+            )
         return ScreenerSnapshotRecord(
             id=new_id,
             market=market,
