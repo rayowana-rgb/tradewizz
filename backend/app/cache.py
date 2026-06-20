@@ -123,6 +123,39 @@ def _latest_index_ts(df: pd.DataFrame) -> Optional[str]:
         return None
 
 
+def _close_fingerprint(df: pd.DataFrame) -> Optional[str]:
+    """Stable fingerprint of the settled-close series, or None.
+
+    Used by :meth:`OhlcvCache._write` to decide whether a (re)write actually
+    changed the underlying Yahoo data. The screener-cache staleness check keys
+    off ``fetched_at`` (the file write-time) so that a genuinely fresher
+    same-day price (the GULA 640->665 case) rebuilds the frozen snapshot. But
+    the daily warmer rewrites every cache file -- often with byte-identical
+    data -- which would otherwise advance ``fetched_at`` and trigger a full,
+    rate-limit-prone universe rebuild for no reason (the catastrophic
+    /screen/us timeout). Anchoring ``fetched_at`` to a content fingerprint
+    means an identical rewrite keeps the OLD write-time, so it never looks
+    "newer" than the snapshot, while a real price change still advances it.
+
+    Fingerprint = settled candle timestamp + the last few settled closes
+    (rounded), which captures both a new trading day and a same-day last-price
+    correction without being fragile to float noise.
+    """
+    try:
+        if df is None or df.empty or "Close" not in df.columns:
+            return None
+        settled = df["Close"].dropna()
+        if settled.empty:
+            return None
+        ts = pd.Timestamp(settled.index[-1]).isoformat()
+        tail = settled.tail(3)
+        vals = ",".join(f"{float(v):.6g}" for v in tail.tolist())
+        raw = f"{ts}|{len(settled)}|{vals}"
+        return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+    except Exception:  # noqa: BLE001 - fingerprint is best-effort
+        return None
+
+
 def _normalize_iso(value: object) -> Optional[str]:
     """Normalize an ISO ts string to ISO-8601 UTC (naive treated as UTC).
 
@@ -591,6 +624,33 @@ class OhlcvCache:
                trading_date: str, *, ticker: str = "", market: str = "",
                period: str = "", interval: str = "") -> None:
         df.to_csv(csv_path)
+        # Content fingerprint of the settled-close series. If a (re)write does
+        # NOT change the underlying Yahoo data (e.g. the daily warmer rewriting
+        # an identical file), we keep the PRIOR ``fetched_at`` so the write-time
+        # does not advance past a screener snapshot's ``generated_at`` and
+        # needlessly trigger a full, rate-limit-prone universe rebuild. A real
+        # data change (new candle or same-day last-price correction -- the GULA
+        # 640->665 case) changes the fingerprint, so ``fetched_at`` advances and
+        # the snapshot correctly rebuilds.
+        fingerprint = _close_fingerprint(df)
+        now_clock = self._clock()
+        fetched_at = now_clock
+        if fingerprint is not None:
+            try:
+                prev = self._read_meta(meta_path) if meta_path.exists() else None
+            except Exception:  # noqa: BLE001
+                prev = None
+            if (
+                prev is not None
+                and prev.get("content_fp") == fingerprint
+                and prev.get("fetched_at")
+            ):
+                # Data unchanged -> preserve the original write-time so the
+                # screener-cache staleness probe does not see a phantom refresh.
+                try:
+                    fetched_at = float(prev["fetched_at"])
+                except (TypeError, ValueError):
+                    fetched_at = now_clock
         # ``trading_date`` is the session we FETCHED FOR (clock-derived). We
         # also record ``settled_date`` = the date of the newest row that has a
         # usable Close. They differ when the provider returns an unsettled
@@ -599,10 +659,11 @@ class OhlcvCache:
         # (bounded) until today's close lands, instead of freezing yesterday's
         # price under today's date (the "one day stale" bug).
         meta = {
-            "fetched_at": self._clock(),
+            "fetched_at": fetched_at,
             "trading_date": trading_date,
             "settled_date": _settled_trading_date(df),
             "latest_ts": _latest_index_ts(df),
+            "content_fp": fingerprint,
             "ticker": ticker,
             "market": market,
             "period": period,

@@ -341,3 +341,56 @@ def test_unsettled_today_bar_refetches_when_close_lands(tmp_path):
     meta2 = _json.loads(meta_path.read_text())
     assert meta2["trading_date"] == "2026-06-18"
     assert meta2["settled_date"] == "2026-06-18"  # gap closed
+
+
+def test_identical_rewrite_preserves_fetched_at(tmp_path):
+    """A re-write with byte-identical settled data keeps the OLD ``fetched_at``.
+
+    Guards the catastrophic /screen/us rebuild: the daily warmer rewrites every
+    cache file even when nothing changed. If ``fetched_at`` advanced on each
+    rewrite, the screener-cache staleness probe would see a phantom data refresh
+    and rebuild the whole (rate-limit-prone) US universe. The content
+    fingerprint pins ``fetched_at`` to the data, so an identical rewrite does
+    not look "newer" than a frozen snapshot.
+    """
+    import json as _json
+
+    state = {"close": 100.0}
+
+    def fetch(_t, _p, _i):
+        n = 30
+        c = np.linspace(state["close"] - 5, state["close"], n)
+        idx = pd.date_range(end="2026-06-08", periods=n, freq="D")
+        return pd.DataFrame(
+            {"Open": c, "High": c + 1, "Low": c - 1, "Close": c,
+             "Volume": np.full(n, 5e6)},
+            index=idx,
+        )
+
+    clock = FakeClock(1000.0)
+    # Short TTL: each get() after the clock advances past TTL re-fetches and
+    # rewrites the meta IN PLACE -- exactly the warmer's steady-state path
+    # (re-fetch on expiry, meta preserved, no explicit clear()).
+    cache = OhlcvCache(fetch, cache_dir=tmp_path, ttl_seconds=10, clock=clock)
+    key = OhlcvCache._key("0700.HK", "1y", "1d")
+    meta_path = tmp_path / f"{key}.meta.json"
+
+    cache.get("0700.HK", "1y", "1d")
+    first_fetched = _json.loads(meta_path.read_text())["fetched_at"]
+    assert first_fetched == 1000.0
+
+    # Expire + re-fetch IDENTICAL data (warmer rewrite). Clock advanced a lot.
+    clock.advance(5000)
+    cache.get("0700.HK", "1y", "1d")
+    same_fetched = _json.loads(meta_path.read_text())["fetched_at"]
+    # fetched_at must NOT advance: data unchanged -> no phantom refresh.
+    assert same_fetched == first_fetched
+
+    # Now a genuine same-day price change (GULA 640->665 case): close moves,
+    # so the fingerprint changes and fetched_at advances -> snapshot rebuilds.
+    state["close"] = 110.0
+    clock.advance(5000)
+    cache.get("0700.HK", "1y", "1d")
+    moved_fetched = _json.loads(meta_path.read_text())["fetched_at"]
+    assert moved_fetched > first_fetched
+    assert moved_fetched == 11000.0

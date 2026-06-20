@@ -235,6 +235,42 @@ def _parse_iso(value: object) -> Optional[datetime]:
 # an immediate rebuild loop.
 _WRITE_TIME_EPSILON_S = 0.5
 
+# Cooldown (seconds) after a write-time-driven CLOSED rebuild for a given
+# (market, cache_key, market_date). Once a rebuild has run, another rebuild
+# triggered ONLY by the cache write-time leading generated_at is suppressed for
+# this window: the existing snapshot is served instead. This bounds the cost of
+# the Opsi A path to at most one heavy re-screen per cooldown, so a market whose
+# cache files are continually rewritten (e.g. the daily warmer touching the huge
+# US universe, or legacy meta files that lack a content fingerprint) cannot pin
+# /screen into a perpetual multi-minute, rate-limit-prone rebuild loop. A
+# genuinely newer trading-day candle (``_data_is_newer_than``) and explicit
+# force_refresh still bypass this cooldown.
+_REBUILD_COOLDOWN_S = 1800.0  # 30 minutes
+_rebuild_seen: Dict[str, float] = {}
+_rebuild_seen_lock = threading.Lock()
+
+
+def _rebuild_recent(market_value: str, cache_key: str, market_date: str) -> bool:
+    """True if a write-time rebuild for this snapshot ran within the cooldown."""
+    k = f"{market_value}|{cache_key}|{market_date}"
+    now = _time.time()
+    with _rebuild_seen_lock:
+        last = _rebuild_seen.get(k)
+        return last is not None and (now - last) < _REBUILD_COOLDOWN_S
+
+
+def _mark_rebuild(market_value: str, cache_key: str, market_date: str) -> None:
+    k = f"{market_value}|{cache_key}|{market_date}"
+    with _rebuild_seen_lock:
+        _rebuild_seen[k] = _time.time()
+
+
+def reset_rebuild_cooldown() -> None:
+    """Clear the write-time rebuild cooldown (tests / explicit invalidation)."""
+    with _rebuild_seen_lock:
+        _rebuild_seen.clear()
+
+
 REASON_OPEN = "Using latest market-close screening result"
 NEXT_REFRESH_RULE = "Will refresh after next market close"
 FORCE_REFRESH_DENIED = (
@@ -363,6 +399,17 @@ class ScreenerCacheService:
             # so it will not rebuild again until the NEXT fetch -- bounding
             # the work to at most one re-screen per data refresh.
             if self._data_written_after(market, existing):
+                # Bound the Opsi A rebuild: if a write-time rebuild already ran
+                # for this snapshot within the cooldown, serve the existing
+                # snapshot rather than re-running the heavy engine. Prevents a
+                # continually-rewritten cache (warmer touching the US universe,
+                # or legacy meta lacking content_fp) from pinning /screen into a
+                # perpetual rate-limit-prone rebuild loop.
+                if _rebuild_recent(market.value, cache_key, today):
+                    return self._from_record(
+                        existing, cached=True, status=status
+                    )
+                _mark_rebuild(market.value, cache_key, today)
                 return self._run_and_save(market, cache_key, status, today)
             return self._from_record(existing, cached=True, status=status)
 

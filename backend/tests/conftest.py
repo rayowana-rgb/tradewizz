@@ -15,6 +15,26 @@ if "TRADEWIZ_SCREENER_CACHE_DB" not in os.environ:
     )
 
 
+@pytest.fixture(autouse=True)
+def _reset_screener_cache_global_state():
+    """Clear screener-cache module globals between tests.
+
+    The write-time rebuild cooldown (``_rebuild_seen``) is process-global and
+    keyed by (market, cache_key, date); without a per-test reset, one test's
+    rebuild would suppress another's via the cooldown.
+    """
+    try:
+        from app.screener_cache.service import (
+            reset_rebuild_cooldown,
+            invalidate_freshness_probe_cache,
+        )
+        reset_rebuild_cooldown()
+        invalidate_freshness_probe_cache()
+    except Exception:  # noqa: BLE001 - app may not be importable in some tests
+        pass
+    yield
+
+
 @pytest.fixture(autouse=True, scope="session")
 def _isolated_model_dir():
     """Point the RandomForest model cache at a throwaway dir for the whole run.

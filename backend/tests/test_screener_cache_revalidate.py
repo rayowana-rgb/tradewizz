@@ -343,6 +343,36 @@ def test_opsi_a_rebuilds_when_write_time_leads_generated_at():
     assert second.matches[0].price == 110.0
 
 
+def test_opsi_a_rebuild_is_bounded_by_cooldown():
+    """A continually-leading write-time rebuilds ONCE, then serves the snapshot.
+
+    Models the catastrophic /screen/us loop: when the cache write-time always
+    leads ``generated_at`` (warmer continually rewriting the universe, or legacy
+    meta lacking a content fingerprint), the Opsi A path would re-run the heavy
+    engine on EVERY request. The rebuild cooldown bounds it to one heavy run per
+    window; subsequent requests serve the existing snapshot.
+    """
+    store = InMemoryScreenerSnapshotStore()
+    engine = _Engine()
+    svc = _service(
+        store,
+        engine,
+        data_ts=lambda _m: _SAME_DAY_CANDLE,
+        # Write-time ALWAYS leads generation, even after a rebuild advances it.
+        write_ts=lambda _m: _iso(60),
+    )
+    first = svc.get(Market.HKEX, KEY)
+    assert first.cached is False
+    assert engine.calls == 1
+
+    # Many further requests under a perpetually-leading write-time: only the
+    # first triggers the heavy rebuild; the cooldown serves the snapshot after.
+    for _ in range(10):
+        r = svc.get(Market.HKEX, KEY)
+    assert engine.calls == 2  # one bounded rebuild, not 11
+    assert r.cached is True
+
+
 def test_opsi_a_keeps_snapshot_when_write_time_predates_generation():
     """Opsi A guard: an OLD write-time (before generation) must NOT rebuild."""
     store = InMemoryScreenerSnapshotStore()
