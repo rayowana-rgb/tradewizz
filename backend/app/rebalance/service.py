@@ -155,6 +155,11 @@ class RebalanceService:
         actions: List[RebalanceAction] = []
         warnings: List[str] = []
 
+        # Regime is a per-MARKET property, not per-position. Computing it once
+        # per distinct market (instead of once per position) avoids redundant
+        # market scans for portfolios that hold many names in the same market.
+        regime_by_market: Dict[Market, str] = {}
+
         for p in positions:
             key = (p.symbol, p.market)
             weight = (values[key] / invested * 100.0) if invested > 0 else 0.0
@@ -162,7 +167,9 @@ class RebalanceService:
             score = float(match.score) if match else 50.0
             signal = (match.signal if match else "HOLD") or "HOLD"
             quality = float(quality_by_key.get(key, 50.0))
-            regime = self._safe_regime(p.market)
+            if p.market not in regime_by_market:
+                regime_by_market[p.market] = self._safe_regime(p.market)
+            regime = regime_by_market[p.market]
             pnl_pct = _position_pnl_pct(p)
             target = _target_weight(score, profile_cap)
 

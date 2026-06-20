@@ -522,3 +522,56 @@ def test_yf_fetch_honors_retry_after_header(monkeypatch):
     # smaller exponential base (0.5s).
     backoffs = [s for s in slept if s >= 3]
     assert backoffs, f"expected a >=3s backoff, got {slept}"
+
+
+# ---- score_symbol_cached (portfolio scoring fast-path) -----------------------
+
+class _FakeCache:
+    """Minimal cache exposing read_cached_only for score_symbol_cached tests."""
+
+    def __init__(self, frames):
+        # frames: {ticker: DataFrame}
+        self._frames = frames
+        self.reads = []
+
+    def read_cached_only(self, ticker, period, interval):
+        self.reads.append((ticker, period, interval))
+        return self._frames.get(ticker)
+
+
+def _cached_engine(frames):
+    fetched = {"n": 0}
+
+    def fetcher(t, p, i):  # should NOT be called by score_symbol_cached
+        fetched["n"] += 1
+        raise AssertionError("score_symbol_cached must not fetch live")
+
+    fetcher.cache = _FakeCache(frames)  # type: ignore[attr-defined]
+    eng = AnalysisEngine(fetcher=fetcher)
+    return eng, fetcher
+
+
+def test_score_symbol_cached_reads_cache_no_fetch():
+    """A cached symbol scores from disk WITHOUT any live fetch."""
+    df = uptrend()
+    eng, fetcher = _cached_engine({"BBCA.JK": df})
+    match = eng.score_symbol_cached("BBCA", Market.IDX)
+    assert match is not None
+    assert match.symbol == "BBCA"
+    assert match.score > 0
+    # Read happened, no live fetch attempted.
+    assert fetcher.cache.reads
+    assert all(r[0] == "BBCA.JK" for r in fetcher.cache.reads)
+
+
+def test_score_symbol_cached_returns_none_when_uncached():
+    """No on-disk data -> None (never a mock score, never a fetch)."""
+    eng, _ = _cached_engine({})  # empty cache
+    assert eng.score_symbol_cached("ZZZZ", Market.IDX) is None
+
+
+def test_score_symbol_cached_rejects_mock_fallback():
+    """Empty cached frame -> None rather than a deterministic mock match."""
+    import pandas as _pd
+    eng, _ = _cached_engine({"TINY.JK": _pd.DataFrame()})
+    assert eng.score_symbol_cached("TINY", Market.IDX) is None

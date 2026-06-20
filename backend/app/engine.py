@@ -1014,6 +1014,28 @@ class AnalysisEngine:
             return None
         return self._close_from_df(df)
 
+    def score_symbol_cached(
+        self, symbol: str, market: Market
+    ) -> Optional[ScreenerMatch]:
+        """Score a single symbol from CACHED OHLCV only (no network fetch).
+
+        Returns a real ScreenerMatch when on-disk data exists, else None. Used
+        by the portfolio scoring path for names outside the cached universe
+        snapshot: avoids a live fetch that, under provider rate limits, would
+        be slow AND degrade to a deterministic mock score.
+        """
+        try:
+            match = self._screen_one(symbol, market, {}, cached_only=True)
+        except Exception:  # noqa: BLE001 - best-effort
+            return None
+        if match is None:
+            return None
+        # Reject the deterministic mock fallback _screen_one emits when data is
+        # missing -- the caller wants a real cached score or nothing.
+        if getattr(match, "data_source", "live") == "mock":
+            return None
+        return match
+
     def latest_price(self, symbol: str, market: Market) -> Optional[float]:
         """Latest close price for a symbol via the unified cached fetch path.
 
@@ -1186,12 +1208,29 @@ class AnalysisEngine:
         )
 
     def _screen_one(
-        self, sym: str, market: Market, names: dict
+        self, sym: str, market: Market, names: dict,
+        cached_only: bool = False,
     ) -> ScreenerMatch:
-        """Screen a single symbol; deterministic mock fallback on any failure."""
+        """Screen a single symbol; deterministic mock fallback on any failure.
+
+        When ``cached_only`` is True, read OHLCV from disk WITHOUT a network
+        fetch (never blocks on / triggers a live provider call). Used by
+        latency-sensitive callers (portfolio scoring of names outside the
+        cached universe snapshot) so a rate-limited provider can't turn a
+        single lookup into a slow mock-data result.
+        """
         ticker = yf_symbol(sym, market)
         try:
-            df = self._fetch(ticker, "1y", "1d")
+            if cached_only:
+                cache = getattr(self._fetch, "cache", None)
+                df = (
+                    cache.read_cached_only(ticker, "1y", "1d")
+                    if cache is not None else None
+                )
+                if df is None or df.empty:
+                    raise ValueError("no cached data")
+            else:
+                df = self._fetch(ticker, "1y", "1d")
             ind = indicators.compute_all(df)
             if ind.get("close") is None:
                 raise ValueError("insufficient data")

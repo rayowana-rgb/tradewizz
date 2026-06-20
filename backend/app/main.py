@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from typing import List, Optional
 
 from fastapi import FastAPI, Header, HTTPException, Query
@@ -232,13 +233,143 @@ from .portfolio_health.router import (  # noqa: E402
 from .portfolio_health.service import PortfolioHealthService  # noqa: E402
 
 
-def _symbol_score(symbol, market):
-    """Single-symbol score via the existing engine (ScreenerMatch or None)."""
+# --------------------------------------------------------------------------- #
+# Per-market score index (snapshot-backed).                                    #
+#                                                                              #
+# Portfolio Health / Rebalance / Manager need a per-symbol score for every     #
+# held position. Re-running ``engine.screen(symbols=[s])`` per symbol is        #
+# O(positions) HEAVY work: each call can fetch/score a symbol (0.3-8s), so a    #
+# 45-position portfolio took ~30s and blew past the app's 25s timeout.         #
+#                                                                              #
+# The market-close screener already scores the WHOLE universe and persists it  #
+# as a snapshot (same one /screen serves). We read that snapshot ONCE per       #
+# request-batch, build an in-memory {symbol -> ScreenerMatch} index, and serve  #
+# per-symbol lookups in O(1). The snapshot is read-only here (we never trigger  #
+# a heavy rebuild from this path), and the index is invalidated when the        #
+# snapshot's generated_at changes. Symbols below the liquidity floor (not in    #
+# the snapshot) fall back to a single-symbol screen.                           #
+_score_index_lock = threading.Lock()
+# market.value -> (generated_at_iso, {symbol: ScreenerMatch})
+_score_index_cache: "dict[str, tuple[str, dict]]" = {}
+
+# Short-TTL memo for per-symbol scores. Within one request, Rebalance scores
+# every position TWICE (once via Portfolio Health, once via its own match
+# lookup), and Health/Manager re-score the same names back-to-back. This memo
+# collapses those repeats (and a 2nd call within the window) to O(1), which is
+# the single biggest win for the slow single-symbol fallback path. Keyed by
+# (market, symbol) -> (epoch, ScreenerMatch|None).
+_SCORE_MEMO_TTL_S = 60.0
+_score_memo_lock = threading.Lock()
+_score_memo: "dict[tuple, tuple[float, object]]" = {}
+
+
+def _score_memo_get(market_value, symbol):
+    import time as _t
+    with _score_memo_lock:
+        hit = _score_memo.get((market_value, symbol))
+        if hit is not None and (_t.time() - hit[0]) < _SCORE_MEMO_TTL_S:
+            return True, hit[1]
+    return False, None
+
+
+def _score_memo_put(market_value, symbol, match):
+    import time as _t
+    with _score_memo_lock:
+        _score_memo[(market_value, symbol)] = (_t.time(), match)
+
+
+def invalidate_score_memo() -> None:
+    """Clear the per-symbol score memo + snapshot index (tests / forced refresh)."""
+    with _score_memo_lock:
+        _score_memo.clear()
+    with _score_index_lock:
+        _score_index_cache.clear()
+
+
+def _snapshot_score_index(market):
+    """Return {symbol: ScreenerMatch} from today's cached superset snapshot.
+
+    Read-only: does not run the heavy engine or save snapshots. Returns ``None``
+    when no snapshot exists for today (cold start) so the caller can fall back.
+    """
     try:
-        result = engine.screen(market, symbols=[symbol], limit=1)
-        return result.matches[0] if result.matches else None
+        floor = default_min_value_traded(market)
+        cache_key = make_cache_key(
+            category="",
+            limit=MAX_LIMIT,
+            min_score=0.0,
+            min_value_traded=floor,
+        )
+        today = trading_date_str(market)
+        rec = screener_snapshot_store.get_for_date(
+            market.value, cache_key, today
+        )
+        if rec is None:
+            return None
+        with _score_index_lock:
+            cached = _score_index_cache.get(market.value)
+            if cached is not None and cached[0] == rec.generated_at:
+                return cached[1]
+        result = ScreenerResult.model_validate(rec.payload())
+        index = {m.symbol: m for m in result.matches}
+        with _score_index_lock:
+            _score_index_cache[market.value] = (rec.generated_at, index)
+        return index
     except Exception:  # noqa: BLE001
         return None
+
+
+def _snapshot_regime(market):
+    """Bull/neutral/bear regime read from the cached superset snapshot.
+
+    The radar's ``market_regime`` runs its OWN limit=50 screen (a different
+    cache key from /screen), which on a cold US universe triggers a full
+    12k-symbol scan -- pushing Rebalance past the app's timeout. The regime is
+    a breadth signal (advancers' share) we can derive directly from the cached
+    superset snapshot's matches -- read-only, no heavy work. Falls back to the
+    radar provider only when no snapshot exists (cold start).
+    """
+    index = _snapshot_score_index(market)
+    if index:
+        from .radar.service import _regime_from_breadth
+        return _regime_from_breadth(list(index.values()))
+    try:
+        return _radar_service.market_regime(market)
+    except Exception:  # noqa: BLE001
+        return "neutral"
+
+
+def _symbol_score(symbol, market):
+    """Per-symbol score (ScreenerMatch or None).
+
+    Fast path: O(1) lookup from today's cached full-universe snapshot. Slow
+    fallback: single-symbol engine screen (cold start, or a held name below the
+    liquidity floor that the universe screen excludes).
+    """
+    hit, cached = _score_memo_get(market.value, symbol)
+    if hit:
+        return cached
+
+    index = _snapshot_score_index(market)
+    if index is not None:
+        match = index.get(symbol)
+        if match is not None:
+            _score_memo_put(market.value, symbol, match)
+            return match
+        # Snapshot exists but the symbol isn't in it (below the liquidity
+        # floor, delisted, or non-universe). Score from CACHED OHLCV only.
+    # Cache-only scoring: NEVER make a live fetch from this latency-sensitive
+    # path. A held name with no cached data returns None, and the calling
+    # services already substitute a neutral score (50) for a missing match.
+    # (Previously a last-resort live single-symbol screen here would, under a
+    # rate-limited provider, block for seconds per uncached name AND degrade
+    # to a wrong mock score -- the dominant cause of the Rebalance timeout for
+    # ETF/thin-name US portfolios. The daily warmer keeps held universe names
+    # cached; truly-uncached names are rare and not worth blocking the whole
+    # request.)
+    match = engine.score_symbol_cached(symbol, market)
+    _score_memo_put(market.value, symbol, match)
+    return match
 
 
 app.include_router(health_router)
@@ -350,7 +481,7 @@ _rebalance_service = RebalanceService(
     positions_provider=_sim_service.positions,
     account_provider=_sim_service.account,
     score_provider=_symbol_score,
-    regime_provider=_radar_service.market_regime,
+    regime_provider=_snapshot_regime,
 )
 app.include_router(rebalance_router)
 _set_rebalance_service(_rebalance_service)

@@ -545,3 +545,42 @@ def test_demand_includes_phase3_features(client):
     assert "Auto Watchlist AI" in labels
     assert "Portfolio Rebalancing AI" in labels
     assert "Global Rotation Engine" in labels
+
+
+def test_rebalance_computes_regime_once_per_market():
+    """Regime is a per-MARKET property: many positions in the same market must
+    not re-invoke the regime provider per position (perf: avoids redundant
+    market scans that pushed large portfolios past the request timeout)."""
+    calls = {"n": 0, "markets": []}
+
+    def _counting_regime(market):
+        calls["n"] += 1
+        calls["markets"].append(market)
+        return "bull"
+
+    positions = [
+        _Pos("AAA", Market.US, 100_000.0),
+        _Pos("BBB", Market.US, 100_000.0),
+        _Pos("CCC", Market.US, 100_000.0),
+        _Pos("DDD", Market.IDX, 100_000.0),
+        _Pos("EEE", Market.IDX, 100_000.0),
+    ]
+
+    health = PortfolioHealthService(
+        positions_provider=lambda uid: positions,
+        score_provider=lambda s, m: _match(s, 80, 1.0, 3e9),
+    )
+    rebal = RebalanceService(
+        health_service=health,
+        positions_provider=lambda uid: positions,
+        account_provider=lambda uid: _Acct(0.0, 500_000.0),
+        score_provider=lambda s, m: _match(s, 80, 1.0, 3e9),
+        regime_provider=_counting_regime,
+    )
+
+    resp = rebal.rebalance(1)
+    assert len(resp.actions) == 5
+    # 2 distinct markets (US, IDX) -> regime provider called exactly twice,
+    # not once per position (which would be 5).
+    assert calls["n"] == 2, calls
+    assert set(calls["markets"]) == {Market.US, Market.IDX}
