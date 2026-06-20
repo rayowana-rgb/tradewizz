@@ -141,23 +141,21 @@ def latest_market_candle_ts(
     hit, cached = _probe_cache_get(ck)
     if hit:
         return cached
+    # O(1) per-market lookup via the cache's incremental freshness index --
+    # NOT a full entries() disk scan. Scanning every cached .meta.json (~50k
+    # files) cost ~1.8s and ran on every /screen miss after the 30s memo
+    # expired, which is why "filter >50/>70/>90" felt slow even though the
+    # heavy screen was already cached.
     best: Optional[str] = None
     for cache in all_caches():
         try:
-            entries = cache.entries()
+            ts = cache.market_freshness(
+                want, include_write_time=include_write_time
+            )
         except Exception:  # noqa: BLE001 - never let a probe break /screen
             continue
-        for entry in entries:
-            mkt = str(entry.get("market") or "").upper()
-            if want and mkt != want:
-                continue
-            candidates = [entry.get("latest_candle_ts")]
-            if include_write_time:
-                candidates.append(_epoch_to_iso_utc(entry.get("fetched_at")))
-            for raw in candidates:
-                norm = _to_iso_utc(raw)
-                if norm and (best is None or norm > best):
-                    best = norm
+        if ts and (best is None or ts > best):
+            best = ts
     _probe_cache_put(ck, best)
     return best
 
@@ -186,16 +184,11 @@ def latest_market_write_ts(market_code: str) -> Optional[str]:
     best: Optional[str] = None
     for cache in all_caches():
         try:
-            entries = cache.entries()
+            ts = cache.market_write_ts(want)
         except Exception:  # noqa: BLE001 - never let a probe break /screen
             continue
-        for entry in entries:
-            mkt = str(entry.get("market") or "").upper()
-            if want and mkt != want:
-                continue
-            norm = _epoch_to_iso_utc(entry.get("fetched_at"))
-            if norm and (best is None or norm > best):
-                best = norm
+        if ts and (best is None or ts > best):
+            best = ts
     _probe_cache_put(ck, best)
     return best
 

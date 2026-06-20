@@ -123,6 +123,43 @@ def _latest_index_ts(df: pd.DataFrame) -> Optional[str]:
         return None
 
 
+def _normalize_iso(value: object) -> Optional[str]:
+    """Normalize an ISO ts string to ISO-8601 UTC (naive treated as UTC).
+
+    Mirrors the screener-cache service's _to_iso_utc so the freshness index
+    produces byte-identical strings to the old entries()-scan probe.
+    """
+    if value is None:
+        return None
+    try:
+        from datetime import datetime, timezone
+        s = str(value).strip()
+        if not s:
+            return None
+        if s.endswith("Z"):
+            s = s[:-1] + "+00:00"
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        else:
+            dt = dt.astimezone(timezone.utc)
+        return dt.isoformat()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _epoch_iso(epoch: float) -> Optional[str]:
+    """Convert epoch-seconds to ISO-8601 UTC, or None for non-positive."""
+    try:
+        from datetime import datetime, timezone
+        secs = float(epoch)
+        if secs <= 0:
+            return None
+        return datetime.fromtimestamp(secs, tz=timezone.utc).isoformat()
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _settled_trading_date(df: pd.DataFrame) -> Optional[str]:
     """YYYY-MM-DD of the newest row with a settled ``Close``, or None.
 
@@ -170,6 +207,18 @@ class OhlcvCache:
         # are required (not asyncio locks).
         self._registry_lock = threading.Lock()
         self._key_locks: Dict[str, threading.Lock] = {}
+        # Incremental in-memory freshness index, keyed by market code. Avoids the
+        # O(N-files) disk scan that the screener-cache staleness probe used to
+        # pay on every cache miss (reading & JSON-parsing ~50k .meta.json files
+        # took ~1.8s, so EVERY /screen request after the 30s memo TTL expired
+        # stalled for ~2s -- this is why "filter >50/>70/>90" felt slow even
+        # though the heavy screen was already cached). Built lazily ONCE from
+        # disk, then kept warm by _index_meta() on every write. Each market maps
+        # to {"candle": max latest_ts epoch, "write": max fetched_at epoch,
+        # "candle_iso"/"write_iso": the chosen ISO strings}.
+        self._fresh_lock = threading.Lock()
+        self._fresh_index: Dict[str, Dict[str, object]] = {}
+        self._fresh_built = False
         register_cache(self)
 
     def _ttl_seconds(self) -> int:
@@ -280,6 +329,79 @@ class OhlcvCache:
         except Exception as exc:  # noqa: BLE001 - corrupt entry -> None
             logger.warning("cached-only read failed for %s: %s", ticker, exc)
             return None
+
+    # -- freshness index (no per-request disk scan) -----------------------
+
+    def _index_meta(self, meta: dict) -> None:
+        """Fold one meta dict into the in-memory per-market freshness index."""
+        ticker = str(meta.get("ticker", "") or "")
+        mkt = str(
+            meta.get("market") or (market_for_ticker(ticker) if ticker else "")
+        ).upper()
+        if not mkt:
+            return
+        cur = self._fresh_index.get(mkt)
+        if cur is None:
+            cur = {"candle": None, "write": 0.0,
+                   "candle_iso": None, "write_iso": None}
+            self._fresh_index[mkt] = cur
+        # Candle timestamp (the trading day the data is FOR): compare as ISO.
+        cand = meta.get("latest_ts")
+        cand_iso = _normalize_iso(cand)
+        if cand_iso is not None and (
+            cur["candle_iso"] is None or cand_iso > cur["candle_iso"]
+        ):
+            cur["candle_iso"] = cand_iso
+        # Write timestamp (when the file was (re)written): compare as epoch.
+        try:
+            fetched = float(meta.get("fetched_at", 0) or 0)
+        except (TypeError, ValueError):
+            fetched = 0.0
+        if fetched > float(cur["write"] or 0.0):
+            cur["write"] = fetched
+            cur["write_iso"] = _epoch_iso(fetched)
+
+    def _ensure_fresh_index(self) -> None:
+        """Build the freshness index from disk exactly once per process."""
+        if self._fresh_built:
+            return
+        with self._fresh_lock:
+            if self._fresh_built:
+                return
+            for meta_path in self._dir.glob("*.meta.json"):
+                meta = self._read_meta(meta_path)
+                if meta is not None:
+                    self._index_meta(meta)
+            self._fresh_built = True
+
+    def market_freshness(
+        self, market_code: str, *, include_write_time: bool = False
+    ) -> Optional[str]:
+        """Newest candle ISO ts for a market (optionally max'd with write time).
+
+        O(1) after the one-time index build -- replaces the full entries() disk
+        scan the screener-cache staleness probe used to pay every request.
+        """
+        self._ensure_fresh_index()
+        want = (market_code or "").upper().strip()
+        with self._fresh_lock:
+            cur = self._fresh_index.get(want)
+            if cur is None:
+                return None
+            best = cur.get("candle_iso")
+            if include_write_time:
+                wiso = cur.get("write_iso")
+                if wiso is not None and (best is None or wiso > best):
+                    best = wiso
+            return best  # type: ignore[return-value]
+
+    def market_write_ts(self, market_code: str) -> Optional[str]:
+        """Newest cache write-time (fetched_at) ISO ts for a market, or None."""
+        self._ensure_fresh_index()
+        want = (market_code or "").upper().strip()
+        with self._fresh_lock:
+            cur = self._fresh_index.get(want)
+            return cur.get("write_iso") if cur else None  # type: ignore
 
     def _try_read_fresh(
         self, ticker: str, market: str, trading_date: str,
@@ -487,6 +609,14 @@ class OhlcvCache:
             "interval": interval,
         }
         meta_path.write_text(json.dumps(meta))
+        # Keep the in-memory freshness index warm so the screener-cache probe
+        # never has to rescan the whole cache dir to notice this new candle.
+        try:
+            if self._fresh_built:
+                with self._fresh_lock:
+                    self._index_meta(meta)
+        except Exception:  # noqa: BLE001 - index update is best-effort
+            pass
         # A fresh OHLCV write changes the market's data-freshness timestamp, so
         # drop the memoized freshness-probe results that the screener-cache
         # staleness check reads (otherwise a new candle could go undetected for
