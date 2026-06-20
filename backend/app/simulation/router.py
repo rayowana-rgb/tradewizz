@@ -6,9 +6,13 @@ NO endpoint here ever contacts a broker. All responses carry ``simulated=true``.
 
 from __future__ import annotations
 
+import logging
+import threading
 from typing import Callable, Optional
 
 from fastapi import APIRouter, Header, HTTPException
+
+logger = logging.getLogger(__name__)
 
 from ..auth.router import get_service as get_auth_service
 from ..auth.service import AuthError
@@ -44,6 +48,25 @@ def set_service(service: SimulationService) -> None:
 def set_trade_hook(hook: Optional[Callable[..., None]]) -> None:
     global _trade_hook
     _trade_hook = hook
+
+
+def _dispatch_trade_hook(uid, symbol, market, side, quantity, price) -> None:
+    """Fire the trade hook off the request path in a detached daemon thread.
+
+    The hook is purely advisory (journal logging); it must never delay or fail
+    the order response. Any exception is logged and swallowed inside the thread.
+    """
+    hook = _trade_hook
+    if hook is None:
+        return
+
+    def _run() -> None:
+        try:
+            hook(uid, symbol, market, side, quantity, price)
+        except Exception as exc:  # noqa: BLE001 - never propagate
+            logger.warning("trade hook failed for %s/%s: %s", symbol, market, exc)
+
+    threading.Thread(target=_run, name="sim-trade-hook", daemon=True).start()
 
 
 def get_service() -> SimulationService:
@@ -120,15 +143,17 @@ def sim_order_place(
         )
     except SimulationError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message)
-    # Best-effort journal hook (after the fill; never blocks the response).
+    # Best-effort journal hook (after the fill). Run it in a DETACHED daemon
+    # thread so it can NEVER block the order response: the hook performs heavy
+    # work (single-symbol score screen + daily radar + portfolio health) that
+    # may hit a slow/rate-limited data provider and take seconds. Doing it
+    # inline made the BUY "confirm" call stall and time out. The journal entry
+    # lands a moment after the fill, which is fine for a paper-trade log.
     if _trade_hook is not None:
-        try:
-            _trade_hook(
-                uid, result.symbol, result.market, result.side,
-                result.quantity, result.price,
-            )
-        except Exception:  # noqa: BLE001
-            pass
+        _dispatch_trade_hook(
+            uid, result.symbol, result.market, result.side,
+            result.quantity, result.price,
+        )
     return result
 
 
