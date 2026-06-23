@@ -196,15 +196,39 @@ class ApiClient {
   Future<Map<String, dynamic>> authDelete(String path, {String? bearer}) =>
       _brokerCall('DELETE', path, bearer: bearer);
 
+  // ---------------------------------------------------------------------------
+  // PRIVATE Moomoo live-trading bridge (/v1/broker/moomoo/*). Owner-only.
+  // Requires BOTH the bearer token and the X-Moomoo-Secret header. Never falls
+  // back to mock; trading must be real or fail clearly. The secret is never
+  // logged.
+  // ---------------------------------------------------------------------------
+  Future<Map<String, dynamic>> moomooGet(
+    String path, {
+    required String bearer,
+    required String secret,
+  }) =>
+      _brokerCall('GET', path, bearer: bearer, moomooSecret: secret);
+
+  Future<Map<String, dynamic>> moomooPost(
+    String path,
+    Map<String, dynamic> body, {
+    required String bearer,
+    required String secret,
+  }) =>
+      _brokerCall('POST', path, body: body, bearer: bearer,
+          moomooSecret: secret);
+
   Future<Map<String, dynamic>> _brokerCall(
     String method,
     String path, {
     Map<String, dynamic>? body,
     String? bearer,
+    String? moomooSecret,
   }) async {
     final uri = Uri.parse('$baseUrl$path');
     final headers = <String, String>{'Accept': 'application/json'};
     if (bearer != null) headers['Authorization'] = 'Bearer $bearer';
+    if (moomooSecret != null) headers['X-Moomoo-Secret'] = moomooSecret;
     try {
       late final http.Response response;
       if (method == 'POST') {

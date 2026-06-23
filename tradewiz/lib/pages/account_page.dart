@@ -9,7 +9,9 @@ import '../models/subscription.dart';
 import '../widgets/broker_open_sheet.dart';
 import '../widgets/portfolio_manager.dart';
 import 'journal_page.dart';
+import 'moomoo_live_page.dart';
 import 'portfolio_page.dart';
+import '../services/moomoo_secret_store.dart';
 import '../repositories/stock_repository.dart';
 import '../services/api_client.dart';
 import '../services/auth_scope.dart';
@@ -101,6 +103,16 @@ class AccountPage extends StatefulWidget {
 class _AccountPageState extends State<AccountPage> {
   bool _loading = false;
   bool _failed = false;
+  // Owner-only Moomoo LIVE bridge secret (secure-storage backed). Created
+  // lazily; only the owner ever sees the entry point that uses it.
+  late final MoomooSecretStore _moomooSecret = MoomooSecretStore();
+
+  /// Whether the current user is the private-bridge owner. The owner-only
+  /// LIVE trading entry point is gated on this.
+  bool _isOwner(BuildContext context) {
+    final user = AuthScope.read(context).user;
+    return user != null && user.id == kMoomooOwnerUid;
+  }
   SimPortfolio? _portfolio;
   List<SimTrade> _trades = const [];
   String? _loadedForToken;
@@ -131,6 +143,12 @@ class _AccountPageState extends State<AccountPage> {
   StockRepository get _repo =>
       widget.repository ?? RepositoryScope.of(context);
   String? get _token => AuthScope.of(context).token;
+
+  @override
+  void dispose() {
+    _moomooSecret.dispose();
+    super.dispose();
+  }
 
   @override
   void didChangeDependencies() {
@@ -611,6 +629,25 @@ class _AccountPageState extends State<AccountPage> {
             ),
           ),
           const SizedBox(height: 16),
+
+          // --- Moomoo LIVE trading (owner-only, real money) -------------
+          if (_isOwner(context)) ...[
+            _LinkCard(
+              cardKey: const Key('account_moomoo_live_link'),
+              icon: Icons.bolt,
+              title: 'Moomoo · Live trading',
+              subtitle: 'Place real US orders via your Moomoo account.',
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => MoomooLivePage(
+                    repository: _repo,
+                    secretStore: _moomooSecret,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
 
           // ============================================================
           // SECTION: Account (subscription, advanced tools, reset/logout)

@@ -99,6 +99,13 @@ from .auth.router import router as auth_router  # noqa: E402
 
 app.include_router(auth_router)
 
+# PRIVATE single-user Moomoo LIVE trading bridge under /v1/broker/moomoo.
+# Hard-disabled unless TRADEWIZZ_MOOMOO_SECRET is set; gated by owner JWT
+# allowlist + shared-secret header. NOT part of the public product surface.
+from .moomoo.router import router as moomoo_router  # noqa: E402
+
+app.include_router(moomoo_router)
+
 # Per-user multi-broker connection framework under /v1/brokers.
 from .brokers.router import router as brokers_router  # noqa: E402
 from .brokers.router import get_service as _get_conn_service  # noqa: E402

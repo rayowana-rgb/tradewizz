@@ -1,6 +1,7 @@
 import '../models/analysis_result.dart';
 import '../models/broker.dart';
 import '../models/broker_connection.dart';
+import '../models/moomoo_live.dart';
 import '../models/market.dart';
 import '../models/market_index.dart';
 import '../models/news.dart';
@@ -276,6 +277,89 @@ class StockRepository {
       bearer: token,
     );
     return OrderResult.fromJson(j);
+  }
+
+  // --- PRIVATE Moomoo LIVE trading bridge (/v1/broker/moomoo/*) -------------
+  // Owner-only. REAL money. Requires both the bearer token and the per-device
+  // Moomoo secret. These NEVER fall back to mock and surface backend errors.
+
+  /// Live account snapshot. Backs `GET /v1/broker/moomoo/account`.
+  Future<MoomooLiveAccount> moomooAccount({
+    required String token,
+    required String secret,
+  }) async {
+    final j = await _client.moomooGet('/broker/moomoo/account',
+        bearer: token, secret: secret);
+    return MoomooLiveAccount.fromJson(j);
+  }
+
+  /// Live open positions. Backs `GET /v1/broker/moomoo/positions`.
+  Future<List<MoomooLivePosition>> moomooPositions({
+    required String token,
+    required String secret,
+  }) async {
+    final j = await _client.moomooGet('/broker/moomoo/positions',
+        bearer: token, secret: secret);
+    return (j['positions'] as List<dynamic>? ?? [])
+        .map((e) => MoomooLivePosition.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Preview a live order (validates + notional cap; does NOT place).
+  /// Backs `POST /v1/broker/moomoo/order/preview`.
+  Future<MoomooLivePreview> moomooPreview({
+    required String token,
+    required String secret,
+    required String symbol,
+    required String side, // BUY | SELL
+    required double quantity,
+    required String orderType, // MARKET | LIMIT
+    double? price,
+  }) async {
+    final body = <String, dynamic>{
+      'symbol': symbol,
+      'side': side,
+      'quantity': quantity,
+      'order_type': orderType,
+    };
+    if (price != null) body['price'] = price;
+    final j = await _client.moomooPost('/broker/moomoo/order/preview', body,
+        bearer: token, secret: secret);
+    return MoomooLivePreview.fromJson(j);
+  }
+
+  /// Place a REAL live order. Requires confirm=true. Backs
+  /// `POST /v1/broker/moomoo/order/place`.
+  Future<MoomooLiveOrderResult> moomooPlace({
+    required String token,
+    required String secret,
+    required String symbol,
+    required String side,
+    required double quantity,
+    required String orderType,
+    double? price,
+  }) async {
+    final body = <String, dynamic>{
+      'symbol': symbol,
+      'side': side,
+      'quantity': quantity,
+      'order_type': orderType,
+      'confirm': true,
+    };
+    if (price != null) body['price'] = price;
+    final j = await _client.moomooPost('/broker/moomoo/order/place', body,
+        bearer: token, secret: secret);
+    return MoomooLiveOrderResult.fromJson(j);
+  }
+
+  /// Cancel a live order. Backs `POST /v1/broker/moomoo/order/cancel/{id}`.
+  Future<void> moomooCancel({
+    required String token,
+    required String secret,
+    required String orderId,
+  }) async {
+    await _client.moomooPost('/broker/moomoo/order/cancel/$orderId',
+        const {}, bearer: token, secret: secret);
   }
 
   // --- Simulated paper-trading portfolio (/v1/sim/*) ------------------------
