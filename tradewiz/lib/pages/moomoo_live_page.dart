@@ -674,17 +674,21 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
           ),
           if (m.recommendations.isNotEmpty && !_hideManager) ...[
             const Divider(height: TWSpace.lg, color: TWColors.hairline),
-            ...m.recommendations.map(_recTile),
+            for (var i = 0; i < m.recommendations.length; i++)
+              _recTile(m.recommendations[i], i),
           ],
         ],
       ),
     );
   }
 
-  Widget _recTile(MoomooLiveManagerRec r) {
+  Widget _recTile(MoomooLiveManagerRec r, int index) {
     final color = _sevColor(r.severity);
+    // Live data can return many recommendations of the same kind (e.g. several
+    // 'weak_position' rows), so the index keeps each tile key unique — a
+    // duplicate key crashes the card and breaks its hide toggle.
     return Padding(
-      key: Key('moomoo_rec_${r.kind}'),
+      key: Key('moomoo_rec_${r.kind}_$index'),
       padding: const EdgeInsets.only(bottom: TWSpace.sm),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

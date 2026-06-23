@@ -326,8 +326,16 @@ void main() {
 
     expect(find.byKey(const Key('moomoo_manager_card')), findsOneWidget);
     expect(find.text('HIGH risk'), findsOneWidget);
-    expect(find.byKey(const Key('moomoo_rec_concentration')), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_rec_concentration_0')), findsOneWidget);
     expect(find.textContaining('High concentration'), findsOneWidget);
+
+    // Manager toggle hides only the recommendations list; header stays.
+    await tester.tap(find.byKey(const Key('moomoo_toggle_manager')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('moomoo_manager_card')), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_rec_concentration_0')), findsNothing);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool('tradewizz.moomoo.hideManager'), isTrue);
   });
 
   testWidgets('order ticket: a typed decimal comma becomes a dot',
