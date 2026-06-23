@@ -70,6 +70,33 @@ class TradeRow:
     created_at: str
 
 
+@dataclass
+class PendingOrderRow:
+    """A simulated order placed while the market was CLOSED.
+
+    It executes at the next session's OPEN price once that bar is available.
+    For a BUY, ``reserved_cash_base`` holds an estimate of the cash set aside
+    (in the BASE accounting currency) so the buying power can't be double-spent
+    while the order is pending; the real debit happens at fill against the true
+    open price.
+    """
+
+    id: int
+    user_id: int
+    order_id: str
+    symbol: str
+    market: str
+    side: str
+    quantity: float
+    order_type: str
+    limit_price: Optional[float]
+    reserved_cash_base: float
+    placed_trading_date: str
+    status: str
+    placed_at: str
+    updated_at: str
+
+
 class SimulationStore:
     """SQLite-backed store. A single instance is shared across requests."""
 
@@ -132,6 +159,24 @@ class SimulationStore:
                     realized_pnl REAL NOT NULL DEFAULT 0,
                     created_at   TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS sim_pending_orders (
+                    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id             INTEGER NOT NULL,
+                    order_id            TEXT NOT NULL,
+                    symbol              TEXT NOT NULL,
+                    market              TEXT NOT NULL,
+                    side                TEXT NOT NULL,
+                    quantity            REAL NOT NULL,
+                    order_type          TEXT NOT NULL DEFAULT 'MARKET',
+                    limit_price         REAL,
+                    reserved_cash_base  REAL NOT NULL DEFAULT 0,
+                    placed_trading_date TEXT NOT NULL,
+                    status              TEXT NOT NULL DEFAULT 'PENDING',
+                    placed_at           TEXT NOT NULL,
+                    updated_at          TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_sim_pending_user_status
+                    ON sim_pending_orders (user_id, status);
                 """
             )
             conn.commit()
@@ -303,6 +348,85 @@ class SimulationStore:
                 conn.close()
             return out
 
+    # -- pending orders --------------------------------------------------
+    def add_pending_order(
+        self,
+        user_id: int,
+        order_id: str,
+        symbol: str,
+        market: str,
+        side: str,
+        quantity: float,
+        order_type: str,
+        limit_price: Optional[float],
+        reserved_cash_base: float,
+        placed_trading_date: str,
+    ) -> "PendingOrderRow":
+        with self._lock:
+            conn = self._conn()
+            conn.row_factory = sqlite3.Row
+            now = _now_iso()
+            cur = conn.execute(
+                "INSERT INTO sim_pending_orders (user_id, order_id, symbol, "
+                "market, side, quantity, order_type, limit_price, "
+                "reserved_cash_base, placed_trading_date, status, placed_at, "
+                "updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (user_id, order_id, symbol, market, side, quantity, order_type,
+                 limit_price, reserved_cash_base, placed_trading_date,
+                 "PENDING", now, now),
+            )
+            conn.commit()
+            pid = cur.lastrowid
+            row = conn.execute(
+                "SELECT * FROM sim_pending_orders WHERE id=?", (pid,)
+            ).fetchone()
+            out = self._pending_row(row)
+            if self._shared is None:
+                conn.close()
+            return out
+
+    def list_pending_orders(
+        self, user_id: int, status: str = "PENDING"
+    ) -> List["PendingOrderRow"]:
+        with self._lock:
+            conn = self._conn()
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute(
+                "SELECT * FROM sim_pending_orders WHERE user_id=? AND status=? "
+                "ORDER BY id",
+                (user_id, status),
+            ).fetchall()
+            out = [self._pending_row(r) for r in rows]
+            if self._shared is None:
+                conn.close()
+            return out
+
+    def get_pending_order(
+        self, user_id: int, order_id: str
+    ) -> Optional["PendingOrderRow"]:
+        with self._lock:
+            conn = self._conn()
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT * FROM sim_pending_orders WHERE user_id=? AND order_id=?",
+                (user_id, order_id),
+            ).fetchone()
+            out = self._pending_row(row) if row else None
+            if self._shared is None:
+                conn.close()
+            return out
+
+    def set_pending_status(self, pending_id: int, status: str) -> None:
+        with self._lock:
+            conn = self._conn()
+            conn.execute(
+                "UPDATE sim_pending_orders SET status=?, updated_at=? WHERE id=?",
+                (status, _now_iso(), pending_id),
+            )
+            conn.commit()
+            if self._shared is None:
+                conn.close()
+
     # -- reset -----------------------------------------------------------
     def reset(self, user_id: int, initial_cash: float, currency: str = "USD") -> None:
         with self._lock:
@@ -310,6 +434,9 @@ class SimulationStore:
             now = _now_iso()
             conn.execute("DELETE FROM sim_positions WHERE user_id=?", (user_id,))
             conn.execute("DELETE FROM sim_trades WHERE user_id=?", (user_id,))
+            conn.execute(
+                "DELETE FROM sim_pending_orders WHERE user_id=?", (user_id,)
+            )
             conn.execute(
                 "INSERT INTO sim_accounts (user_id, cash, realized_pnl, "
                 "currency, created_at, updated_at) VALUES (?,?,?,?,?,?) "
@@ -347,4 +474,17 @@ class SimulationStore:
             symbol=r["symbol"], market=r["market"], side=r["side"],
             quantity=r["quantity"], price=r["price"], value=r["value"],
             realized_pnl=r["realized_pnl"], created_at=r["created_at"],
+        )
+
+    @staticmethod
+    def _pending_row(r) -> PendingOrderRow:
+        return PendingOrderRow(
+            id=r["id"], user_id=r["user_id"], order_id=r["order_id"],
+            symbol=r["symbol"], market=r["market"], side=r["side"],
+            quantity=r["quantity"], order_type=r["order_type"],
+            limit_price=r["limit_price"],
+            reserved_cash_base=r["reserved_cash_base"],
+            placed_trading_date=r["placed_trading_date"],
+            status=r["status"], placed_at=r["placed_at"],
+            updated_at=r["updated_at"],
         )

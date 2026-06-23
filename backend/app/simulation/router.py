@@ -18,9 +18,11 @@ from ..auth.router import get_service as get_auth_service
 from ..auth.service import AuthError
 from .models import (
     SimulatedAccount,
+    SimulatedCancelResult,
     SimulatedOrderPreview,
     SimulatedOrderRequest,
     SimulatedOrderResult,
+    SimulatedPendingOrderList,
     SimulatedPortfolioSummary,
     SimulatedPositionList,
     SimulatedResetResult,
@@ -149,12 +151,34 @@ def sim_order_place(
     # may hit a slow/rate-limited data provider and take seconds. Doing it
     # inline made the BUY "confirm" call stall and time out. The journal entry
     # lands a moment after the fill, which is fine for a paper-trade log.
-    if _trade_hook is not None:
+    # Skip the hook for a PENDING (queued, not-yet-filled) order: there is no
+    # position to journal until it settles at the open.
+    if _trade_hook is not None and not result.pending:
         _dispatch_trade_hook(
             uid, result.symbol, result.market, result.side,
             result.quantity, result.price,
         )
     return result
+
+
+@router.get("/pending", response_model=SimulatedPendingOrderList)
+def sim_pending(
+    authorization: Optional[str] = Header(default=None),
+) -> SimulatedPendingOrderList:
+    uid = _user_id(authorization)
+    return SimulatedPendingOrderList(pending=get_service().pending(uid))
+
+
+@router.post("/order/cancel/{order_id}", response_model=SimulatedCancelResult)
+def sim_order_cancel(
+    order_id: str,
+    authorization: Optional[str] = Header(default=None),
+) -> SimulatedCancelResult:
+    uid = _user_id(authorization)
+    try:
+        return get_service().cancel(uid, order_id)
+    except SimulationError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
 
 
 @router.post("/reset", response_model=SimulatedResetResult)

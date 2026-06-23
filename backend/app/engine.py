@@ -1025,6 +1025,48 @@ class AnalysisEngine:
                 return price
         return None
 
+    def open_after_cached(
+        self, symbol: str, market: Market, after_date: str
+    ) -> Optional[tuple]:
+        """OPEN price of the first cached daily bar STRICTLY AFTER ``after_date``.
+
+        Used to settle a simulated order that was placed while the market was
+        closed: it executes at the next session's OPEN once that bar lands in
+        the cache. Reads the warmer-maintained "1y" entry only (no network).
+
+        ``after_date`` is a 'YYYY-MM-DD' string (the trading date the order was
+        placed on). Returns ``(open_price, bar_date_str)`` for the earliest bar
+        whose date is later than ``after_date`` and has a usable Open, or None
+        when no such bar exists yet (i.e. the next session hasn't produced data
+        in the cache).
+        """
+        cache = getattr(self._fetch, "cache", None)
+        if cache is None:
+            return None
+        ticker = yf_symbol(symbol, market)
+        for period in ("1y", "6mo", "1mo"):
+            try:
+                df = cache.read_cached_only(ticker, period, "1d")
+            except Exception:  # noqa: BLE001 - best-effort
+                df = None
+            if df is None or len(df) == 0 or "Open" not in df.columns:
+                continue
+            try:
+                for idx in df.index:
+                    bar_date = str(idx)[:10]
+                    if bar_date <= after_date:
+                        continue
+                    val = df.loc[idx, "Open"]
+                    try:
+                        op = float(val)
+                    except Exception:  # noqa: BLE001
+                        continue
+                    if op == op and op > 0:  # not NaN and positive
+                        return (op, bar_date)
+            except Exception:  # noqa: BLE001 - best-effort
+                continue
+        return None
+
     def score_symbol_cached(
         self, symbol: str, market: Market
     ) -> Optional[ScreenerMatch]:

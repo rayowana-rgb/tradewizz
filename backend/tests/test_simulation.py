@@ -13,11 +13,14 @@ import pytest
 
 from app import market_config
 from app.models import Market
+from app.market_session import MarketSessionState
 from app.simulation.models import (
     SIM_DISCLAIMER,
     SIM_FILL_MESSAGE,
     SIM_WARNING,
+    STATUS_CANCELLED,
     STATUS_FILLED,
+    STATUS_PENDING,
 )
 from app.simulation.service import (
     BASE_CURRENCY,
@@ -49,17 +52,36 @@ class _AllSymbolsUniverse:
 DEFAULT_TEST_CASH = 1_000_000.0
 
 
-def _make_service(prices=None, initial_cash=DEFAULT_TEST_CASH):
+def _make_service(
+    prices=None,
+    initial_cash=DEFAULT_TEST_CASH,
+    session_state=MarketSessionState.OPEN,
+    open_prices=None,
+):
+    """Build a service. Defaults to an OPEN market so MARKET orders fill
+    immediately (the long-standing behaviour these tests assert). Pass a
+    different ``session_state`` (e.g. CLOSED) and ``open_prices`` to exercise
+    the pending / next-open-settlement path.
+    """
     prices = prices or {}
+    open_prices = open_prices or {}
 
     def price_provider(symbol, market):
         return prices.get((symbol.upper(), market), 100.0)
+
+    def open_price_provider(symbol, market, after_date):
+        key = (symbol.upper(), market)
+        if key in open_prices:
+            return (open_prices[key], "2026-01-02")
+        return None
 
     return SimulationService(
         price_provider=price_provider,
         store=SimulationStore(":memory:"),
         universe=_AllSymbolsUniverse(),
         initial_cash=initial_cash,
+        open_price_provider=open_price_provider,
+        session_state_provider=lambda m: session_state,
     )
 
 
@@ -348,3 +370,155 @@ def test_place_never_calls_broker(monkeypatch):
     svc = _make_service()
     res = svc.place(UID, "AAPL", Market.US, "BUY", 1, "LIMIT", 100.0)
     assert res.status == STATUS_FILLED
+
+
+# --------------------------------------------------------------------------- #
+# Pending orders: MARKET order while the market is CLOSED queues and settles    #
+# at the next session's OPEN price (so held-position P/L is never computed off  #
+# a stale close).                                                              #
+# --------------------------------------------------------------------------- #
+def test_closed_market_buy_is_pending_not_filled():
+    svc = _make_service(
+        prices={("AAPL", Market.US): 200.0},
+        session_state=MarketSessionState.CLOSED,
+    )
+    res = svc.place(UID, "AAPL", Market.US, "BUY", 10)
+    assert res.status == STATUS_PENDING
+    assert res.pending is True
+    # No position yet, cash untouched (only reserved).
+    assert svc.positions(UID) == []
+    acct = svc.account(UID)
+    assert acct.cash == pytest.approx(DEFAULT_TEST_CASH)
+    # Buying power is reduced by the reserved estimate (10 * 200 = 2000).
+    assert acct.reserved_cash == pytest.approx(2000.0)
+    assert acct.buying_power == pytest.approx(DEFAULT_TEST_CASH - 2000.0)
+    assert acct.pending_orders == 1
+
+
+def test_open_market_buy_fills_immediately():
+    svc = _make_service(
+        prices={("AAPL", Market.US): 200.0},
+        session_state=MarketSessionState.OPEN,
+    )
+    res = svc.place(UID, "AAPL", Market.US, "BUY", 10)
+    assert res.status == STATUS_FILLED
+    assert res.pending is False
+    pos = svc.positions(UID)
+    assert len(pos) == 1 and pos[0].quantity == 10
+
+
+def test_pending_buy_settles_at_open_price():
+    # Placed close price 200, but the NEXT OPEN prints 210 -> fill at 210.
+    svc = _make_service(
+        prices={("AAPL", Market.US): 200.0},
+        open_prices={("AAPL", Market.US): 210.0},
+        session_state=MarketSessionState.CLOSED,
+    )
+    svc.place(UID, "AAPL", Market.US, "BUY", 10)
+    # Settlement happens lazily on read.
+    pos = svc.positions(UID)
+    assert len(pos) == 1
+    assert pos[0].average_cost == pytest.approx(210.0)  # OPEN price, not 200
+    acct = svc.account(UID)
+    # Cash debited by the REAL open value (10 * 210 = 2100), reserve released.
+    assert acct.cash == pytest.approx(DEFAULT_TEST_CASH - 2100.0)
+    assert acct.reserved_cash == pytest.approx(0.0)
+    assert acct.pending_orders == 0
+
+
+def test_pending_buy_stays_pending_until_open_available():
+    # No open price yet -> order remains pending across reads.
+    svc = _make_service(
+        prices={("AAPL", Market.US): 200.0},
+        open_prices={},  # provider returns None
+        session_state=MarketSessionState.CLOSED,
+    )
+    svc.place(UID, "AAPL", Market.US, "BUY", 10)
+    assert svc.positions(UID) == []
+    assert svc.account(UID).pending_orders == 1
+
+
+def test_closed_market_sell_pends_and_settles_at_open():
+    svc = _make_service(
+        prices={("AAPL", Market.US): 200.0},
+        open_prices={("AAPL", Market.US): 220.0},
+        session_state=MarketSessionState.OPEN,
+    )
+    # Buy 10 @200 while open.
+    svc.place(UID, "AAPL", Market.US, "BUY", 10)
+    # Now go closed and queue a sell.
+    svc._session_state = lambda m: MarketSessionState.CLOSED
+    res = svc.place(UID, "AAPL", Market.US, "SELL", 5)
+    assert res.status == STATUS_PENDING
+    # Position still 10 until settled.
+    assert svc._store.get_position(UID, "AAPL", "US").quantity == 10
+    # Settle at open 220: realized (220-200)*5 = 100.
+    pos = svc.positions(UID)
+    assert pos[0].quantity == 5
+    assert svc.account(UID).realized_pnl == pytest.approx(100.0)
+
+
+def test_pending_sell_cannot_exceed_held_including_other_pending():
+    svc = _make_service(
+        prices={("AAPL", Market.US): 200.0},
+        session_state=MarketSessionState.OPEN,
+    )
+    svc.place(UID, "AAPL", Market.US, "BUY", 10)
+    svc._session_state = lambda m: MarketSessionState.CLOSED
+    svc.place(UID, "AAPL", Market.US, "SELL", 7)
+    with pytest.raises(SimulationError):
+        svc.place(UID, "AAPL", Market.US, "SELL", 5)  # 7+5 > 10
+
+
+def test_pending_buy_rejected_when_reserve_exceeds_cash():
+    svc = _make_service(
+        prices={("AAPL", Market.US): 200.0},
+        session_state=MarketSessionState.CLOSED,
+        initial_cash=1500.0,
+    )
+    with pytest.raises(SimulationError):
+        svc.place(UID, "AAPL", Market.US, "BUY", 10)  # 2000 > 1500
+
+
+def test_cancel_pending_releases_reserve():
+    svc = _make_service(
+        prices={("AAPL", Market.US): 200.0},
+        session_state=MarketSessionState.CLOSED,
+    )
+    res = svc.place(UID, "AAPL", Market.US, "BUY", 10)
+    assert svc.account(UID).reserved_cash == pytest.approx(2000.0)
+    cancel = svc.cancel(UID, res.order_id)
+    assert cancel.status == STATUS_CANCELLED
+    acct = svc.account(UID)
+    assert acct.reserved_cash == pytest.approx(0.0)
+    assert acct.buying_power == pytest.approx(DEFAULT_TEST_CASH)
+    assert acct.pending_orders == 0
+
+
+def test_cancel_unknown_pending_rejected():
+    svc = _make_service(session_state=MarketSessionState.CLOSED)
+    with pytest.raises(SimulationError):
+        svc.cancel(UID, "SIM-DOESNOTEXIST")
+
+
+def test_limit_order_fills_immediately_even_when_closed():
+    # A LIMIT order carries its own price -> no open ambiguity -> fills now.
+    svc = _make_service(
+        prices={("AAPL", Market.US): 200.0},
+        session_state=MarketSessionState.CLOSED,
+    )
+    res = svc.place(UID, "AAPL", Market.US, "BUY", 10, "LIMIT", 199.0)
+    assert res.status == STATUS_FILLED
+    assert svc.positions(UID)[0].average_cost == pytest.approx(199.0)
+
+
+def test_pending_orders_appear_in_portfolio_summary():
+    svc = _make_service(
+        prices={("AAPL", Market.US): 200.0},
+        session_state=MarketSessionState.CLOSED,
+    )
+    svc.place(UID, "AAPL", Market.US, "BUY", 10)
+    summary = svc.portfolio(UID)
+    assert len(summary.pending) == 1
+    assert summary.pending[0].side == "BUY"
+    assert summary.pending[0].status == STATUS_PENDING

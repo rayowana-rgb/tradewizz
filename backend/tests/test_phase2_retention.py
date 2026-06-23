@@ -42,6 +42,7 @@ from app.portfolio_manager.service import PortfolioManagerService
 from app.radar import router as radar_router
 from app.radar.service import RadarService
 from app.simulation import router as sim_router
+from app.market_session import MarketSessionState
 from app.simulation.service import SimulationService
 from app.simulation.store import SimulationStore
 from app.subscription import router as sub_router
@@ -130,6 +131,9 @@ def _build_client():
     sim = SimulationService(
         price_provider=lambda s, m: 100.0,
         store=SimulationStore(":memory:"),
+        # Force OPEN so MARKET orders fill immediately (and fire the journal
+        # trade hook) regardless of wall-clock market hours.
+        session_state_provider=lambda m: MarketSessionState.OPEN,
     )
     sim_router.set_service(sim)
     sim_router.set_trade_hook(

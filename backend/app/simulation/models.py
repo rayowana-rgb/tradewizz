@@ -17,7 +17,14 @@ from ..models import Market
 SIM_WARNING = "Simulation only. No real broker order will be sent."
 SIM_DISCLAIMER = "This is a simulated portfolio. No real broker order is sent."
 SIM_FILL_MESSAGE = "Simulated order filled. No real broker order was sent."
+SIM_PENDING_MESSAGE = (
+    "Market closed. This simulated order is queued and will execute at the "
+    "next session's open price. No real broker order will be sent."
+)
+SIM_CANCEL_MESSAGE = "Pending simulated order cancelled. No real broker order was sent."
 STATUS_FILLED = "FILLED_SIMULATED"
+STATUS_PENDING = "PENDING_SIMULATED"
+STATUS_CANCELLED = "CANCELLED_SIMULATED"
 
 
 class OrderSide:
@@ -48,10 +55,13 @@ class SimulatedAccount(BaseModel):
     user_id: int
     cash: float = 0.0
     equity: float = 0.0          # cash + market value
-    buying_power: float = 0.0    # == cash for an unleveraged sim
+    buying_power: float = 0.0    # cash minus cash reserved by pending BUYs
     market_value: float = 0.0
     unrealized_pnl: float = 0.0
     realized_pnl: float = 0.0
+    # Cash set aside for pending (closed-market) BUY orders, base currency.
+    reserved_cash: float = 0.0
+    pending_orders: int = 0
     currency: str = "USD"
     created_at: str = ""
     updated_at: str = ""
@@ -77,6 +87,7 @@ class SimulatedTrade(BaseModel):
 class SimulatedPortfolioSummary(BaseModel):
     account: SimulatedAccount
     positions: List[SimulatedPosition] = []
+    pending: List["SimulatedPendingOrder"] = []
     simulated: bool = True
     disclaimer: str = SIM_DISCLAIMER
 
@@ -116,7 +127,34 @@ class SimulatedOrderResult(BaseModel):
     realized_pnl: float = 0.0
     cash_after: float = 0.0
     simulated: bool = True
+    # True when the market was closed and the order was queued to execute at
+    # the next session's open price (price/value above are then an ESTIMATE).
+    pending: bool = False
     message: str = SIM_FILL_MESSAGE
+
+
+class SimulatedPendingOrder(BaseModel):
+    order_id: str
+    symbol: str
+    market: Market
+    side: str
+    quantity: float
+    order_type: str = OrderType.MARKET
+    limit_price: Optional[float] = None
+    # Cash set aside for a pending BUY, in the base accounting currency.
+    reserved_cash: float = 0.0
+    placed_trading_date: str = ""
+    status: str = STATUS_PENDING
+    placed_at: str = ""
+    simulated: bool = True
+    message: str = (
+        "Queued. Executes at the next session's open. No real broker order."
+    )
+
+
+class SimulatedPendingOrderList(BaseModel):
+    pending: List[SimulatedPendingOrder] = []
+    simulated: bool = True
 
 
 class SimulatedTradeList(BaseModel):
@@ -134,3 +172,11 @@ class SimulatedResetResult(BaseModel):
     cash: float
     simulated: bool = True
     message: str = "Simulation portfolio reset. No real broker order was sent."
+
+
+class SimulatedCancelResult(BaseModel):
+    order_id: str
+    status: str = STATUS_CANCELLED
+    cash_after: float = 0.0
+    simulated: bool = True
+    message: str = SIM_CANCEL_MESSAGE

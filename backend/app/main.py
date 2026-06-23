@@ -143,9 +143,20 @@ def _sim_price(symbol, market):
     return engine.latest_price(symbol, market)
 
 
+def _sim_open_price(symbol, market, after_date):
+    """OPEN price of the first cached bar after ``after_date`` (cache-only).
+
+    Used to settle a simulated order queued while the market was closed: it
+    fills at the next session's open once that bar is in the warmer-maintained
+    cache. Returns (open_price, bar_date) or None.
+    """
+    return engine.open_after_cached(symbol, market, after_date)
+
+
 _sim_service = SimulationService(
     price_provider=_sim_price,
     universe=engine._universe,
+    open_price_provider=_sim_open_price,
 )
 _set_sim_service(_sim_service)
 

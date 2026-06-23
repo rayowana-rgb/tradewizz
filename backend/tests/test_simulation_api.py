@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 
 import app.main as main
 from app import market_config
+from app.market_session import MarketSessionState
 from app.models import Market
 from app.simulation import router as sim_router
 from app.simulation.service import SimulationService
@@ -37,6 +38,9 @@ def client():
         store=SimulationStore(":memory:"),
         universe=_Universe(),
         initial_cash=INITIAL_CASH,
+        # Force an OPEN market so MARKET orders fill immediately and the
+        # endpoint assertions are deterministic regardless of wall-clock time.
+        session_state_provider=lambda m: MarketSessionState.OPEN,
     )
     sim_router.set_service(svc)
     c = TestClient(main.app)
