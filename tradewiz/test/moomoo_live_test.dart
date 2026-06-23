@@ -330,7 +330,7 @@ void main() {
     expect(find.textContaining('High concentration'), findsOneWidget);
   });
 
-  testWidgets('order ticket: comma is stripped from the quantity field',
+  testWidgets('order ticket: a typed decimal comma becomes a dot',
       (tester) async {
     final auth = await _auth(kMoomooOwnerUid);
     final repo = _repoWithPositions();
@@ -342,19 +342,26 @@ void main() {
     await tester.tap(find.byKey(const Key('moomoo_new_order')));
     await tester.pumpAndSettle();
 
-    // Typing a comma should be filtered out (only digits + one dot allowed).
+    // A decimal comma (Indonesian/EU keyboards) is normalised to a dot so the
+    // odd-lot quantity parses as 0.001 instead of collapsing to a whole number.
     await tester.enterText(
         find.byKey(const Key('moomoo_qty_field')), '0,001');
     await tester.pump();
     final field = tester.widget<TextField>(
         find.byKey(const Key('moomoo_qty_field')));
-    expect(field.controller!.text, '0001');
+    expect(field.controller!.text, '0.001');
 
     // A clean fractional value with a dot is preserved.
     await tester.enterText(
         find.byKey(const Key('moomoo_qty_field')), '0.001');
     await tester.pump();
     expect(field.controller!.text, '0.001');
+
+    // Only the first separator is kept (extra dots/commas dropped).
+    await tester.enterText(
+        find.byKey(const Key('moomoo_qty_field')), '0,0,1');
+    await tester.pump();
+    expect(field.controller!.text, '0.01');
   });
 
   testWidgets('health + rebalance cards render and toggles persist',

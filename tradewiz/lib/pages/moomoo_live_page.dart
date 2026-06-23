@@ -1032,8 +1032,9 @@ class _MoomooOrderTicketPageState extends State<MoomooOrderTicketPage> {
 
   Future<void> _doPreview() async {
     final symbol = _symbolCtl.text.trim().toUpperCase();
-    final qty = double.tryParse(_qtyCtl.text.trim());
-    final price = double.tryParse(_priceCtl.text.trim());
+    // Normalise a decimal comma to a dot as a safety net (paste / autofill).
+    final qty = double.tryParse(_qtyCtl.text.trim().replaceAll(',', '.'));
+    final price = double.tryParse(_priceCtl.text.trim().replaceAll(',', '.'));
     if (symbol.isEmpty) {
       setState(() => _error = 'Enter a symbol.');
       return;
@@ -1165,12 +1166,12 @@ class _MoomooOrderTicketPageState extends State<MoomooOrderTicketPage> {
           controller: _qtyCtl,
           keyboardType:
               const TextInputType.numberWithOptions(decimal: true),
-          // Only digits and a single dot "." — never a comma. This also
-          // blocks locales that would otherwise emit "," as the decimal
-          // separator.
+          // Digits plus a single decimal separator. Locales that emit a comma
+          // (e.g. Indonesian keyboards) have it normalised to a dot so odd-lot
+          // quantities like "0,001" still parse as 0.001.
           inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-            _SingleDotFormatter(),
+            FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+            _DecimalQtyFormatter(),
           ],
           style: TWType.body,
           decoration: InputDecoration(
@@ -1359,16 +1360,26 @@ class _MoomooOrderTicketPageState extends State<MoomooOrderTicketPage> {
       );
 }
 
-/// Allows at most one dot in the quantity field. Combined with the digit/dot
-/// allow-filter, this guarantees a clean decimal like "0.001" and never a
-/// comma.
-class _SingleDotFormatter extends TextInputFormatter {
+/// Normalises the quantity field to a clean decimal: any comma typed as a
+/// decimal separator (common on Indonesian/EU keyboards) becomes a dot, and at
+/// most one dot is kept. This guarantees values like "0.001" parse correctly
+/// instead of silently dropping the separator and becoming a whole number.
+class _DecimalQtyFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
       TextEditingValue oldValue, TextEditingValue newValue) {
-    if ('.'.allMatches(newValue.text).length > 1) {
-      return oldValue;
+    var text = newValue.text.replaceAll(',', '.');
+    // Keep only the first dot; drop any extras.
+    final firstDot = text.indexOf('.');
+    if (firstDot != -1) {
+      final head = text.substring(0, firstDot + 1);
+      final tail = text.substring(firstDot + 1).replaceAll('.', '');
+      text = head + tail;
     }
-    return newValue;
+    if (text == newValue.text) return newValue;
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
   }
 }
