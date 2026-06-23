@@ -11,6 +11,7 @@ class ScreenerMatch {
     required this.price,
     required this.changePercent,
     this.categories = const [],
+    this.isEtf = false,
     this.baseScore,
     this.categoryBonus = 0,
     this.convictionScore = 0,
@@ -38,6 +39,10 @@ class ScreenerMatch {
 
   /// Tags assigned by the screening engine (bullish, scalping, etc.).
   final List<ScreenerCategory> categories;
+
+  /// True when the instrument is an ETF (per the market universe board/type).
+  /// Defaults to false (treated as a stock) on older servers/snapshots.
+  final bool isEtf;
 
   // --- Phase 9A Explore intelligence (backward compatible) ----------------
   /// Mirror of [score]; the Base Score before the Explore overlay. Null on
@@ -98,6 +103,7 @@ class ScreenerMatch {
           .map((e) => ScreenerCategory.fromWire(e?.toString()))
           .whereType<ScreenerCategory>()
           .toList(),
+      isEtf: json['is_etf'] as bool? ?? false,
       baseScore: (json['base_score'] as num?)?.toDouble(),
       categoryBonus: (json['category_bonus'] as num?)?.toInt() ?? 0,
       convictionScore: (json['conviction_score'] as num?)?.toInt() ?? 0,

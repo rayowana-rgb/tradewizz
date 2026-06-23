@@ -1,6 +1,19 @@
 import '../models/market.dart';
 import '../models/screener_category.dart';
 
+/// Instrument-type filter for the Explore/Screener view.
+enum InstrumentTypeFilter {
+  all,
+  stock,
+  etf;
+
+  String get label => switch (this) {
+        InstrumentTypeFilter.all => 'All',
+        InstrumentTypeFilter.stock => 'Stocks',
+        InstrumentTypeFilter.etf => 'ETFs',
+      };
+}
+
 /// In-memory store for the Explore/Screener filter state.
 ///
 /// The bottom navigation rebuilds (and, depending on the shell, disposes) the
@@ -25,6 +38,9 @@ class ExploreFilterStore {
 
   /// Selected category filter (single-select, matching the existing model).
   ScreenerCategory? categoryFilter;
+
+  /// Instrument-type filter (All / Stocks / ETFs). Defaults to All.
+  InstrumentTypeFilter instrumentType = InstrumentTypeFilter.all;
 
   /// Minimum score (0 == no minimum).
   double minScore = 0;
@@ -52,6 +68,7 @@ class ExploreFilterStore {
     String? signalFilter,
     required bool hideIlliquid,
     required String query,
+    InstrumentTypeFilter instrumentType = InstrumentTypeFilter.all,
   }) {
     this.market = market;
     this.categoryFilter = categoryFilter;
@@ -59,6 +76,7 @@ class ExploreFilterStore {
     this.signalFilter = signalFilter;
     this.hideIlliquid = hideIlliquid;
     this.query = query;
+    this.instrumentType = instrumentType;
     _hydrated = true;
   }
 
@@ -70,6 +88,7 @@ class ExploreFilterStore {
     signalFilter = null;
     hideIlliquid = false;
     query = '';
+    instrumentType = InstrumentTypeFilter.all;
     _hydrated = false;
   }
 }

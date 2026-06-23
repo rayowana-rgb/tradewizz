@@ -87,6 +87,10 @@ class ScreenerMatch(BaseModel):
     price: float
     change_percent: float
     categories: List[ScreenerCategory] = []
+    # Instrument type from the market universe ("Papan Pencatatan" STK/ETF).
+    # Additive/backward-compatible: older snapshots/clients default to False
+    # (treated as a stock). Used by the Explore Stock/ETF filter.
+    is_etf: bool = False
     # Daily turnover (close * volume) in the market's currency. Additive/
     # backward-compatible; used as the liquidity tiebreaker + filter in ranking.
     value_traded: float = 0.0

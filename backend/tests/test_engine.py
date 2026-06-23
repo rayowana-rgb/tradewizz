@@ -172,6 +172,23 @@ def test_screen_with_universe_ranks_by_score():
     assert scores == sorted(scores, reverse=True)  # ranked desc
 
 
+def test_screen_stamps_is_etf_from_universe(tmp_path):
+    # Universe with a board/type column flags ETFs; screen() must stamp it.
+    (tmp_path / "idx.csv").write_text(
+        "symbol,name,type\n"
+        "STKA,Stock A,STK\n"
+        "ETFB,Fund B,ETF\n"
+    )
+    eng = AnalysisEngine(
+        fetcher=lambda t, p, i: uptrend(),
+        universe=UniverseRepository(universe_dir=tmp_path),
+    )
+    res = eng.screen(Market.IDX)
+    by_sym = {m.symbol: m for m in res.matches}
+    assert by_sym["STKA"].is_etf is False
+    assert by_sym["ETFB"].is_etf is True
+
+
 def _controlled_universe(tmp_path, n=10):
     """Write a controlled IDX universe of `n` symbols and return its repo."""
     rows = "symbol,name\n" + "".join(

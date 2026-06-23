@@ -1258,6 +1258,16 @@ class AnalysisEngine:
                 market.value, fallback, total,
             )
 
+        # Stamp the instrument type (STK/ETF) from the market universe so the
+        # Explore Stock/ETF filter has real data. Symbols not in the universe
+        # (explicit-list callers) simply stay is_etf=False (stock).
+        etfs = self._universe.etf_set(market)
+        if etfs:
+            matches = [
+                m.model_copy(update={"is_etf": m.symbol.upper() in etfs})
+                for m in matches
+            ]
+
         result = ScreenerResult(
             market=market, matches=matches, generated_at=_now_iso()
         )

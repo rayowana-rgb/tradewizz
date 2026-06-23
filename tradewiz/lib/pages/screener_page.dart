@@ -56,6 +56,8 @@ class _ScreenerPageState extends State<ScreenerPage> {
   // Phase 10D extra filters (client-side, visual): signal + liquidity.
   String? _signalFilter; // BUY / HOLD / SELL
   bool _hideIlliquid = false;
+  // Instrument-type filter: All / Stocks / ETFs (client-side, uses is_etf).
+  InstrumentTypeFilter _instrumentType = InstrumentTypeFilter.all;
 
   /// Push the current filter selection into the in-memory store so it survives
   /// tab switches / widget rebuilds. View-state only; nothing scoring-related.
@@ -67,6 +69,7 @@ class _ScreenerPageState extends State<ScreenerPage> {
       signalFilter: _signalFilter,
       hideIlliquid: _hideIlliquid,
       query: _query,
+      instrumentType: _instrumentType,
     );
   }
 
@@ -90,6 +93,7 @@ class _ScreenerPageState extends State<ScreenerPage> {
       _minScore = _store.minScore;
       _signalFilter = _store.signalFilter;
       _hideIlliquid = _store.hideIlliquid;
+      _instrumentType = _store.instrumentType;
       _query = _store.query;
       _searchCtrl.text = _store.query;
       // The shell still owns the market; only fall back to the stored market
@@ -412,6 +416,12 @@ class _ScreenerPageState extends State<ScreenerPage> {
       if (_hideIlliquid && m.signal.toUpperCase() == 'AVOID') {
         return false;
       }
+      if (_instrumentType == InstrumentTypeFilter.stock && m.isEtf) {
+        return false;
+      }
+      if (_instrumentType == InstrumentTypeFilter.etf && !m.isEtf) {
+        return false;
+      }
       if (q.isNotEmpty &&
           !m.symbol.toUpperCase().contains(q) &&
           !m.name.toUpperCase().contains(q)) {
@@ -427,6 +437,7 @@ class _ScreenerPageState extends State<ScreenerPage> {
     if (_minScore > 0) n++;
     if (_signalFilter != null) n++;
     if (_hideIlliquid) n++;
+    if (_instrumentType != InstrumentTypeFilter.all) n++;
     return n;
   }
 
@@ -441,13 +452,15 @@ class _ScreenerPageState extends State<ScreenerPage> {
         minScore: _minScore,
         signal: _signalFilter,
         hideIlliquid: _hideIlliquid,
-        onApply: (m, cat, min, sig, hide) {
+        instrumentType: _instrumentType,
+        onApply: (m, cat, min, sig, hide, type) {
           setState(() {
             _market = m;
             _categoryFilter = cat;
             _minScore = min;
             _signalFilter = sig;
             _hideIlliquid = hide;
+            _instrumentType = type;
             _limit = _pageSize;
           });
           _persistFilters();
@@ -1285,6 +1298,7 @@ class _FiltersSheet extends StatefulWidget {
     required this.minScore,
     required this.signal,
     required this.hideIlliquid,
+    required this.instrumentType,
     required this.onApply,
   });
 
@@ -1293,12 +1307,14 @@ class _FiltersSheet extends StatefulWidget {
   final double minScore;
   final String? signal;
   final bool hideIlliquid;
+  final InstrumentTypeFilter instrumentType;
   final void Function(
     Market market,
     ScreenerCategory? category,
     double minScore,
     String? signal,
     bool hideIlliquid,
+    InstrumentTypeFilter instrumentType,
   ) onApply;
 
   @override
@@ -1311,6 +1327,7 @@ class _FiltersSheetState extends State<_FiltersSheet> {
   late double _minScore = widget.minScore;
   late String? _signal = widget.signal;
   late bool _hideIlliquid = widget.hideIlliquid;
+  late InstrumentTypeFilter _instrumentType = widget.instrumentType;
 
   @override
   Widget build(BuildContext context) {
@@ -1372,6 +1389,21 @@ class _FiltersSheetState extends State<_FiltersSheet> {
                 ],
               ),
               const SizedBox(height: 14),
+              _label('Type'),
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final t in InstrumentTypeFilter.values)
+                    ChoiceChip(
+                      key: Key('screener_type_${t.name}'),
+                      selected: t == _instrumentType,
+                      label: Text(t.label),
+                      onSelected: (_) =>
+                          setState(() => _instrumentType = t),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 14),
               _label('Signal'),
               Wrap(
                 spacing: 8,
@@ -1409,6 +1441,7 @@ class _FiltersSheetState extends State<_FiltersSheet> {
                         _minScore = 0;
                         _signal = null;
                         _hideIlliquid = false;
+                        _instrumentType = InstrumentTypeFilter.all;
                       }),
                       child: const Text('Reset'),
                     ),
@@ -1419,7 +1452,7 @@ class _FiltersSheetState extends State<_FiltersSheet> {
                       key: const Key('screener_filters_apply'),
                       onPressed: () {
                         widget.onApply(_market, _category, _minScore,
-                            _signal, _hideIlliquid);
+                            _signal, _hideIlliquid, _instrumentType);
                         Navigator.of(context).pop();
                       },
                       child: const Text('Apply'),

@@ -41,10 +41,20 @@ StockRepository _repo() {
             'change_percent': -0.4,
             'categories': ['pullback'],
           },
+          {
+            'symbol': 'XBND',
+            'name': 'Bond ETF',
+            'score': 70.0,
+            'signal': 'HOLD',
+            'price': 1000.0,
+            'change_percent': 0.1,
+            'categories': <String>[],
+            'is_etf': true,
+          },
         ],
         'generated_at': '2026-06-10T00:00:00Z',
-        'total_count': 2,
-        'returned_count': 2,
+        'total_count': 3,
+        'returned_count': 3,
         'limit': 50,
         'min_score': 0,
         'categories': <String>[],
@@ -223,5 +233,34 @@ void main() {
       find.widgetWithText(ChoiceChip, 'Bullish'),
     );
     expect(chip.selected, isTrue);
+  });
+
+  testWidgets('instrument-type filter shows only ETFs and persists',
+      (tester) async {
+    await _pump(tester);
+
+    // All three rows visible before filtering (1 ETF + 2 stocks).
+    expect(find.text('XBND'), findsOneWidget);
+    expect(find.text('BBCA'), findsOneWidget);
+
+    // Open the sheet and pick the ETFs type chip.
+    await _tap(tester, find.byKey(const Key('screener_filters_button')));
+    await _tap(tester, find.byKey(const Key('screener_type_etf')));
+    await _tap(tester, find.byKey(const Key('screener_filters_apply')));
+
+    // Only the ETF row remains; stocks are filtered out.
+    expect(find.text('XBND'), findsOneWidget);
+    expect(find.text('BBCA'), findsNothing);
+    expect(find.text('TLKM'), findsNothing);
+    expect(find.text('Filters (1)'), findsOneWidget);
+    expect(ExploreFilterStore.instance.instrumentType,
+        InstrumentTypeFilter.etf);
+
+    // Survives a tab round-trip.
+    await _switchToHomeAndBack(tester);
+    expect(ExploreFilterStore.instance.instrumentType,
+        InstrumentTypeFilter.etf);
+    expect(find.text('XBND'), findsOneWidget);
+    expect(find.text('BBCA'), findsNothing);
   });
 }

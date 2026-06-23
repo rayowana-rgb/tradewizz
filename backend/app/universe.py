@@ -298,6 +298,10 @@ class UniverseRepository:
     def names(self, market: Market) -> Dict[str, str]:
         return {e.symbol: e.name for e in self.entries(market) if e.name}
 
+    def etf_set(self, market: Market) -> set:
+        """Upper-cased symbols flagged as ETFs in the market universe."""
+        return {e.symbol.upper() for e in self.entries(market) if e.is_etf}
+
     def counts(self, market: Market) -> Dict[str, int]:
         """Symbol / ETF / stock counts for a market (diagnostics)."""
         entries = self.entries(market)
