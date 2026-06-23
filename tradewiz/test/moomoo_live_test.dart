@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:tradewiz/config/app_config.dart';
 import 'package:tradewiz/models/user.dart';
@@ -60,8 +61,46 @@ Widget _wrap(Widget child, AuthStore auth, StockRepository repo) {
   );
 }
 
+/// A repo whose account/positions endpoints return a single position so the
+/// positions list renders.
+StockRepository _repoWithPositions() => _repoWith(MockClient((req) async {
+      if (req.url.path.endsWith('/broker/moomoo/account')) {
+        return http.Response(
+          jsonEncode({
+            'total_assets': 5000.0,
+            'cash': 4000.0,
+            'buying_power': 4800.0,
+            'market_value': 1000.0,
+            'currency': 'USD',
+          }),
+          200,
+        );
+      }
+      if (req.url.path.endsWith('/broker/moomoo/positions')) {
+        return http.Response(
+          jsonEncode({
+            'positions': [
+              {
+                'code': 'US.INTC',
+                'symbol': 'INTC',
+                'quantity': 10.0,
+                'can_sell_qty': 10.0,
+                'cost_price': 30.0,
+                'last_price': 33.5,
+                'pl_val': 35.0,
+                'pl_ratio': 0.1167,
+              },
+            ],
+          }),
+          200,
+        );
+      }
+      return http.Response('{}', 200);
+    }));
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() => SharedPreferences.setMockInitialValues({}));
 
   testWidgets('owner uid 2 sees the Moomoo Live entry on Account',
       (tester) async {
@@ -193,5 +232,60 @@ void main() {
     // Per-position tiles render with avg cost.
     expect(find.byKey(const Key('moomoo_pos_INTC')), findsOneWidget);
     expect(find.byKey(const Key('moomoo_pos_AMD')), findsOneWidget);
+  });
+
+  testWidgets('hide positions toggle hides tiles and persists',
+      (tester) async {
+    final auth = await _auth(kMoomooOwnerUid);
+    final repo = _repoWithPositions();
+    final store = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await tester.pumpWidget(_wrap(
+        MoomooLivePage(repository: repo, secretStore: store), auth, repo));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('moomoo_pos_INTC')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('moomoo_toggle_positions')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('moomoo_pos_INTC')), findsNothing);
+    expect(find.text('Positions hidden.'), findsOneWidget);
+
+    // Preference persisted.
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool('tradewizz.moomoo.hidePositions'), true);
+
+    // Rebuild a fresh page: hidden state restored from prefs.
+    final store2 = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await tester.pumpWidget(_wrap(
+        MoomooLivePage(repository: repo, secretStore: store2), auth, repo));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('moomoo_pos_INTC')), findsNothing);
+  });
+
+  testWidgets('order ticket: comma is stripped from the quantity field',
+      (tester) async {
+    final auth = await _auth(kMoomooOwnerUid);
+    final repo = _repoWithPositions();
+    final store = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await tester.pumpWidget(_wrap(
+        MoomooLivePage(repository: repo, secretStore: store), auth, repo));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('moomoo_new_order')));
+    await tester.pumpAndSettle();
+
+    // Typing a comma should be filtered out (only digits + one dot allowed).
+    await tester.enterText(
+        find.byKey(const Key('moomoo_qty_field')), '0,001');
+    await tester.pump();
+    final field = tester.widget<TextField>(
+        find.byKey(const Key('moomoo_qty_field')));
+    expect(field.controller!.text, '0001');
+
+    // A clean fractional value with a dot is preserved.
+    await tester.enterText(
+        find.byKey(const Key('moomoo_qty_field')), '0.001');
+    await tester.pump();
+    expect(field.controller!.text, '0.001');
   });
 }

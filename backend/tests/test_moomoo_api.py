@@ -203,3 +203,27 @@ def test_cancel(client):
                     headers=client._owner)
     assert r.status_code == 200
     assert r.json()["status"] == "CANCELLED"
+
+
+def test_preview_fractional_market_allowed():
+    """Real MoomooService.preview accepts fractional qty for MARKET orders.
+    A price is supplied so est_notional returns early WITHOUT touching OpenD
+    (positions()), keeping the test hermetic."""
+    from app.moomoo.service import MoomooService
+    svc = MoomooService()
+    # MARKET path with an explicit price avoids the positions() lookup.
+    pv = svc.preview("INTC", "BUY", 0.001, "MARKET", 30.0)
+    assert pv["quantity"] == 0.001
+    assert pv["order_type"] == "MARKET"
+
+
+def test_preview_fractional_limit_rejected():
+    """Fractional qty on a LIMIT order is rejected (422), before any OpenD
+    access."""
+    from app.moomoo.service import MoomooService, MoomooError
+    svc = MoomooService()
+    try:
+        svc.preview("INTC", "BUY", 0.5, "LIMIT", 30.0)
+        assert False, "expected MoomooError"
+    except MoomooError as e:
+        assert e.status_code == 422

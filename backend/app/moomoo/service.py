@@ -266,12 +266,16 @@ class MoomooService:
             raise MoomooError("LIMIT orders require a positive price.", 422)
         if qty is None or qty <= 0:
             raise MoomooError("Quantity must be positive.", 422)
-        # Moomoo rejects fractional quantities for NEW orders via this API
-        # path ("Invalid quantity"), even though existing positions can be
-        # fractional. Require whole shares.
-        if float(qty) != int(qty):
+        # Fractional / odd-lot quantities are ONLY accepted by Moomoo for
+        # MARKET orders (fractional shares trade at market). LIMIT orders
+        # still require whole shares, otherwise the API returns
+        # "Invalid quantity".
+        is_fractional = float(qty) != int(qty)
+        if is_fractional and otype != "MARKET":
             raise MoomooError(
-                "Quantity must be a whole number of shares.", 422
+                "Fractional quantities are only supported for MARKET "
+                "orders. Use a whole number of shares for LIMIT orders.",
+                422,
             )
         est = self._est_notional(code, qty, price or 0.0)
         cap = _max_notional()

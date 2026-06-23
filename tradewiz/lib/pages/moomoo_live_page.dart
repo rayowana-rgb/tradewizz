@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/moomoo_live.dart';
 import '../repositories/stock_repository.dart';
@@ -38,15 +40,34 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
   MoomooLiveAccount? _account;
   List<MoomooLivePosition> _positions = const [];
 
+  /// Whether the positions list is collapsed. Persisted across launches via
+  /// SharedPreferences (key [_kHidePositionsPref]).
+  static const String _kHidePositionsPref = 'tradewizz.moomoo.hidePositions';
+  bool _hidePositions = false;
+
   String? get _token => AuthScope.read(context).token;
 
   @override
   void initState() {
     super.initState();
+    _loadHidePref();
     widget.secretStore.load().then((_) {
       if (mounted && widget.secretStore.hasSecret) _refresh();
       if (mounted) setState(() {});
     });
+  }
+
+  Future<void> _loadHidePref() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() => _hidePositions = prefs.getBool(_kHidePositionsPref) ?? false);
+  }
+
+  Future<void> _toggleHidePositions() async {
+    final next = !_hidePositions;
+    setState(() => _hidePositions = next);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kHidePositionsPref, next);
   }
 
   Future<void> _refresh() async {
@@ -329,11 +350,46 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.only(left: TWSpace.xs, bottom: TWSpace.sm),
-          child: Text('Positions (${_positions.length})',
-              style: TWType.overline),
+          padding: const EdgeInsets.only(left: TWSpace.xs, bottom: TWSpace.xs),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text('Positions (${_positions.length})',
+                    style: TWType.overline),
+              ),
+              InkWell(
+                key: const Key('moomoo_toggle_positions'),
+                onTap: _toggleHidePositions,
+                borderRadius: BorderRadius.circular(TWRadius.chip),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: TWSpace.sm, vertical: TWSpace.xs),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _hidePositions
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        size: 16,
+                        color: TWColors.textTertiary,
+                      ),
+                      const SizedBox(width: TWSpace.xs),
+                      Text(_hidePositions ? 'Show' : 'Hide',
+                          style: TWType.overline
+                              .copyWith(color: TWColors.textTertiary)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-        if (_positions.isEmpty)
+        if (_hidePositions)
+          _card(
+            child: Text('Positions hidden.', style: TWType.caption),
+          )
+        else if (_positions.isEmpty)
           _card(child: Text('No open positions.', style: TWType.caption))
         else
           ..._positions.map(_positionTile),
@@ -526,8 +582,16 @@ class _MoomooOrderTicketPageState extends State<MoomooOrderTicketPage> {
       setState(() => _error = 'Enter a symbol.');
       return;
     }
-    if (qty == null || qty <= 0 || qty != qty.roundToDouble()) {
-      setState(() => _error = 'Quantity must be a whole number of shares.');
+    if (qty == null || qty <= 0) {
+      setState(() => _error = 'Enter a valid quantity.');
+      return;
+    }
+    // Fractional / odd-lot quantities are only accepted for MARKET orders
+    // (matches the backend / Moomoo rule). LIMIT requires whole shares.
+    final isFractional = qty != qty.roundToDouble();
+    if (isFractional && _orderType != 'MARKET') {
+      setState(() => _error =
+          'Fractional quantities are only allowed for MARKET orders.');
       return;
     }
     if (_orderType == 'LIMIT' && (price == null || price <= 0)) {
@@ -643,11 +707,21 @@ class _MoomooOrderTicketPageState extends State<MoomooOrderTicketPage> {
         TextField(
           key: const Key('moomoo_qty_field'),
           controller: _qtyCtl,
-          keyboardType: TextInputType.number,
+          keyboardType:
+              const TextInputType.numberWithOptions(decimal: true),
+          // Only digits and a single dot "." — never a comma. This also
+          // blocks locales that would otherwise emit "," as the decimal
+          // separator.
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+            _SingleDotFormatter(),
+          ],
           style: TWType.body,
-          decoration: const InputDecoration(
-            labelText: 'Quantity (whole shares)',
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            labelText: _orderType == 'MARKET'
+                ? 'Quantity (e.g. 0.001 odd lot or 5)'
+                : 'Quantity (whole shares)',
+            border: const OutlineInputBorder(),
           ),
         ),
         const SizedBox(height: TWSpace.md),
@@ -827,4 +901,18 @@ class _MoomooOrderTicketPageState extends State<MoomooOrderTicketPage> {
           ],
         ),
       );
+}
+
+/// Allows at most one dot in the quantity field. Combined with the digit/dot
+/// allow-filter, this guarantees a clean decimal like "0.001" and never a
+/// comma.
+class _SingleDotFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    if ('.'.allMatches(newValue.text).length > 1) {
+      return oldValue;
+    }
+    return newValue;
+  }
 }
