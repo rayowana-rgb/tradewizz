@@ -16,6 +16,8 @@ class SimAccount {
     required this.currency,
     required this.simulated,
     required this.disclaimer,
+    this.reservedCash = 0,
+    this.pendingOrders = 0,
   });
 
   final double cash;
@@ -28,6 +30,13 @@ class SimAccount {
   final bool simulated;
   final String disclaimer;
 
+  /// Cash reserved against not-yet-filled (pending) BUY orders. Part of [cash]
+  /// but excluded from [buyingPower]. 0 when there are no pending buys.
+  final double reservedCash;
+
+  /// Number of currently pending (queued, not yet filled) simulated orders.
+  final int pendingOrders;
+
   factory SimAccount.fromJson(Map<String, dynamic> j) => SimAccount(
         cash: (j['cash'] as num?)?.toDouble() ?? 0,
         equity: (j['equity'] as num?)?.toDouble() ?? 0,
@@ -39,6 +48,86 @@ class SimAccount {
         simulated: j['simulated'] as bool? ?? true,
         disclaimer: j['disclaimer'] as String? ??
             'This is a simulated portfolio. No real broker order is sent.',
+        reservedCash: (j['reserved_cash'] as num?)?.toDouble() ?? 0,
+        pendingOrders: (j['pending_orders'] as num?)?.toInt() ?? 0,
+      );
+}
+
+/// A queued (not-yet-filled) simulated order placed while the market was
+/// closed. It will execute at the next session's OPEN price.
+class SimPendingOrder {
+  const SimPendingOrder({
+    required this.orderId,
+    required this.symbol,
+    required this.market,
+    required this.side,
+    required this.quantity,
+    required this.orderType,
+    required this.limitPrice,
+    required this.reservedCash,
+    required this.placedTradingDate,
+    required this.status,
+    required this.placedAt,
+  });
+
+  final String orderId;
+  final String symbol;
+  final Market market;
+  final String side; // BUY / SELL
+  final double quantity;
+  final String orderType;
+  final double? limitPrice;
+
+  /// Cash reserved for this order in the base accounting currency (USD).
+  /// Non-zero for pending BUYs; 0 for SELLs.
+  final double reservedCash;
+  final String placedTradingDate;
+  final String status; // PENDING_SIMULATED
+  final String placedAt;
+
+  bool get isBuy => side.toUpperCase() == 'BUY';
+
+  factory SimPendingOrder.fromJson(Map<String, dynamic> j) => SimPendingOrder(
+        orderId: j['order_id'] as String? ?? '',
+        symbol: j['symbol'] as String? ?? '',
+        market: Market.values.firstWhere(
+          (m) => m.code == (j['market'] as String?),
+          orElse: () => Market.us,
+        ),
+        side: j['side'] as String? ?? 'BUY',
+        quantity: (j['quantity'] as num?)?.toDouble() ?? 0,
+        orderType: j['order_type'] as String? ?? 'MARKET',
+        limitPrice: (j['limit_price'] as num?)?.toDouble(),
+        reservedCash: (j['reserved_cash'] as num?)?.toDouble() ?? 0,
+        placedTradingDate: j['placed_trading_date'] as String? ?? '',
+        status: j['status'] as String? ?? 'PENDING_SIMULATED',
+        placedAt: j['placed_at'] as String? ?? '',
+      );
+}
+
+/// Result of cancelling a pending simulated order.
+class SimCancelResult {
+  const SimCancelResult({
+    required this.orderId,
+    required this.status,
+    required this.cashAfter,
+    required this.simulated,
+    required this.message,
+  });
+
+  final String orderId;
+  final String status; // CANCELLED_SIMULATED
+  final double cashAfter;
+  final bool simulated;
+  final String message;
+
+  factory SimCancelResult.fromJson(Map<String, dynamic> j) => SimCancelResult(
+        orderId: j['order_id'] as String? ?? '',
+        status: j['status'] as String? ?? 'CANCELLED_SIMULATED',
+        cashAfter: (j['cash_after'] as num?)?.toDouble() ?? 0,
+        simulated: j['simulated'] as bool? ?? true,
+        message: j['message'] as String? ??
+            'Pending simulated order cancelled. No real broker order was sent.',
       );
 }
 
@@ -82,12 +171,14 @@ class SimPortfolio {
   const SimPortfolio({
     required this.account,
     required this.positions,
+    this.pending = const [],
     required this.simulated,
     required this.disclaimer,
   });
 
   final SimAccount account;
   final List<SimPosition> positions;
+  final List<SimPendingOrder> pending;
   final bool simulated;
   final String disclaimer;
 
@@ -96,6 +187,9 @@ class SimPortfolio {
             (j['account'] as Map<String, dynamic>?) ?? const {}),
         positions: (j['positions'] as List<dynamic>? ?? [])
             .map((e) => SimPosition.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        pending: (j['pending'] as List<dynamic>? ?? [])
+            .map((e) => SimPendingOrder.fromJson(e as Map<String, dynamic>))
             .toList(),
         simulated: j['simulated'] as bool? ?? true,
         disclaimer: j['disclaimer'] as String? ??
@@ -202,6 +296,7 @@ class SimOrderResult {
     required this.cashAfter,
     required this.simulated,
     required this.message,
+    this.pending = false,
   });
 
   final String orderId;
@@ -211,11 +306,14 @@ class SimOrderResult {
   final double quantity;
   final double price;
   final double value;
-  final String status; // FILLED_SIMULATED
+  final String status; // FILLED_SIMULATED / PENDING_SIMULATED
   final double realizedPnl;
   final double cashAfter;
   final bool simulated;
   final String message;
+
+  /// True when the order was queued (market closed) instead of filled now.
+  final bool pending;
 
   factory SimOrderResult.fromJson(Map<String, dynamic> j) => SimOrderResult(
         orderId: j['order_id'] as String? ?? '',
@@ -234,5 +332,6 @@ class SimOrderResult {
         simulated: j['simulated'] as bool? ?? true,
         message: j['message'] as String? ??
             'Simulated order filled. No real broker order was sent.',
+        pending: j['pending'] as bool? ?? false,
       );
 }

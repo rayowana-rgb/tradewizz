@@ -92,6 +92,82 @@ StockRepository _simRepo() {
   );
 }
 
+/// Simulation backend whose portfolio carries one PENDING order. A cancel POST
+/// flips [cancelled] and the next portfolio fetch returns an empty pending
+/// list (mirroring the real backend releasing the reserve).
+StockRepository _simRepoWithPending(List<String> cancelLog) {
+  Map<String, dynamic> account(int pending) => {
+        'cash': 1000000.0,
+        'equity': 1000000.0,
+        'buying_power': pending > 0 ? 999184.56 : 1000000.0,
+        'market_value': 0.0,
+        'unrealized_pnl': 0.0,
+        'realized_pnl': 0.0,
+        'currency': 'USD',
+        'simulated': true,
+        'disclaimer':
+            'This is a simulated portfolio. No real broker order is sent.',
+        'reserved_cash': pending > 0 ? 815.44 : 0.0,
+        'pending_orders': pending,
+      };
+    final pendingOrder = {
+      'order_id': 'SIM-PEND01',
+      'symbol': 'ARM',
+      'market': 'US',
+      'side': 'BUY',
+      'quantity': 2.0,
+      'order_type': 'MARKET',
+      'limit_price': null,
+      'reserved_cash': 815.44,
+      'placed_trading_date': '2026-06-22',
+      'status': 'PENDING_SIMULATED',
+      'placed_at': '2026-06-23T02:00:00Z',
+    };
+  final fake = MockClient((req) async {
+    final path = req.url.path;
+    final cancelled = cancelLog.isNotEmpty;
+    if (path.contains('/sim/order/cancel/')) {
+      cancelLog.add(path.split('/').last);
+      return http.Response(
+        jsonEncode({
+          'order_id': 'SIM-PEND01',
+          'status': 'CANCELLED_SIMULATED',
+          'cash_after': 1000000.0,
+          'simulated': true,
+          'message': 'Pending simulated order cancelled.',
+        }),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    }
+    if (path.endsWith('/sim/portfolio')) {
+      return http.Response(
+        jsonEncode({
+          'account': account(cancelled ? 0 : 1),
+          'positions': const [],
+          'pending': cancelled ? const [] : [pendingOrder],
+          'simulated': true,
+          'disclaimer':
+              'This is a simulated portfolio. No real broker order is sent.',
+        }),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    }
+    if (path.endsWith('/sim/trades')) {
+      return http.Response(jsonEncode({'trades': const [], 'simulated': true}),
+          200, headers: {'content-type': 'application/json'});
+    }
+    return http.Response('not found', 404);
+  });
+  return StockRepository(
+    client: ApiClient(
+      config: const AppConfig(baseUrl: 'https://test.tradewiz.app/v1'),
+      httpClient: fake,
+    ),
+  );
+}
+
 AuthStore _loggedIn() {
   final s = AuthStore();
   s.setSession(
@@ -270,5 +346,57 @@ void main() {
       ),
     );
     expect(qty.controller!.text, '10');
+  });
+
+  testWidgets('Pending orders section renders queued order details',
+      (tester) async {
+    final repo = _simRepoWithPending([]);
+    await tester.pumpWidget(_wrap(AccountPage(repository: repo), repo));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('account_pending_card')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.byKey(const Key('account_pending_header')), findsOneWidget);
+    expect(find.byKey(const Key('pending_tile_SIM-PEND01')), findsOneWidget);
+    expect(find.text('BUY 2 ARM \u00b7 US'), findsOneWidget);
+    expect(find.byKey(const Key('pending_cancel_SIM-PEND01')), findsOneWidget);
+  });
+
+  testWidgets('No pending section when there are no pending orders',
+      (tester) async {
+    final repo = _simRepo();
+    await tester.pumpWidget(_wrap(AccountPage(repository: repo), repo));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('account_pending_header')), findsNothing);
+    expect(find.byKey(const Key('account_pending_card')), findsNothing);
+  });
+
+  testWidgets('Cancel pending order calls the cancel endpoint + refreshes',
+      (tester) async {
+    final cancelLog = <String>[];
+    final repo = _simRepoWithPending(cancelLog);
+    await tester.pumpWidget(_wrap(AccountPage(repository: repo), repo));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('pending_cancel_SIM-PEND01')),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.byKey(const Key('pending_cancel_SIM-PEND01')));
+    await tester.pumpAndSettle();
+
+    // Confirm dialog -> tap the destructive action.
+    expect(find.text('Cancel pending order?'), findsOneWidget);
+    await tester.tap(find.text('Cancel order'));
+    await tester.pumpAndSettle();
+
+    // The cancel endpoint was hit with the right order id, and after the
+    // refresh the pending section is gone.
+    expect(cancelLog, contains('SIM-PEND01'));
+    expect(find.byKey(const Key('account_pending_header')), findsNothing);
   });
 }

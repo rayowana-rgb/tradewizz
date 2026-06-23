@@ -558,20 +558,28 @@ class _OrderTicketPageState extends State<OrderTicketPage> {
 
   Widget _buildResult() {
     final r = _result!;
+    final pending = r.pending;
+    final priceLine = (pending && r.price <= 0)
+        ? '${r.side} ${r.quantity.toStringAsFixed(0)} ${r.symbol}'
+        : '${r.side} ${r.quantity.toStringAsFixed(0)} ${r.symbol} '
+            '${pending ? '~' : '@'} '
+            '${formatSimMoney(r.price, r.market.currency)}';
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(children: [
-          const Icon(Icons.check_circle, size: 48, color: AppColors.up),
+          Icon(pending ? Icons.schedule : Icons.check_circle,
+              size: 48, color: pending ? Colors.orange : AppColors.up),
           const SizedBox(height: 12),
-          const Text(
-            'Simulated order filled',
-            key: Key('sim_result_title'),
-            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20),
+          Text(
+            pending
+                ? 'Simulated order queued'
+                : 'Simulated order filled',
+            key: const Key('sim_result_title'),
+            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 20),
           ),
           const SizedBox(height: 6),
-          Text('${r.side} ${r.quantity.toStringAsFixed(0)} ${r.symbol} '
-              '@ ${formatSimMoney(r.price, r.market.currency)}'),
+          Text(priceLine),
           const SizedBox(height: 4),
           Text('Order ID: ${r.orderId}',
               style: const TextStyle(color: Colors.grey, fontSize: 12)),

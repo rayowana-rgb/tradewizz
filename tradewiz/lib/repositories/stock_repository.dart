@@ -359,6 +359,30 @@ class StockRepository {
     return simAccount(token);
   }
 
+  /// Pending (queued, not-yet-filled) simulated orders. These were placed
+  /// while the market was closed and execute at the next session's open price.
+  /// Backs `GET /v1/sim/pending`.
+  Future<List<SimPendingOrder>> simPending(String token) async {
+    final j = await _client.authGet('/sim/pending', bearer: token);
+    return (j['pending'] as List<dynamic>? ?? [])
+        .map((e) => SimPendingOrder.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Cancel a pending simulated order (releases any reserved cash). Backs
+  /// `POST /v1/sim/order/cancel/{order_id}`.
+  Future<SimCancelResult> simCancelOrder({
+    required String token,
+    required String orderId,
+  }) async {
+    final j = await _client.authPost(
+      '/sim/order/cancel/$orderId',
+      const {},
+      bearer: token,
+    );
+    return SimCancelResult.fromJson(j);
+  }
+
   // --- Subscription / monetization -----------------------------------------
 
   /// Public plan comparison table (FREE / PRO / ELITE) for the paywall.

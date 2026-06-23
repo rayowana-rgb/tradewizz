@@ -108,7 +108,10 @@ class _AccountPageState extends State<AccountPage> {
   // Collapsible sections (default expanded). Lets the user hide Holdings /
   // Trade History to save vertical space on the Account page.
   bool _holdingsExpanded = true;
+  bool _pendingExpanded = true;
   bool _tradesExpanded = true;
+  // Order id currently being cancelled (disables its button + shows spinner).
+  String? _cancelling;
   // Seed the collapse state from persisted prefs exactly once, so later
   // dependency rebuilds don't clobber the user's in-session toggles.
   bool _collapseSeeded = false;
@@ -279,6 +282,48 @@ class _AccountPageState extends State<AccountPage> {
     }
   }
 
+  /// Cancel a pending (queued) simulated order. Confirms first, then releases
+  /// the reserved cash and refreshes the portfolio. No real broker is touched.
+  Future<void> _cancelPending(SimPendingOrder order) async {
+    final token = _token;
+    if (token == null) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel pending order?'),
+        content: Text(
+          'This cancels the queued simulated ${order.side} of '
+          '${order.quantity.toStringAsFixed(0)} ${order.symbol}. '
+          'It will not execute at the next open. No real broker order is '
+          'affected.',
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Keep')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Cancel order')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _cancelling = order.orderId);
+    try {
+      await _repo.simCancelOrder(token: token, orderId: order.orderId);
+      await _load();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Could not cancel the order. Try again.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _cancelling = null);
+    }
+  }
+
   /// Join the early-access waiting list for [tier]. No payment is taken; we
   /// only record the intent (demand analytics) and confirm to the user.
   Future<void> _joinWaitlist(Tier tier) async {
@@ -445,6 +490,28 @@ class _AccountPageState extends State<AccountPage> {
               onSell: (p) => _openTicket(p, OrderSide.sell),
             ),
             const SizedBox(height: 16),
+          ],
+
+          // --- Pending orders (collapsible; only when present) ----------
+          // Queued MARKET orders placed while the market was closed. They
+          // execute at the next session's open price; the user can cancel.
+          if ((port?.pending ?? const []).isNotEmpty) ...[
+            _CollapsibleHeader(
+              title: 'Pending Orders',
+              expanded: _pendingExpanded,
+              count: port!.pending.length,
+              headerKey: const Key('account_pending_header'),
+              onToggle: () =>
+                  setState(() => _pendingExpanded = !_pendingExpanded),
+            ),
+            if (_pendingExpanded) ...[
+              _PendingCard(
+                orders: port.pending,
+                cancellingId: _cancelling,
+                onCancel: _cancelPending,
+              ),
+              const SizedBox(height: 16),
+            ],
           ],
 
           // --- Trade history (collapsible) ------------------------------
@@ -1089,6 +1156,91 @@ class _HoldingsCard extends StatelessWidget {
           ]),
         ),
       ],
+    );
+  }
+}
+
+/// Renders the queued (pending) simulated orders with a Cancel action.
+class _PendingCard extends StatelessWidget {
+  const _PendingCard({
+    required this.orders,
+    required this.cancellingId,
+    required this.onCancel,
+  });
+
+  final List<SimPendingOrder> orders;
+  final String? cancellingId;
+  final ValueChanged<SimPendingOrder> onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    return TWFloatingCard(
+      key: const Key('account_pending_card'),
+      padding: EdgeInsets.zero,
+      child: Material(
+        type: MaterialType.transparency,
+        child: Column(
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(12, 12, 12, 6),
+              child: Row(
+                children: [
+                  Icon(Icons.schedule, size: 16, color: TWColors.textTertiary),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Market closed. These orders execute at the next '
+                      'session\u2019s open price.',
+                      style: TextStyle(
+                          color: TWColors.textTertiary, fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            for (var i = 0; i < orders.length; i++) ...[
+              if (i > 0) const Divider(height: 1, color: TWColors.hairline),
+              _pendingTile(orders[i]),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _pendingTile(SimPendingOrder o) {
+    final isBuy = o.isBuy;
+    final color = isBuy ? TWColors.up : TWColors.down;
+    final busy = cancellingId == o.orderId;
+    // For a pending BUY the reserved cash (base currency) is the best value
+    // estimate; a SELL has no reserve, so show quantity only.
+    final reservedLabel = (isBuy && o.reservedCash > 0)
+        ? ' \u00b7 ~${formatSimMoney(o.reservedCash, 'USD')} reserved'
+        : '';
+    return ListTile(
+      key: Key('pending_tile_${o.orderId}'),
+      dense: true,
+      leading: Icon(isBuy ? Icons.arrow_downward : Icons.arrow_upward,
+          color: color, size: 18),
+      title: Text(
+          '${o.side} ${o.quantity.toStringAsFixed(0)} ${o.symbol} '
+          '\u00b7 ${o.market.code}',
+          style: const TextStyle(
+              fontWeight: FontWeight.w700, color: TWColors.textPrimary)),
+      subtitle: Text(
+          'Pending \u00b7 ${o.orderType}$reservedLabel',
+          style: const TextStyle(color: TWColors.textTertiary, fontSize: 12)),
+      trailing: busy
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2))
+          : TextButton(
+              key: Key('pending_cancel_${o.orderId}'),
+              onPressed: () => onCancel(o),
+              style: TextButton.styleFrom(foregroundColor: TWColors.down),
+              child: const Text('Cancel'),
+            ),
     );
   }
 }
