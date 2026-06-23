@@ -364,7 +364,7 @@ void main() {
     expect(field.controller!.text, '0.01');
   });
 
-  testWidgets('health + rebalance cards render and toggles persist',
+  testWidgets('analytics toggles hide only the per-stock list, not the card',
       (tester) async {
     // Tall viewport so the ListView builds all analytics sections at once.
     tester.view.physicalSize = const Size(1200, 4000);
@@ -383,32 +383,31 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    // Manager + Health cards are near the top.
-    expect(find.byKey(const Key('moomoo_manager_card')), findsOneWidget);
+    // All three analytics cards render; rebalance shows its per-stock tile.
+    expect(find.byKey(const Key('moomoo_health_card')), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_rebalance_card')), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_reb_INTC')), findsOneWidget);
+    expect(find.text('Position concentration too high in INTC (100%).'),
+        findsOneWidget);
 
-    // Rebalance card is lower in the list; the toggle exists in the tree.
-    expect(find.byKey(const Key('moomoo_toggle_rebalance')), findsOneWidget);
-
-    // Hide Health via its toggle (near the top, already visible).
+    // Hide the Health detail lines: the CARD stays, only the warning lines go.
     await tester.tap(find.byKey(const Key('moomoo_toggle_health')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('moomoo_health_card')), findsNothing);
-    expect(find.text('Portfolio Health hidden.'), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_health_card')), findsOneWidget);
+    expect(find.text('Position concentration too high in INTC (100%).'),
+        findsNothing);
 
-    // Hide Rebalance via its toggle.
+    // Hide the Rebalance actions: the CARD stays, only the per-stock tiles go.
     await tester.tap(find.byKey(const Key('moomoo_toggle_rebalance')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('moomoo_rebalance_card')), findsNothing);
+    expect(find.byKey(const Key('moomoo_rebalance_card')), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_reb_INTC')), findsNothing);
+    expect(find.text('Rebalancing actions hidden.'), findsOneWidget);
 
-    // Manager was never hidden -> its card stays visible.
-    expect(find.byKey(const Key('moomoo_manager_card')), findsOneWidget);
-
-    // The hide flags are persisted under the documented SharedPreferences keys
-    // (the same mechanism the positions toggle uses across launches).
+    // The hide flags are persisted under the documented SharedPreferences keys.
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getBool('tradewizz.moomoo.hideHealth'), isTrue);
     expect(prefs.getBool('tradewizz.moomoo.hideRebalance'), isTrue);
-    expect(prefs.getBool('tradewizz.moomoo.hideManager'), isNot(isTrue));
   });
 
   testWidgets('analytics hide flags restore from prefs on a fresh launch',
@@ -435,12 +434,15 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    // Restored hidden: cards absent, placeholders shown; manager still visible.
-    expect(find.byKey(const Key('moomoo_health_card')), findsNothing);
-    expect(find.byKey(const Key('moomoo_rebalance_card')), findsNothing);
-    expect(find.text('Portfolio Health hidden.'), findsOneWidget);
-    expect(find.text('Rebalancing AI hidden.'), findsOneWidget);
+    // Cards still render; only the per-stock lists stay collapsed from prefs.
+    expect(find.byKey(const Key('moomoo_health_card')), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_rebalance_card')), findsOneWidget);
     expect(find.byKey(const Key('moomoo_manager_card')), findsOneWidget);
+    // Hidden detail: health warning line gone, rebalance tile gone.
+    expect(find.text('Position concentration too high in INTC (100%).'),
+        findsNothing);
+    expect(find.byKey(const Key('moomoo_reb_INTC')), findsNothing);
+    expect(find.text('Rebalancing actions hidden.'), findsOneWidget);
   });
 }
 

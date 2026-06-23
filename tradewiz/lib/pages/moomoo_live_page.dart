@@ -273,15 +273,15 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                 _accountCard(),
                 if (_manager != null) ...[
                   const SizedBox(height: TWSpace.lg),
-                  _managerSection(_manager!),
+                  _managerCard(_manager!),
                 ],
                 if (_health != null) ...[
                   const SizedBox(height: TWSpace.lg),
-                  _healthSection(_health!),
+                  _healthCard(_health!),
                 ],
                 if (_rebalance != null) ...[
                   const SizedBox(height: TWSpace.lg),
-                  _rebalanceSection(_rebalance!),
+                  _rebalanceCard(_rebalance!),
                 ],
                 const SizedBox(height: TWSpace.lg),
                 _positionsSection(),
@@ -438,87 +438,6 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
     );
   }
 
-  Widget _managerSection(MoomooLiveManagerReport m) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: TWSpace.xs, bottom: TWSpace.xs),
-          child: Row(
-            children: [
-              const Expanded(
-                  child: Text('PORTFOLIO MANAGER', style: TWType.overline)),
-              _toggleChip(
-                const Key('moomoo_toggle_manager'),
-                _hideManager,
-                () => _toggleHide(_kHideManagerPref, _hideManager,
-                    (v) => _hideManager = v),
-              ),
-            ],
-          ),
-        ),
-        if (_hideManager)
-          _card(child: Text('Portfolio Manager hidden.', style: TWType.caption))
-        else
-          _managerCard(m),
-      ],
-    );
-  }
-
-  Widget _healthSection(PortfolioHealth h) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: TWSpace.xs, bottom: TWSpace.xs),
-          child: Row(
-            children: [
-              const Expanded(
-                  child: Text('PORTFOLIO HEALTH', style: TWType.overline)),
-              _toggleChip(
-                const Key('moomoo_toggle_health'),
-                _hideHealth,
-                () => _toggleHide(
-                    _kHideHealthPref, _hideHealth, (v) => _hideHealth = v),
-              ),
-            ],
-          ),
-        ),
-        if (_hideHealth)
-          _card(child: Text('Portfolio Health hidden.', style: TWType.caption))
-        else
-          _healthCard(h),
-      ],
-    );
-  }
-
-  Widget _rebalanceSection(RebalanceReport r) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(left: TWSpace.xs, bottom: TWSpace.xs),
-          child: Row(
-            children: [
-              const Expanded(
-                  child: Text('REBALANCING AI', style: TWType.overline)),
-              _toggleChip(
-                const Key('moomoo_toggle_rebalance'),
-                _hideRebalance,
-                () => _toggleHide(_kHideRebalancePref, _hideRebalance,
-                    (v) => _hideRebalance = v),
-              ),
-            ],
-          ),
-        ),
-        if (_hideRebalance)
-          _card(child: Text('Rebalancing AI hidden.', style: TWType.caption))
-        else
-          _rebalanceCard(r),
-      ],
-    );
-  }
-
   Color _healthColor(double score) {
     if (score >= 75) return TWColors.up;
     if (score >= 50) return TWColors.warn;
@@ -545,6 +464,15 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
               Text('/100',
                   style:
                       TWType.caption.copyWith(color: TWColors.textTertiary)),
+              if (h.exitWarnings.isNotEmpty ||
+                  h.warnings.isNotEmpty ||
+                  h.strengths.isNotEmpty)
+                _toggleChip(
+                  const Key('moomoo_toggle_health'),
+                  _hideHealth,
+                  () => _toggleHide(_kHideHealthPref, _hideHealth,
+                      (v) => _hideHealth = v),
+                ),
             ],
           ),
           if (h.rating.isNotEmpty)
@@ -563,9 +491,11 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
               _scoreChip('Quality', h.components.quality),
             ],
           ),
-          for (final w in h.exitWarnings) _healthLine(w, TWColors.down),
-          for (final w in h.warnings) _healthLine(w, TWColors.warn),
-          for (final s in h.strengths) _healthLine(s, TWColors.up),
+          if (!_hideHealth) ...[
+            for (final w in h.exitWarnings) _healthLine(w, TWColors.down),
+            for (final w in h.warnings) _healthLine(w, TWColors.warn),
+            for (final s in h.strengths) _healthLine(s, TWColors.up),
+          ],
         ],
       ),
     );
@@ -630,6 +560,13 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                     style: TWType.overline
                         .copyWith(color: TWColors.accentBright)),
               ),
+              if (acted.isNotEmpty)
+                _toggleChip(
+                  const Key('moomoo_toggle_rebalance'),
+                  _hideRebalance,
+                  () => _toggleHide(_kHideRebalancePref, _hideRebalance,
+                      (v) => _hideRebalance = v),
+                ),
             ],
           ),
           if (report.summary.isNotEmpty) ...[
@@ -640,9 +577,12 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
           if (acted.isEmpty)
             Text('No rebalancing actions — portfolio looks balanced.',
                 style: TWType.caption)
+          else if (_hideRebalance)
+            Text('Rebalancing actions hidden.', style: TWType.caption)
           else
             ...acted.map(_rebalanceTile),
-          for (final w in report.warnings) _healthLine(w, TWColors.warn),
+          if (!_hideRebalance)
+            for (final w in report.warnings) _healthLine(w, TWColors.warn),
         ],
       ),
     );
@@ -713,6 +653,13 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                 child: Text('${m.riskLevel} risk',
                     style: TWType.overline.copyWith(color: riskColor)),
               ),
+              if (m.recommendations.isNotEmpty)
+                _toggleChip(
+                  const Key('moomoo_toggle_manager'),
+                  _hideManager,
+                  () => _toggleHide(_kHideManagerPref, _hideManager,
+                      (v) => _hideManager = v),
+                ),
             ],
           ),
           const SizedBox(height: TWSpace.md),
@@ -725,7 +672,7 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
               _scoreChip('Top pos %', m.largestPositionPct),
             ],
           ),
-          if (m.recommendations.isNotEmpty) ...[
+          if (m.recommendations.isNotEmpty && !_hideManager) ...[
             const Divider(height: TWSpace.lg, color: TWColors.hairline),
             ...m.recommendations.map(_recTile),
           ],
