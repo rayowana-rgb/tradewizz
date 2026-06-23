@@ -286,3 +286,53 @@ def test_manager_report_allocation_math(monkeypatch):
     assert rep["holdings_count"] == 2
     assert any(x["kind"] == "concentration" and x["severity"] == "critical"
                for x in rep["recommendations"])
+
+
+def _fake_score(symbol, market):
+    """Deterministic ScreenerMatch so health/rebalance run without the engine."""
+    from app.models import ScreenerMatch, Market
+    base = {"INTC": 62.0, "ARM": 78.0}.get(symbol, 70.0)
+    return ScreenerMatch(
+        symbol=symbol, name=symbol, score=base, signal="HOLD",
+        price=100.0, change_percent=1.2, categories=[],
+        value_traded=5_000_000.0,
+    )
+
+
+def _wire_analytics(fake_svc):
+    from app.moomoo.analytics import MoomooAnalytics
+    moomoo_router.set_analytics(
+        MoomooAnalytics(
+            moomoo_service=fake_svc,
+            score_provider=_fake_score,
+            regime_provider=lambda market: "NEUTRAL",
+        )
+    )
+
+
+def test_health_requires_owner(client):
+    r = client.get("/v1/broker/moomoo/health")
+    assert r.status_code in (401, 403)
+
+
+def test_health_over_live_holdings(client, fake_svc):
+    _wire_analytics(fake_svc)
+    r = client.get("/v1/broker/moomoo/health", headers=client._owner)
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert j["simulated"] is False           # live holdings, not the sim
+    assert 0 <= j["health_score"] <= 100
+    assert "components" in j
+    assert len(j["positions"]) == 2          # INTC + ARM
+    moomoo_router.set_analytics(None)
+
+
+def test_rebalance_over_live_holdings(client, fake_svc):
+    _wire_analytics(fake_svc)
+    r = client.get("/v1/broker/moomoo/rebalance", headers=client._owner)
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert j["simulated"] is False
+    assert "actions" in j
+    assert isinstance(j["actions"], list)
+    moomoo_router.set_analytics(None)

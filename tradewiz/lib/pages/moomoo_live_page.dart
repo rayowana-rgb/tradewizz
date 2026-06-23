@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/moomoo_live.dart';
+import '../models/phase3.dart';
+import '../models/subscription.dart';
 import '../repositories/stock_repository.dart';
 import '../services/api_client.dart';
 import '../services/auth_scope.dart';
@@ -40,11 +42,19 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
   MoomooLiveAccount? _account;
   List<MoomooLivePosition> _positions = const [];
   MoomooLiveManagerReport? _manager;
+  PortfolioHealth? _health;
+  RebalanceReport? _rebalance;
 
   /// Whether the positions list is collapsed. Persisted across launches via
   /// SharedPreferences (key [_kHidePositionsPref]).
   static const String _kHidePositionsPref = 'tradewizz.moomoo.hidePositions';
+  static const String _kHideManagerPref = 'tradewizz.moomoo.hideManager';
+  static const String _kHideHealthPref = 'tradewizz.moomoo.hideHealth';
+  static const String _kHideRebalancePref = 'tradewizz.moomoo.hideRebalance';
   bool _hidePositions = false;
+  bool _hideManager = false;
+  bool _hideHealth = false;
+  bool _hideRebalance = false;
 
   String? get _token => AuthScope.read(context).token;
 
@@ -61,7 +71,12 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
   Future<void> _loadHidePref() async {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
-    setState(() => _hidePositions = prefs.getBool(_kHidePositionsPref) ?? false);
+    setState(() {
+      _hidePositions = prefs.getBool(_kHidePositionsPref) ?? false;
+      _hideManager = prefs.getBool(_kHideManagerPref) ?? false;
+      _hideHealth = prefs.getBool(_kHideHealthPref) ?? false;
+      _hideRebalance = prefs.getBool(_kHideRebalancePref) ?? false;
+    });
   }
 
   Future<void> _toggleHidePositions() async {
@@ -69,6 +84,13 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
     setState(() => _hidePositions = next);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kHidePositionsPref, next);
+  }
+
+  Future<void> _toggleHide(String key, bool current, void Function(bool) set) async {
+    final next = !current;
+    setState(() => set(next));
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(key, next);
   }
 
   Future<void> _refresh() async {
@@ -90,15 +112,23 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
         _positions = pos;
         _loading = false;
       });
-      // Portfolio manager analysis is advisory; fetch it without blocking
-      // (and never let its failure clear the account / positions view).
+      // Advisory analytics (Manager / Health / Rebalance) are fetched without
+      // blocking; a failure must never clear the account / positions view.
       try {
         final mgr = await widget.repository
             .moomooManager(token: token, secret: secret);
         if (mounted) setState(() => _manager = mgr);
-      } catch (_) {
-        // Ignore: the account + positions are still shown.
-      }
+      } catch (_) {/* keep account + positions */}
+      try {
+        final h = await widget.repository
+            .moomooHealth(token: token, secret: secret);
+        if (mounted) setState(() => _health = h);
+      } catch (_) {/* keep account + positions */}
+      try {
+        final rb = await widget.repository
+            .moomooRebalance(token: token, secret: secret);
+        if (mounted) setState(() => _rebalance = rb);
+      } catch (_) {/* keep account + positions */}
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -243,7 +273,15 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                 _accountCard(),
                 if (_manager != null) ...[
                   const SizedBox(height: TWSpace.lg),
-                  _managerCard(_manager!),
+                  _managerSection(_manager!),
+                ],
+                if (_health != null) ...[
+                  const SizedBox(height: TWSpace.lg),
+                  _healthSection(_health!),
+                ],
+                if (_rebalance != null) ...[
+                  const SizedBox(height: TWSpace.lg),
+                  _rebalanceSection(_rebalance!),
                 ],
                 const SizedBox(height: TWSpace.lg),
                 _positionsSection(),
@@ -369,6 +407,284 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
             textAlign: TextAlign.center,
             style: TWType.overline.copyWith(color: TWColors.textTertiary)),
       ],
+    );
+  }
+
+  // A small Show/Hide toggle chip reused by the collapsible analytics cards.
+  Widget _toggleChip(Key key, bool hidden, VoidCallback onTap) {
+    return InkWell(
+      key: key,
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(TWRadius.chip),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+            horizontal: TWSpace.sm, vertical: TWSpace.xs),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              hidden
+                  ? Icons.visibility_off_outlined
+                  : Icons.visibility_outlined,
+              size: 16,
+              color: TWColors.textTertiary,
+            ),
+            const SizedBox(width: TWSpace.xs),
+            Text(hidden ? 'Show' : 'Hide',
+                style: TWType.overline.copyWith(color: TWColors.textTertiary)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _managerSection(MoomooLiveManagerReport m) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: TWSpace.xs, bottom: TWSpace.xs),
+          child: Row(
+            children: [
+              const Expanded(
+                  child: Text('PORTFOLIO MANAGER', style: TWType.overline)),
+              _toggleChip(
+                const Key('moomoo_toggle_manager'),
+                _hideManager,
+                () => _toggleHide(_kHideManagerPref, _hideManager,
+                    (v) => _hideManager = v),
+              ),
+            ],
+          ),
+        ),
+        if (_hideManager)
+          _card(child: Text('Portfolio Manager hidden.', style: TWType.caption))
+        else
+          _managerCard(m),
+      ],
+    );
+  }
+
+  Widget _healthSection(PortfolioHealth h) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: TWSpace.xs, bottom: TWSpace.xs),
+          child: Row(
+            children: [
+              const Expanded(
+                  child: Text('PORTFOLIO HEALTH', style: TWType.overline)),
+              _toggleChip(
+                const Key('moomoo_toggle_health'),
+                _hideHealth,
+                () => _toggleHide(
+                    _kHideHealthPref, _hideHealth, (v) => _hideHealth = v),
+              ),
+            ],
+          ),
+        ),
+        if (_hideHealth)
+          _card(child: Text('Portfolio Health hidden.', style: TWType.caption))
+        else
+          _healthCard(h),
+      ],
+    );
+  }
+
+  Widget _rebalanceSection(RebalanceReport r) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: TWSpace.xs, bottom: TWSpace.xs),
+          child: Row(
+            children: [
+              const Expanded(
+                  child: Text('REBALANCING AI', style: TWType.overline)),
+              _toggleChip(
+                const Key('moomoo_toggle_rebalance'),
+                _hideRebalance,
+                () => _toggleHide(_kHideRebalancePref, _hideRebalance,
+                    (v) => _hideRebalance = v),
+              ),
+            ],
+          ),
+        ),
+        if (_hideRebalance)
+          _card(child: Text('Rebalancing AI hidden.', style: TWType.caption))
+        else
+          _rebalanceCard(r),
+      ],
+    );
+  }
+
+  Color _healthColor(double score) {
+    if (score >= 75) return TWColors.up;
+    if (score >= 50) return TWColors.warn;
+    return TWColors.down;
+  }
+
+  Widget _healthCard(PortfolioHealth h) {
+    final c = _healthColor(h.healthScore);
+    return _card(
+      key: const Key('moomoo_health_card'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.favorite_outline,
+                  color: TWColors.accent, size: 20),
+              const SizedBox(width: TWSpace.sm),
+              const Expanded(
+                  child: Text('Health score', style: TWType.title3)),
+              Text(h.healthScore.toStringAsFixed(0),
+                  style: TWType.title3.copyWith(color: c)),
+              const SizedBox(width: TWSpace.xs),
+              Text('/100',
+                  style:
+                      TWType.caption.copyWith(color: TWColors.textTertiary)),
+            ],
+          ),
+          if (h.rating.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(h.rating,
+                  style: TWType.caption.copyWith(color: c)),
+            ),
+          const SizedBox(height: TWSpace.md),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _scoreChip('Diversif.', h.components.diversification),
+              _scoreChip('Concentr.', h.components.concentrationRisk),
+              _scoreChip('Liquidity', h.components.liquidity),
+              _scoreChip('Quality', h.components.quality),
+            ],
+          ),
+          for (final w in h.exitWarnings) _healthLine(w, TWColors.down),
+          for (final w in h.warnings) _healthLine(w, TWColors.warn),
+          for (final s in h.strengths) _healthLine(s, TWColors.up),
+        ],
+      ),
+    );
+  }
+
+  Widget _healthLine(String text, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(top: TWSpace.sm),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            margin: const EdgeInsets.only(top: 6, right: TWSpace.sm),
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          ),
+          Expanded(child: Text(text, style: TWType.caption)),
+        ],
+      ),
+    );
+  }
+
+  Color _actionColor(String action) {
+    switch (action.toUpperCase()) {
+      case 'ADD':
+        return TWColors.up;
+      case 'REDUCE':
+        return TWColors.warn;
+      case 'EXIT':
+        return TWColors.down;
+      default:
+        return TWColors.textTertiary;
+    }
+  }
+
+  Widget _rebalanceCard(RebalanceReport r) {
+    // Only show actions for symbols still held (client-side safety net).
+    final held = _positions.map((p) => '${p.symbol}@US').toSet();
+    final report = r.reconciledWith(held);
+    final acted =
+        report.actions.where((a) => a.action != 'HOLD').toList();
+    return _card(
+      key: const Key('moomoo_rebalance_card'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.tune, color: TWColors.accent, size: 20),
+              const SizedBox(width: TWSpace.sm),
+              const Expanded(
+                  child: Text('Rebalancing AI', style: TWType.title3)),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: TWSpace.sm, vertical: 3),
+                decoration: BoxDecoration(
+                  color: TWColors.accent.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(TWRadius.chip),
+                ),
+                child: Text(report.profile,
+                    style: TWType.overline
+                        .copyWith(color: TWColors.accentBright)),
+              ),
+            ],
+          ),
+          if (report.summary.isNotEmpty) ...[
+            const SizedBox(height: TWSpace.sm),
+            Text(report.summary, style: TWType.caption),
+          ],
+          const SizedBox(height: TWSpace.md),
+          if (acted.isEmpty)
+            Text('No rebalancing actions — portfolio looks balanced.',
+                style: TWType.caption)
+          else
+            ...acted.map(_rebalanceTile),
+          for (final w in report.warnings) _healthLine(w, TWColors.warn),
+        ],
+      ),
+    );
+  }
+
+  Widget _rebalanceTile(RebalanceAction a) {
+    final color = _actionColor(a.action);
+    return Padding(
+      key: Key('moomoo_reb_${a.symbol}'),
+      padding: const EdgeInsets.only(bottom: TWSpace.sm),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: TWSpace.sm, vertical: 2),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(TWRadius.chip),
+            ),
+            child: Text(a.action,
+                style: TWType.overline.copyWith(color: color)),
+          ),
+          const SizedBox(width: TWSpace.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${a.symbol} · ${a.currentWeight.toStringAsFixed(0)}% '
+                  '→ ${a.targetWeight.toStringAsFixed(0)}%',
+                  style: TWType.label,
+                ),
+                if (a.reason.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(a.reason, style: TWType.caption),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 

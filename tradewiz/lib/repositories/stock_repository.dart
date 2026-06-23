@@ -304,6 +304,28 @@ class StockRepository {
     return MoomooLiveManagerReport.fromJson(j);
   }
 
+  /// Portfolio Health over LIVE Moomoo holdings (real scoring engine).
+  /// Backs `GET /v1/broker/moomoo/health`.
+  Future<PortfolioHealth> moomooHealth({
+    required String token,
+    required String secret,
+  }) async {
+    final j = await _client.moomooGet('/broker/moomoo/health',
+        bearer: token, secret: secret);
+    return PortfolioHealth.fromJson(j);
+  }
+
+  /// Portfolio Rebalancing AI over LIVE Moomoo holdings.
+  /// Backs `GET /v1/broker/moomoo/rebalance`.
+  Future<RebalanceReport> moomooRebalance({
+    required String token,
+    required String secret,
+  }) async {
+    final j = await _client.moomooGet('/broker/moomoo/rebalance',
+        bearer: token, secret: secret);
+    return RebalanceReport.fromJson(j);
+  }
+
   /// Live open positions. Backs `GET /v1/broker/moomoo/positions`.
   Future<List<MoomooLivePosition>> moomooPositions({
     required String token,

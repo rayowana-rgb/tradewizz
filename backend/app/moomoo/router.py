@@ -31,6 +31,8 @@ from .models import (
     MoomooPositionList,
     MoomooPositionModel,
 )
+from ..portfolio_health.models import PortfolioHealth
+from ..rebalance.models import RebalanceResponse
 from .service import MoomooError, MoomooService
 
 logger = logging.getLogger(__name__)
@@ -38,6 +40,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/broker/moomoo", tags=["moomoo-private"])
 
 _service: Optional[MoomooService] = None
+_analytics = None  # MoomooAnalytics; injected from main once health/score ready.
 
 
 def set_service(service: MoomooService) -> None:
@@ -50,6 +53,19 @@ def get_service() -> MoomooService:
     if _service is None:
         _service = MoomooService()
     return _service
+
+
+def set_analytics(analytics) -> None:
+    global _analytics
+    _analytics = analytics
+
+
+def _get_analytics():
+    if _analytics is None:
+        raise HTTPException(
+            status_code=503, detail="Moomoo analytics not ready."
+        )
+    return _analytics
 
 
 def _owner_uids() -> set[int]:
@@ -135,6 +151,38 @@ def moomoo_manager(
     except MoomooError as exc:
         raise _handle(exc)
     return MoomooManagerReport(**report)
+
+
+@router.get("/health", response_model=PortfolioHealth)
+def moomoo_health(
+    authorization: Optional[str] = Header(default=None),
+    x_moomoo_secret: Optional[str] = Header(default=None),
+) -> PortfolioHealth:
+    """Portfolio Health over the LIVE Moomoo holdings (real scoring engine)."""
+    _require_owner(authorization, x_moomoo_secret)
+    try:
+        report = _get_analytics().health()
+    except MoomooError as exc:
+        raise _handle(exc)
+    # The shared model carries simulated=True; live holdings are real.
+    report.simulated = False
+    return report
+
+
+@router.get("/rebalance", response_model=RebalanceResponse)
+def moomoo_rebalance(
+    profile: Optional[str] = None,
+    authorization: Optional[str] = Header(default=None),
+    x_moomoo_secret: Optional[str] = Header(default=None),
+) -> RebalanceResponse:
+    """Portfolio Rebalancing AI over the LIVE Moomoo holdings."""
+    _require_owner(authorization, x_moomoo_secret)
+    try:
+        report = _get_analytics().rebalance(profile=profile)
+    except MoomooError as exc:
+        raise _handle(exc)
+    report.simulated = False
+    return report
 
 
 @router.post("/order/preview", response_model=MoomooOrderPreview)

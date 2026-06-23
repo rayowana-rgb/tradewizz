@@ -504,6 +504,22 @@ _rebalance_service = RebalanceService(
 app.include_router(rebalance_router)
 _set_rebalance_service(_rebalance_service)
 
+# Wire the PRIVATE Moomoo analytics bridge: Portfolio Health + Rebalancing AI
+# over LIVE Moomoo holdings, reusing the SAME scoring engine + regime provider.
+from .moomoo.analytics import MoomooAnalytics  # noqa: E402
+from .moomoo.router import (  # noqa: E402
+    get_service as _get_moomoo_service,
+    set_analytics as _set_moomoo_analytics,
+)
+
+_set_moomoo_analytics(
+    MoomooAnalytics(
+        moomoo_service=_get_moomoo_service(),
+        score_provider=_symbol_score,
+        regime_provider=_snapshot_regime,
+    )
+)
+
 # Global Rotation Engine: rank all markets by opportunity environment.
 from .rotation.router import (  # noqa: E402
     router as rotation_router,

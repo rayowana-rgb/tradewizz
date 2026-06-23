@@ -95,6 +95,13 @@ StockRepository _repoWithPositions() => _repoWith(MockClient((req) async {
           200,
         );
       }
+      // No analytics in this fixture: 404 so the advisory cards are skipped
+      // and the position tile stays in the visible viewport.
+      if (req.url.path.contains('/broker/moomoo/manager') ||
+          req.url.path.contains('/broker/moomoo/health') ||
+          req.url.path.contains('/broker/moomoo/rebalance')) {
+        return http.Response('{"detail":"nope"}', 404);
+      }
       return http.Response('{}', 200);
     }));
 
@@ -217,6 +224,11 @@ void main() {
           }),
           200,
         );
+      }
+      if (req.url.path.contains('/broker/moomoo/manager') ||
+          req.url.path.contains('/broker/moomoo/health') ||
+          req.url.path.contains('/broker/moomoo/rebalance')) {
+        return http.Response('{"detail":"nope"}', 404);
       }
       return http.Response('{}', 200);
     }));
@@ -344,4 +356,185 @@ void main() {
     await tester.pump();
     expect(field.controller!.text, '0.001');
   });
+
+  testWidgets('health + rebalance cards render and toggles persist',
+      (tester) async {
+    // Tall viewport so the ListView builds all analytics sections at once.
+    tester.view.physicalSize = const Size(1200, 4000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final auth = await _auth(kMoomooOwnerUid);
+    final repo = _repoWith(_analyticsClient());
+    final store = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await tester.pumpWidget(_wrap(
+        MoomooLivePage(repository: repo, secretStore: store), auth, repo));
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pumpAndSettle();
+    }
+
+    // Manager + Health cards are near the top.
+    expect(find.byKey(const Key('moomoo_manager_card')), findsOneWidget);
+
+    // Rebalance card is lower in the list; the toggle exists in the tree.
+    expect(find.byKey(const Key('moomoo_toggle_rebalance')), findsOneWidget);
+
+    // Hide Health via its toggle (near the top, already visible).
+    await tester.tap(find.byKey(const Key('moomoo_toggle_health')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('moomoo_health_card')), findsNothing);
+    expect(find.text('Portfolio Health hidden.'), findsOneWidget);
+
+    // Hide Rebalance via its toggle.
+    await tester.tap(find.byKey(const Key('moomoo_toggle_rebalance')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('moomoo_rebalance_card')), findsNothing);
+
+    // Manager was never hidden -> its card stays visible.
+    expect(find.byKey(const Key('moomoo_manager_card')), findsOneWidget);
+
+    // The hide flags are persisted under the documented SharedPreferences keys
+    // (the same mechanism the positions toggle uses across launches).
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool('tradewizz.moomoo.hideHealth'), isTrue);
+    expect(prefs.getBool('tradewizz.moomoo.hideRebalance'), isTrue);
+    expect(prefs.getBool('tradewizz.moomoo.hideManager'), isNot(isTrue));
+  });
+
+  testWidgets('analytics hide flags restore from prefs on a fresh launch',
+      (tester) async {
+    tester.view.physicalSize = const Size(1200, 4000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    // Health + rebalance were hidden in a previous session.
+    SharedPreferences.setMockInitialValues({
+      'tradewizz.moomoo.hideHealth': true,
+      'tradewizz.moomoo.hideRebalance': true,
+    });
+
+    final auth = await _auth(kMoomooOwnerUid);
+    final repo = _repoWith(_analyticsClient());
+    final store = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await tester.pumpWidget(_wrap(
+        MoomooLivePage(repository: repo, secretStore: store), auth, repo));
+    await tester.pumpAndSettle();
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pumpAndSettle();
+    }
+
+    // Restored hidden: cards absent, placeholders shown; manager still visible.
+    expect(find.byKey(const Key('moomoo_health_card')), findsNothing);
+    expect(find.byKey(const Key('moomoo_rebalance_card')), findsNothing);
+    expect(find.text('Portfolio Health hidden.'), findsOneWidget);
+    expect(find.text('Rebalancing AI hidden.'), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_manager_card')), findsOneWidget);
+  });
 }
+
+/// Mock client that serves account + positions + all three analytics endpoints
+/// with realistic (non-empty) shapes.
+MockClient _analyticsClient() => MockClient((req) async {
+      final p = req.url.path;
+      if (p.endsWith('/broker/moomoo/account')) {
+        return http.Response(
+          jsonEncode({
+            'total_assets': 1000.0,
+            'cash': 200.0,
+            'buying_power': 200.0,
+            'market_value': 800.0,
+            'currency': 'USD',
+          }),
+          200,
+        );
+      }
+      if (p.endsWith('/broker/moomoo/positions')) {
+        return http.Response(
+          jsonEncode({
+            'positions': [
+              {
+                'code': 'US.INTC', 'symbol': 'INTC', 'quantity': 2.0,
+                'can_sell_qty': 2.0, 'cost_price': 130.0, 'last_price': 134.0,
+                'pl_val': 8.0, 'pl_ratio': 0.03,
+              },
+            ],
+          }),
+          200,
+        );
+      }
+      if (p.endsWith('/broker/moomoo/manager')) {
+        return http.Response(
+          jsonEncode({
+            'risk_level': 'MODERATE',
+            'concentration_score': 50.0,
+            'diversification_score': 10.0,
+            'cash_pct': 20.0,
+            'largest_position_pct': 100.0,
+            'holdings_count': 1,
+            'recommendations': [],
+            'live': true,
+          }),
+          200,
+        );
+      }
+      if (p.endsWith('/broker/moomoo/health')) {
+        return http.Response(
+          jsonEncode({
+            'user_id': 0,
+            'generated_at': '',
+            'health_score': 68.0,
+            'rating': 'Fair',
+            'components': {
+              'diversification': 10.0,
+              'concentration_risk': 0.0,
+              'liquidity': 70.0,
+              'quality': 62.0,
+              'sector_exposure': 50.0,
+            },
+            'warnings': ['Position concentration too high in INTC (100%).'],
+            'strengths': [],
+            'exit_warnings': [],
+            'market_exposure': {'US': 100.0},
+            'positions': [
+              {
+                'symbol': 'INTC', 'market': 'US', 'quantity': 2.0,
+                'quality_score': 62.0, 'rating': 'Solid', 'note': '',
+              },
+            ],
+            'simulated': false,
+          }),
+          200,
+        );
+      }
+      if (p.endsWith('/broker/moomoo/rebalance')) {
+        return http.Response(
+          jsonEncode({
+            'user_id': 0,
+            'generated_at': '',
+            'profile': 'Balanced',
+            'portfolio_score': 68.0,
+            'cash_allocation': 20.0,
+            'actions': [
+              {
+                'symbol': 'INTC', 'market': 'US', 'name': 'INTC',
+                'action': 'REDUCE', 'reason': 'Single-name weight too high.',
+                'current_weight': 100.0, 'target_weight': 25.0,
+                'priority': 'HIGH', 'score': 62.0, 'quality_score': 62.0,
+              },
+            ],
+            'summary': '1 action suggested.',
+            'warnings': [],
+            'high_priority_count': 1,
+            'estimated_score_improvement': 8.0,
+            'simulated': false,
+          }),
+          200,
+        );
+      }
+      return http.Response('{}', 200);
+    });
