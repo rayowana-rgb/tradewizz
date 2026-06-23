@@ -72,3 +72,22 @@ class MoomooCancelResult(BaseModel):
     order_id: str
     status: str
     live: bool = True
+
+
+class MoomooManagerRec(BaseModel):
+    kind: str
+    severity: str
+    title: str
+    message: str
+    symbol: Optional[str] = None
+
+
+class MoomooManagerReport(BaseModel):
+    risk_level: str
+    concentration_score: float
+    diversification_score: float
+    cash_pct: float
+    largest_position_pct: float
+    holdings_count: int
+    recommendations: List[MoomooManagerRec] = []
+    live: bool = True

@@ -293,6 +293,17 @@ class StockRepository {
     return MoomooLiveAccount.fromJson(j);
   }
 
+  /// Rule-based portfolio analysis over LIVE Moomoo holdings.
+  /// Backs `GET /v1/broker/moomoo/manager`.
+  Future<MoomooLiveManagerReport> moomooManager({
+    required String token,
+    required String secret,
+  }) async {
+    final j = await _client.moomooGet('/broker/moomoo/manager',
+        bearer: token, secret: secret);
+    return MoomooLiveManagerReport.fromJson(j);
+  }
+
   /// Live open positions. Backs `GET /v1/broker/moomoo/positions`.
   Future<List<MoomooLivePosition>> moomooPositions({
     required String token,

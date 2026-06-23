@@ -24,6 +24,7 @@ from ..auth.service import AuthError
 from .models import (
     MoomooAccountModel,
     MoomooCancelResult,
+    MoomooManagerReport,
     MoomooOrderPreview,
     MoomooOrderRequest,
     MoomooOrderResultModel,
@@ -120,6 +121,20 @@ def moomoo_positions(
             for p in ps
         ]
     )
+
+
+@router.get("/manager", response_model=MoomooManagerReport)
+def moomoo_manager(
+    authorization: Optional[str] = Header(default=None),
+    x_moomoo_secret: Optional[str] = Header(default=None),
+) -> MoomooManagerReport:
+    """Rule-based portfolio analysis over the LIVE Moomoo holdings."""
+    _require_owner(authorization, x_moomoo_secret)
+    try:
+        report = get_service().manager_report()
+    except MoomooError as exc:
+        raise _handle(exc)
+    return MoomooManagerReport(**report)
 
 
 @router.post("/order/preview", response_model=MoomooOrderPreview)

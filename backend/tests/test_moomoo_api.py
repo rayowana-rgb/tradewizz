@@ -89,6 +89,21 @@ class FakeMoomooService:
     def cancel(self, order_id):
         return {"order_id": order_id, "status": "CANCELLED", "live": True}
 
+    def manager_report(self):
+        return {
+            "risk_level": "MODERATE",
+            "concentration_score": 80.0,
+            "diversification_score": 20.0,
+            "cash_pct": 78.6,
+            "largest_position_pct": 20.0,
+            "holdings_count": 2,
+            "recommendations": [
+                {"kind": "diversification", "severity": "warning",
+                 "title": "Low diversification", "message": "x"},
+            ],
+            "live": True,
+        }
+
 
 @pytest.fixture()
 def fake_svc():
@@ -227,3 +242,47 @@ def test_preview_fractional_limit_rejected():
         assert False, "expected MoomooError"
     except MoomooError as e:
         assert e.status_code == 422
+
+
+def test_manager_requires_owner(client):
+    # No owner headers -> blocked.
+    r = client.get("/v1/broker/moomoo/manager")
+    assert r.status_code in (401, 403)
+
+
+def test_manager_returns_report(client, fake_svc):
+    r = client.get("/v1/broker/moomoo/manager", headers=client._owner)
+    assert r.status_code == 200
+    j = r.json()
+    assert j["risk_level"] == "MODERATE"
+    assert j["holdings_count"] == 2
+    assert j["live"] is True
+    assert any(x["kind"] == "diversification" for x in j["recommendations"])
+
+
+def test_manager_report_allocation_math(monkeypatch):
+    """Real MoomooService.manager_report allocation math, with account /
+    positions stubbed so no OpenD is touched."""
+    from app.moomoo.service import (
+        MoomooService, MoomooAccount, MoomooPosition,
+    )
+    svc = MoomooService()
+    # One name dominates -> critical concentration + HIGH risk.
+    monkeypatch.setattr(
+        svc, "account",
+        lambda: MoomooAccount(1000.0, 50.0, 50.0, 950.0, "USD"),
+    )
+    monkeypatch.setattr(
+        svc, "positions",
+        lambda: [
+            MoomooPosition("US.AAA", "AAA", 10.0, 10.0, 80.0, 90.0, 100.0, 0.12),
+            MoomooPosition("US.BBB", "BBB", 1.0, 1.0, 50.0, 50.0, 0.0, 0.0),
+        ],
+    )
+    rep = svc.manager_report()
+    # AAA = 900 of 950 total = ~94.7% -> critical concentration, HIGH risk.
+    assert rep["largest_position_pct"] > 90
+    assert rep["risk_level"] == "HIGH"
+    assert rep["holdings_count"] == 2
+    assert any(x["kind"] == "concentration" and x["severity"] == "critical"
+               for x in rep["recommendations"])

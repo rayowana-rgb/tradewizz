@@ -262,6 +262,62 @@ void main() {
     expect(find.byKey(const Key('moomoo_pos_INTC')), findsNothing);
   });
 
+  testWidgets('portfolio manager card renders risk + recommendations',
+      (tester) async {
+    final auth = await _auth(kMoomooOwnerUid);
+    final repo = _repoWith(MockClient((req) async {
+      if (req.url.path.endsWith('/broker/moomoo/account')) {
+        return http.Response(
+          jsonEncode({
+            'total_assets': 1000.0,
+            'cash': 50.0,
+            'buying_power': 50.0,
+            'market_value': 950.0,
+            'currency': 'USD',
+          }),
+          200,
+        );
+      }
+      if (req.url.path.endsWith('/broker/moomoo/positions')) {
+        return http.Response(jsonEncode({'positions': []}), 200);
+      }
+      if (req.url.path.endsWith('/broker/moomoo/manager')) {
+        return http.Response(
+          jsonEncode({
+            'risk_level': 'HIGH',
+            'concentration_score': 5.0,
+            'diversification_score': 20.0,
+            'cash_pct': 5.0,
+            'largest_position_pct': 95.0,
+            'holdings_count': 2,
+            'recommendations': [
+              {
+                'kind': 'concentration',
+                'severity': 'critical',
+                'title': 'High concentration',
+                'message': 'AAA is 95% of holdings value.',
+                'symbol': 'AAA',
+              },
+            ],
+            'live': true,
+          }),
+          200,
+        );
+      }
+      return http.Response('{}', 200);
+    }));
+
+    final store = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await tester.pumpWidget(_wrap(
+        MoomooLivePage(repository: repo, secretStore: store), auth, repo));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('moomoo_manager_card')), findsOneWidget);
+    expect(find.text('HIGH risk'), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_rec_concentration')), findsOneWidget);
+    expect(find.textContaining('High concentration'), findsOneWidget);
+  });
+
   testWidgets('order ticket: comma is stripped from the quantity field',
       (tester) async {
     final auth = await _auth(kMoomooOwnerUid);

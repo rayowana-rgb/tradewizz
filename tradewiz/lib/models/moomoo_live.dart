@@ -132,3 +132,65 @@ class MoomooLiveOrderResult {
         status: j['status'] as String? ?? '',
       );
 }
+
+class MoomooLiveManagerRec {
+  const MoomooLiveManagerRec({
+    required this.kind,
+    required this.severity,
+    required this.title,
+    required this.message,
+    this.symbol,
+  });
+
+  final String kind;
+  final String severity; // info / warning / critical
+  final String title;
+  final String message;
+  final String? symbol;
+
+  factory MoomooLiveManagerRec.fromJson(Map<String, dynamic> j) =>
+      MoomooLiveManagerRec(
+        kind: j['kind'] as String? ?? '',
+        severity: j['severity'] as String? ?? 'info',
+        title: j['title'] as String? ?? '',
+        message: j['message'] as String? ?? '',
+        symbol: j['symbol'] as String?,
+      );
+}
+
+class MoomooLiveManagerReport {
+  const MoomooLiveManagerReport({
+    this.riskLevel = 'MODERATE',
+    this.concentrationScore = 0,
+    this.diversificationScore = 0,
+    this.cashPct = 0,
+    this.largestPositionPct = 0,
+    this.holdingsCount = 0,
+    this.recommendations = const [],
+  });
+
+  final String riskLevel; // LOW / MODERATE / HIGH
+  final double concentrationScore;
+  final double diversificationScore;
+  final double cashPct;
+  final double largestPositionPct;
+  final int holdingsCount;
+  final List<MoomooLiveManagerRec> recommendations;
+
+  factory MoomooLiveManagerReport.fromJson(Map<String, dynamic> j) =>
+      MoomooLiveManagerReport(
+        riskLevel: j['risk_level'] as String? ?? 'MODERATE',
+        concentrationScore:
+            (j['concentration_score'] as num?)?.toDouble() ?? 0,
+        diversificationScore:
+            (j['diversification_score'] as num?)?.toDouble() ?? 0,
+        cashPct: (j['cash_pct'] as num?)?.toDouble() ?? 0,
+        largestPositionPct:
+            (j['largest_position_pct'] as num?)?.toDouble() ?? 0,
+        holdingsCount: (j['holdings_count'] as num?)?.toInt() ?? 0,
+        recommendations: (j['recommendations'] as List<dynamic>? ?? [])
+            .map((e) =>
+                MoomooLiveManagerRec.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+}

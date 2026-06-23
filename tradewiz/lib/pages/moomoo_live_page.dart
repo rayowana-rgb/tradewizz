@@ -39,6 +39,7 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
   String? _error;
   MoomooLiveAccount? _account;
   List<MoomooLivePosition> _positions = const [];
+  MoomooLiveManagerReport? _manager;
 
   /// Whether the positions list is collapsed. Persisted across launches via
   /// SharedPreferences (key [_kHidePositionsPref]).
@@ -89,6 +90,15 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
         _positions = pos;
         _loading = false;
       });
+      // Portfolio manager analysis is advisory; fetch it without blocking
+      // (and never let its failure clear the account / positions view).
+      try {
+        final mgr = await widget.repository
+            .moomooManager(token: token, secret: secret);
+        if (mounted) setState(() => _manager = mgr);
+      } catch (_) {
+        // Ignore: the account + positions are still shown.
+      }
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -231,6 +241,10 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
               else ...[
                 if (_error != null) _errorCard(_error!),
                 _accountCard(),
+                if (_manager != null) ...[
+                  const SizedBox(height: TWSpace.lg),
+                  _managerCard(_manager!),
+                ],
                 const SizedBox(height: TWSpace.lg),
                 _positionsSection(),
               ],
@@ -304,6 +318,132 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
             Expanded(child: Text(message, style: TWType.caption)),
           ],
         ),
+      ),
+    );
+  }
+
+  Color _riskColor(String level) {
+    switch (level.toUpperCase()) {
+      case 'LOW':
+        return TWColors.up;
+      case 'HIGH':
+        return TWColors.down;
+      default:
+        return TWColors.warn;
+    }
+  }
+
+  Color _sevColor(String severity) {
+    switch (severity.toLowerCase()) {
+      case 'critical':
+        return TWColors.down;
+      case 'warning':
+        return TWColors.warn;
+      default:
+        return TWColors.info;
+    }
+  }
+
+  IconData _sevIcon(String kind) {
+    switch (kind) {
+      case 'concentration':
+        return Icons.pie_chart_outline;
+      case 'cash_allocation':
+        return Icons.account_balance_wallet_outlined;
+      case 'diversification':
+        return Icons.scatter_plot_outlined;
+      case 'weak_position':
+        return Icons.trending_down;
+      default:
+        return Icons.lightbulb_outline;
+    }
+  }
+
+  Widget _scoreChip(String label, double value) {
+    return Column(
+      children: [
+        Text(value.toStringAsFixed(0),
+            style: TWType.title3.copyWith(color: TWColors.textPrimary)),
+        const SizedBox(height: 2),
+        Text(label,
+            textAlign: TextAlign.center,
+            style: TWType.overline.copyWith(color: TWColors.textTertiary)),
+      ],
+    );
+  }
+
+  Widget _managerCard(MoomooLiveManagerReport m) {
+    final riskColor = _riskColor(m.riskLevel);
+    return _card(
+      key: const Key('moomoo_manager_card'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.smart_toy_outlined,
+                  color: TWColors.accent, size: 20),
+              const SizedBox(width: TWSpace.sm),
+              const Expanded(
+                child: Text('Portfolio Manager', style: TWType.title3),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: TWSpace.sm, vertical: 3),
+                decoration: BoxDecoration(
+                  color: riskColor.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(TWRadius.chip),
+                ),
+                child: Text('${m.riskLevel} risk',
+                    style: TWType.overline.copyWith(color: riskColor)),
+              ),
+            ],
+          ),
+          const SizedBox(height: TWSpace.md),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _scoreChip('Diversif.', m.diversificationScore),
+              _scoreChip('Concentr.', m.concentrationScore),
+              _scoreChip('Cash %', m.cashPct),
+              _scoreChip('Top pos %', m.largestPositionPct),
+            ],
+          ),
+          if (m.recommendations.isNotEmpty) ...[
+            const Divider(height: TWSpace.lg, color: TWColors.hairline),
+            ...m.recommendations.map(_recTile),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _recTile(MoomooLiveManagerRec r) {
+    final color = _sevColor(r.severity);
+    return Padding(
+      key: Key('moomoo_rec_${r.kind}'),
+      padding: const EdgeInsets.only(bottom: TWSpace.sm),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(_sevIcon(r.kind), color: color, size: 18),
+          const SizedBox(width: TWSpace.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  r.symbol != null && r.symbol!.isNotEmpty
+                      ? '${r.title} · ${r.symbol}'
+                      : r.title,
+                  style: TWType.label.copyWith(color: color),
+                ),
+                const SizedBox(height: 2),
+                Text(r.message, style: TWType.caption),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -27,6 +27,12 @@ class MoomooError(Exception):
         self.status_code = status_code
 
 
+# Portfolio-manager thresholds (allocation-based, mirror the simulation rules).
+CONCENTRATION_WARN = 0.35       # 35% of holdings in one name -> warning
+CONCENTRATION_CRITICAL = 0.55   # 55% -> critical
+CASH_FLOOR = 0.05               # < 5% cash limits flexibility
+
+
 def _env_host() -> str:
     return os.environ.get("TRADEWIZZ_MOOMOO_HOST", "127.0.0.1")
 
@@ -239,6 +245,128 @@ class MoomooService:
                 )
             )
         return out
+
+    def manager_report(self) -> dict:
+        """Rule-based portfolio analysis over the LIVE Moomoo holdings.
+
+        Uses only allocation data we already retrieve (per-position market
+        value, cost basis, P/L, and account cash) — no extra data source, no
+        LLM, no fabricated numbers. Metrics:
+          * concentration / largest single-name share
+          * cash allocation %
+          * diversification (# of holdings)
+          * overall risk level
+        Recommendations are derived from these real numbers.
+        """
+        acct = self.account()
+        positions = self.positions()
+
+        # Per-position market value = qty * last (nominal) price.
+        values = {
+            p.symbol: max(0.0, p.qty * p.last_price) for p in positions
+        }
+        market_total = sum(values.values())
+        cash = float(acct.cash or 0.0)
+        equity = float(acct.total_assets or 0.0)
+        if equity <= 0:
+            equity = cash + market_total
+        cash_pct = (cash / equity * 100.0) if equity > 0 else 0.0
+
+        largest_sym = None
+        largest_pct = 0.0
+        if market_total > 0:
+            largest_sym, largest_val = max(
+                values.items(), key=lambda kv: kv[1]
+            )
+            largest_pct = largest_val / market_total * 100.0
+
+        recs: List[dict] = []
+        if not positions:
+            recs.append({
+                "kind": "health", "severity": "info",
+                "title": "No holdings yet",
+                "message": (
+                    "Your live account has no open positions. Allocation "
+                    "analysis unlocks once you hold a few names."
+                ),
+            })
+        else:
+            # Concentration.
+            if largest_sym is not None:
+                if largest_pct >= CONCENTRATION_CRITICAL * 100:
+                    recs.append({
+                        "kind": "concentration", "severity": "critical",
+                        "symbol": largest_sym,
+                        "title": "High concentration",
+                        "message": (
+                            f"{largest_sym} is {largest_pct:.0f}% of holdings "
+                            "value. Single-name risk is elevated."
+                        ),
+                    })
+                elif largest_pct >= CONCENTRATION_WARN * 100:
+                    recs.append({
+                        "kind": "concentration", "severity": "warning",
+                        "symbol": largest_sym,
+                        "title": "Elevated concentration",
+                        "message": (
+                            f"{largest_sym} is {largest_pct:.0f}% of holdings "
+                            "value. Consider trimming to diversify."
+                        ),
+                    })
+            # Losing positions (real P/L).
+            for p in positions:
+                if p.pl_ratio <= -0.15:
+                    recs.append({
+                        "kind": "weak_position", "severity": "warning",
+                        "symbol": p.symbol,
+                        "title": "Position underwater",
+                        "message": (
+                            f"{p.symbol} is down {abs(p.pl_ratio) * 100:.0f}% "
+                            "from cost. Review the thesis."
+                        ),
+                    })
+            # Cash.
+            if cash_pct < CASH_FLOOR * 100:
+                recs.append({
+                    "kind": "cash_allocation", "severity": "warning",
+                    "title": "Low cash",
+                    "message": (
+                        "Cash is below 5% of equity. Buying flexibility is "
+                        "limited."
+                    ),
+                })
+            # Diversification.
+            if len(positions) < 3:
+                recs.append({
+                    "kind": "diversification", "severity": "warning",
+                    "title": "Low diversification",
+                    "message": (
+                        "Fewer than 3 holdings increases single-name risk."
+                    ),
+                })
+
+        # Scores (0–100). Allocation-derived, no scoring engine needed.
+        n = len(positions)
+        diversification_score = min(n, 10) / 10.0 * 100.0
+        concentration_score = max(0.0, 100.0 - largest_pct)
+        if largest_pct >= CONCENTRATION_CRITICAL * 100 or n == 0:
+            risk = "HIGH"
+        elif (largest_pct < CONCENTRATION_WARN * 100 and n >= 3
+              and cash_pct >= CASH_FLOOR * 100):
+            risk = "LOW"
+        else:
+            risk = "MODERATE"
+
+        return {
+            "risk_level": risk,
+            "concentration_score": round(concentration_score, 1),
+            "diversification_score": round(diversification_score, 1),
+            "cash_pct": round(cash_pct, 1),
+            "largest_position_pct": round(largest_pct, 1),
+            "holdings_count": n,
+            "recommendations": recs,
+            "live": True,
+        }
 
     # -- order helpers ----------------------------------------------------
     def _est_notional(self, symbol: str, qty: float, price: float) -> float:
