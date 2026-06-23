@@ -575,3 +575,56 @@ def test_score_symbol_cached_rejects_mock_fallback():
     import pandas as _pd
     eng, _ = _cached_engine({"TINY.JK": _pd.DataFrame()})
     assert eng.score_symbol_cached("TINY", Market.IDX) is None
+
+
+class _PeriodCache:
+    """Cache keyed by (ticker, period) so we can model a fresh '1y' entry and a
+    STALE '1mo' entry for the same ticker (the real-world warmer behaviour)."""
+
+    def __init__(self, by_period):
+        # by_period: {(ticker, period): DataFrame}
+        self._by_period = by_period
+        self.reads = []
+
+    def read_cached_only(self, ticker, period, interval):
+        self.reads.append((ticker, period, interval))
+        return self._by_period.get((ticker, period))
+
+
+def _price_engine(by_period):
+    def fetcher(t, p, i):  # latest_price_cached must not fetch
+        raise AssertionError("latest_price_cached must not fetch live")
+
+    fetcher.cache = _PeriodCache(by_period)  # type: ignore[attr-defined]
+    return AnalysisEngine(fetcher=fetcher), fetcher
+
+
+def test_latest_price_cached_prefers_fresh_1y_over_stale_1mo():
+    """Regression: the daily warmer keeps the '1y' entry fresh but NOT '1mo'.
+
+    latest_price_cached must read the warmer-maintained period so held
+    simulated positions mark to the latest close (correct unrealized P/L),
+    not a stale '1mo' close.
+    """
+    fresh = make_ohlcv([100.0, 101.0, 142.0])   # latest close 142 (fresh '1y')
+    stale = make_ohlcv([100.0, 134.0])           # stale '1mo' close 134
+    eng, fetcher = _price_engine({
+        ("ARM", "1y"): fresh,
+        ("ARM", "1mo"): stale,
+    })
+    px = eng.latest_price_cached("ARM", Market.US)
+    assert px == 142.0, px
+    # It read '1y' first (and was satisfied there).
+    assert fetcher.cache.reads[0] == ("ARM", "1y", "1d")
+
+
+def test_latest_price_cached_falls_back_when_1y_missing():
+    """If '1y' is absent, fall back to a shorter maintained period."""
+    stale = make_ohlcv([100.0, 134.0])
+    eng, _ = _price_engine({("ZZ", "1mo"): stale})
+    assert eng.latest_price_cached("ZZ", Market.US) == 134.0
+
+
+def test_latest_price_cached_none_when_nothing_cached():
+    eng, _ = _price_engine({})
+    assert eng.latest_price_cached("NONE", Market.US) is None

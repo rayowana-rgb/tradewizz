@@ -1001,18 +1001,29 @@ class AnalysisEngine:
         Reads only what is already on disk (regardless of TTL). Returns None
         when nothing is cached. Used by latency-sensitive callers (simulated
         order pricing) that must never block on a slow/blocked data provider.
+
+        MUST read the SAME period the daily warmer / screener keep fresh
+        ("1y"). The "1mo" entry is not maintained by the warmer, so it rots and
+        serves a stale close -- which previously made held simulated positions
+        show an out-of-date price and therefore a wrong unrealized P/L. "1y"
+        also has the deepest history, so the last non-NaN bar is the freshest
+        close available on disk.
         """
         cache = getattr(self._fetch, "cache", None)
         if cache is None:
             return None
         ticker = yf_symbol(symbol, market)
-        try:
-            df = cache.read_cached_only(ticker, "1mo", "1d")
-        except Exception:  # noqa: BLE001 - best-effort
-            return None
-        if df is None:
-            return None
-        return self._close_from_df(df)
+        for period in ("1y", "6mo", "1mo"):
+            try:
+                df = cache.read_cached_only(ticker, period, "1d")
+            except Exception:  # noqa: BLE001 - best-effort
+                df = None
+            if df is None:
+                continue
+            price = self._close_from_df(df)
+            if price is not None and price > 0:
+                return price
+        return None
 
     def score_symbol_cached(
         self, symbol: str, market: Market
@@ -1043,10 +1054,15 @@ class AnalysisEngine:
         market-order execution. Reuses the same fetcher/cache as analyze(); does
         NOT touch scoring/indicators. Returns None if no real price is
         available (caller decides how to handle).
+
+        Uses the "1y" period (same as analyze/screen and the daily warmer) so
+        the simulated mark always reflects the freshest maintained close. The
+        previously-used "1mo" entry is not kept fresh by the warmer and could
+        serve a stale price, skewing held-position P/L.
         """
         ticker = yf_symbol(symbol, market)
         try:
-            df = self._fetch(ticker, "1mo", "1d")
+            df = self._fetch(ticker, "1y", "1d")
             return self._close_from_df(df)
         except Exception as exc:  # noqa: BLE001 - price is best-effort
             logger.warning("latest_price failed for %s: %s", ticker, exc)
