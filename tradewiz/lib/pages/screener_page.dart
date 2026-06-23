@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../models/broker.dart';
 import '../models/market.dart';
@@ -8,6 +9,7 @@ import '../repositories/stock_repository.dart';
 import '../services/api_client.dart';
 import '../services/auth_scope.dart';
 import '../services/data_source.dart';
+import '../services/moomoo_secret_store.dart';
 import '../services/repository_scope.dart';
 import '../state/explore_filter_store.dart';
 import '../theme_tradewizz.dart';
@@ -16,6 +18,7 @@ import '../widgets/connection_pill.dart';
 import '../widgets/broker_open_sheet.dart';
 import '../widgets/ds/ds.dart';
 import 'ai_analysis_page.dart';
+import 'moomoo_live_page.dart' show kMoomooOwnerUid;
 import 'order_ticket_page.dart';
 
 /// Non-order action emitted by the swipe-left menu (alongside [OrderSide]).
@@ -29,11 +32,16 @@ class ScreenerPage extends StatefulWidget {
     this.market,
     this.repository,
     this.filterStore,
+    this.secretStore,
   });
 
   /// Market preselected from the app shell.
   final Market? market;
   final StockRepository? repository;
+
+  /// Moomoo LIVE bridge secret store. Owner-only; backs the real "Buy all"
+  /// action. Defaults to a real secure-storage store; tests inject a fake.
+  final MoomooSecretStore? secretStore;
 
   /// In-memory filter persistence. Defaults to the process-wide singleton so
   /// selections survive tab switches; tests can inject a fresh store.
@@ -47,6 +55,31 @@ class _ScreenerPageState extends State<ScreenerPage> {
   late final StockRepository _repo = widget.repository ?? StockRepository();
   ExploreFilterStore get _store =>
       widget.filterStore ?? ExploreFilterStore.instance;
+  // Owner-only Moomoo LIVE bridge secret (secure-storage backed). Created
+  // lazily; only the owner ever sees the LIVE bulk-buy entry point.
+  late final MoomooSecretStore _moomooSecret =
+      widget.secretStore ?? MoomooSecretStore();
+  bool _moomooSecretLoaded = false;
+
+  /// Whether the current user is the private-bridge owner (uid 2). Safe when
+  /// no AuthScope is present (e.g. unit tests) — returns false instead of
+  /// asserting.
+  bool _isOwner() {
+    final scope =
+        context.getInheritedWidgetOfExactType<AuthScope>();
+    final user = scope?.notifier?.user;
+    return user != null && user.id == kMoomooOwnerUid;
+  }
+
+  /// LIVE bulk-buy is available only to the owner, on the US market (the only
+  /// market the Moomoo bridge supports), once the bridge secret is loaded and
+  /// present.
+  bool _canLiveBuyAll() {
+    return _isOwner() &&
+        _market == Market.us &&
+        _moomooSecretLoaded &&
+        _moomooSecret.hasSecret;
+  }
 
   late Market _market = widget.market ?? Market.idx;
   ScreenerCategory? _categoryFilter;
@@ -102,6 +135,14 @@ class _ScreenerPageState extends State<ScreenerPage> {
         _market = _store.market!;
       }
     }
+    // Owner-only: load the LIVE bridge secret in the background so the real
+    // "Buy all" entry point can appear. No-op for non-owners (they never see
+    // it). Failure simply leaves the LIVE action hidden.
+    _moomooSecret.load().then((_) {
+      if (mounted) setState(() => _moomooSecretLoaded = true);
+    }).catchError((_) {
+      if (mounted) setState(() => _moomooSecretLoaded = true);
+    });
     _run();
   }
 
@@ -400,6 +441,120 @@ class _ScreenerPageState extends State<ScreenerPage> {
     );
   }
 
+  /// Owner-only: open the REAL (Moomoo LIVE) bulk-buy sheet for every stock in
+  /// the filtered list. Guarded by [_canLiveBuyAll]. Orders are MARKET only
+  /// (the bridge allows fractional MARKET; LIMIT needs whole shares + price).
+  Future<void> _openLiveBulkBuy() async {
+    final matches = _filtered;
+    if (matches.isEmpty) return;
+    final token = AuthScope.read(context).token;
+    final secret = _moomooSecret.secret;
+    if (token == null || secret == null || secret.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('LIVE trading is unavailable (missing credentials).'),
+        ),
+      );
+      return;
+    }
+    final config = await showModalBottomSheet<_LiveBulkBuyConfig>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _LiveBulkBuySheet(
+        market: _market,
+        count: matches.length,
+      ),
+    );
+    if (!mounted || config == null) return;
+    await _runLiveBulkBuy(matches, config, token, secret);
+  }
+
+  /// Place a REAL Moomoo LIVE MARKET BUY for each match sequentially. Backend
+  /// enforces the per-order notional cap, kill-switch and owner gate; the
+  /// per-order outcome is summarised: filled / skipped (cap/cash) / failed.
+  Future<void> _runLiveBulkBuy(
+    List<ScreenerMatch> matches,
+    _LiveBulkBuyConfig config,
+    String token,
+    String secret,
+  ) async {
+    final repo = widget.repository ?? RepositoryScope.of(context);
+    var filled = 0;
+    var skipped = 0;
+    var failed = 0;
+    final failures = <String>[];
+
+    final progress = ValueNotifier<int>(0);
+    final cancel = _BulkCancelToken();
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _BulkProgressDialog(
+        total: matches.length,
+        progress: progress,
+        cancel: cancel,
+        live: true,
+      ),
+    );
+
+    var cancelled = false;
+    for (var i = 0; i < matches.length; i++) {
+      if (cancel.isCancelled) {
+        cancelled = true;
+        break;
+      }
+      final m = matches[i];
+      try {
+        await repo.moomooPlace(
+          token: token,
+          secret: secret,
+          symbol: m.symbol,
+          side: 'BUY',
+          quantity: config.quantity,
+          orderType: 'MARKET',
+        );
+        filled++;
+      } on ApiException catch (e) {
+        final msg = e.message.toLowerCase();
+        // Notional cap exceeded or insufficient buying power are expected,
+        // non-fatal per-stock outcomes: skip & continue the run.
+        if (msg.contains('cap') ||
+            msg.contains('notional') ||
+            msg.contains('cash') ||
+            msg.contains('buying power')) {
+          skipped++;
+        } else {
+          failed++;
+          failures.add('${m.symbol}: ${e.message}');
+        }
+      } catch (e) {
+        failed++;
+        failures.add('${m.symbol}: $e');
+      }
+      progress.value = i + 1;
+    }
+
+    progress.dispose();
+    if (!mounted) return;
+    if (!cancel.dialogClosed) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (_) => _BulkResultDialog(
+        total: matches.length,
+        filled: filled,
+        skipped: skipped,
+        failed: failed,
+        failures: failures,
+        cancelled: cancelled,
+        live: true,
+      ),
+    );
+  }
+
   // Server already filters; keep a defensive local pass for fallback data.
   List<ScreenerMatch> get _filtered {
     final matches = _result?.matches ?? [];
@@ -569,6 +724,7 @@ class _ScreenerPageState extends State<ScreenerPage> {
           _BulkActionBar(
             count: _filtered.length,
             onBuyAll: _openBulkBuy,
+            onLiveBuyAll: _canLiveBuyAll() ? _openLiveBulkBuy : null,
           ),
         const Divider(height: 1, color: TWColors.hairline),
         Expanded(child: _buildBody()),
@@ -830,29 +986,193 @@ class _BulkBuyConfig {
   final OrderTypeKind orderType;
 }
 
+/// Immutable result of the LIVE bulk-buy sheet: quantity-per-stock. LIVE bulk
+/// orders are MARKET only (fractional allowed), so there is no order-type.
+class _LiveBulkBuyConfig {
+  const _LiveBulkBuyConfig({required this.quantity});
+  final double quantity;
+}
+
+/// Owner-only confirmation sheet for a REAL (Moomoo LIVE) bulk buy. Requires an
+/// explicit "I understand" toggle before the action can run, because every
+/// order spends real money. MARKET orders only; the backend enforces the
+/// per-order notional cap and kill-switch.
+class _LiveBulkBuySheet extends StatefulWidget {
+  const _LiveBulkBuySheet({required this.market, required this.count});
+  final Market market;
+  final int count;
+
+  @override
+  State<_LiveBulkBuySheet> createState() => _LiveBulkBuySheetState();
+}
+
+class _LiveBulkBuySheetState extends State<_LiveBulkBuySheet> {
+  final _qtyController = TextEditingController(text: '1');
+  final _formKey = GlobalKey<FormState>();
+  bool _acknowledged = false;
+
+  @override
+  void dispose() {
+    _qtyController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          20,
+          20,
+          20,
+          24 + MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.bolt_rounded, color: TWColors.down),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Buy all ${widget.count} · LIVE',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w800, fontSize: 20),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${widget.market.flag} ${widget.market.code} · REAL MONEY. The '
+                'same quantity is bought for every stock in the current list '
+                'as a MARKET order on your live Moomoo account. Orders over the '
+                'per-order cap or short on buying power are skipped.',
+                style: const TextStyle(
+                    color: TWColors.textTertiary, fontSize: 12),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                key: const Key('live_bulk_qty_field'),
+                controller: _qtyController,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [_DecimalQtyFormatter()],
+                decoration: const InputDecoration(
+                  labelText: 'Quantity per stock (fractional allowed)',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (v) {
+                  final q = double.tryParse(
+                      (v ?? '').trim().replaceAll(',', '.'));
+                  if (q == null || q <= 0) return 'Enter a positive quantity';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 14),
+              CheckboxListTile(
+                key: const Key('live_bulk_ack'),
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                value: _acknowledged,
+                activeColor: TWColors.down,
+                onChanged: (v) =>
+                    setState(() => _acknowledged = v ?? false),
+                title: const Text(
+                  'I understand these are real orders that spend real money.',
+                  style: TextStyle(fontSize: 13),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  key: const Key('live_bulk_confirm_button'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: TWColors.down,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  onPressed: _acknowledged
+                      ? () {
+                          if (!_formKey.currentState!.validate()) return;
+                          Navigator.of(context).pop(
+                            _LiveBulkBuyConfig(
+                              quantity: double.parse(_qtyController.text
+                                  .trim()
+                                  .replaceAll(',', '.')),
+                            ),
+                          );
+                        }
+                      : null,
+                  child: Text('Buy all ${widget.count} · LIVE'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Slim action bar above the list: "Buy all (N)" — simulation bulk entry point.
+/// When [onLiveBuyAll] is provided (owner, on a Moomoo-tradable market), a
+/// second REAL-money "Buy all · LIVE" button is shown below the simulated one.
 class _BulkActionBar extends StatelessWidget {
-  const _BulkActionBar({required this.count, required this.onBuyAll});
+  const _BulkActionBar({
+    required this.count,
+    required this.onBuyAll,
+    this.onLiveBuyAll,
+  });
   final int count;
   final VoidCallback onBuyAll;
+  final VoidCallback? onLiveBuyAll;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-      child: SizedBox(
-        width: double.infinity,
-        child: FilledButton.icon(
-          key: const Key('screener_buy_all_button'),
-          onPressed: onBuyAll,
-          style: FilledButton.styleFrom(
-            backgroundColor: TWColors.up,
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            shape: RoundedRectangleBorder(borderRadius: TWRadius.rButton),
+      child: Column(
+        children: [
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              key: const Key('screener_buy_all_button'),
+              onPressed: onBuyAll,
+              style: FilledButton.styleFrom(
+                backgroundColor: TWColors.up,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape:
+                    RoundedRectangleBorder(borderRadius: TWRadius.rButton),
+              ),
+              icon: const Icon(Icons.shopping_cart_checkout_rounded,
+                  size: 18),
+              label: Text('Buy all ($count) · simulated'),
+            ),
           ),
-          icon: const Icon(Icons.shopping_cart_checkout_rounded, size: 18),
-          label: Text('Buy all ($count) · simulated'),
-        ),
+          if (onLiveBuyAll != null) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                key: const Key('screener_buy_all_live_button'),
+                onPressed: onLiveBuyAll,
+                style: FilledButton.styleFrom(
+                  backgroundColor: TWColors.down,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: TWRadius.rButton),
+                ),
+                icon: const Icon(Icons.bolt_rounded, size: 18),
+                label: Text('Buy all ($count) · LIVE (real money)'),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -1012,10 +1332,12 @@ class _BulkProgressDialog extends StatefulWidget {
     required this.total,
     required this.progress,
     required this.cancel,
+    this.live = false,
   });
   final int total;
   final ValueNotifier<int> progress;
   final _BulkCancelToken cancel;
+  final bool live;
 
   @override
   State<_BulkProgressDialog> createState() => _BulkProgressDialogState();
@@ -1097,13 +1419,15 @@ class _BulkProgressDialogState extends State<_BulkProgressDialog> {
                     const SizedBox(height: 4),
                     LinearProgressIndicator(
                       value: widget.total == 0 ? null : done / widget.total,
-                      color: TWColors.up,
+                      color: widget.live ? TWColors.down : TWColors.up,
                     ),
                     const SizedBox(height: 16),
                     Text(
                       _stopping
                           ? 'Stopping\u2026  $done / ${widget.total}'
-                          : 'Placing simulated orders\u2026  $done / ${widget.total}',
+                          : widget.live
+                              ? 'Placing LIVE orders\u2026  $done / ${widget.total}'
+                              : 'Placing simulated orders\u2026  $done / ${widget.total}',
                       style: const TextStyle(fontSize: 13),
                     ),
                     const SizedBox(height: 4),
@@ -1132,6 +1456,7 @@ class _BulkResultDialog extends StatelessWidget {
     required this.failed,
     required this.failures,
     this.cancelled = false,
+    this.live = false,
   });
   final int total;
   final int filled;
@@ -1139,6 +1464,7 @@ class _BulkResultDialog extends StatelessWidget {
   final int failed;
   final List<String> failures;
   final bool cancelled;
+  final bool live;
 
   @override
   Widget build(BuildContext context) {
@@ -1154,16 +1480,22 @@ class _BulkResultDialog extends StatelessWidget {
         );
     return AlertDialog(
       key: const Key('bulk_result_dialog'),
-      title: Text(cancelled ? 'Bulk buy stopped' : 'Bulk buy complete'),
+      title: Text(cancelled
+          ? (live ? 'LIVE buy stopped' : 'Bulk buy stopped')
+          : (live ? 'LIVE buy complete' : 'Bulk buy complete')),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           line(Icons.check_circle, TWColors.up,
-              '$filled filled (simulated)'),
+              live ? '$filled placed (LIVE)' : '$filled filled (simulated)'),
           if (skipped > 0)
-            line(Icons.account_balance_wallet_outlined, TWColors.warn,
-                '$skipped skipped — not enough simulated cash'),
+            line(
+                Icons.account_balance_wallet_outlined,
+                TWColors.warn,
+                live
+                    ? '$skipped skipped — over cap or not enough buying power'
+                    : '$skipped skipped — not enough simulated cash'),
           if (failed > 0)
             line(Icons.error_outline, TWColors.down, '$failed failed'),
           if (failures.isNotEmpty) ...[
@@ -1180,9 +1512,12 @@ class _BulkResultDialog extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 8),
-          const Text(
-            'Simulation only. No real broker orders were sent.',
-            style: TextStyle(fontSize: 12, color: TWColors.textTertiary),
+          Text(
+            live
+                ? 'LIVE orders were sent to your real Moomoo account.'
+                : 'Simulation only. No real broker orders were sent.',
+            style: const TextStyle(
+                fontSize: 12, color: TWColors.textTertiary),
           ),
         ],
       ),
@@ -1793,6 +2128,28 @@ class _ScreenerEmpty extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// Normalizes decimal input for the LIVE bulk-buy quantity field: ID/EU
+// keyboards emit a comma decimal separator; convert it to a dot and keep only
+// the first separator so "0,001" parses as 0.001 (not 0001).
+class _DecimalQtyFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    var text = newValue.text.replaceAll(',', '.');
+    final firstDot = text.indexOf('.');
+    if (firstDot != -1) {
+      final head = text.substring(0, firstDot + 1);
+      final tail = text.substring(firstDot + 1).replaceAll('.', '');
+      text = head + tail;
+    }
+    if (text == newValue.text) return newValue;
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
     );
   }
 }

@@ -15,10 +15,23 @@ import 'package:tradewiz/repositories/stock_repository.dart';
 import 'package:tradewiz/services/api_client.dart';
 import 'package:tradewiz/services/auth_scope.dart';
 import 'package:tradewiz/services/auth_store.dart';
+import 'package:tradewiz/services/moomoo_secret_store.dart';
 import 'package:tradewiz/state/explore_filter_store.dart';
 import 'package:tradewiz/widgets/category_badge.dart';
 
 import 'helpers.dart';
+
+/// In-memory secret persistence so tests never touch the Keychain.
+class _MemSecret implements MoomooSecretPersistence {
+  _MemSecret([this._v]);
+  String? _v;
+  @override
+  Future<String?> read() async => _v;
+  @override
+  Future<void> write(String secret) async => _v = secret;
+  @override
+  Future<void> clear() async => _v = null;
+}
 
 /// A repository that returns [matchCount] IDX matches and accepts simulated
 /// order placements, recording each placed body so the test can assert that
@@ -657,6 +670,155 @@ void main() {
     expect(find.byKey(const Key('bulk_result_dialog')), findsOneWidget);
     expect(find.text('Bulk buy complete'), findsOneWidget);
   });
+
+  testWidgets(
+      'owner sees LIVE Buy-all on US; it places one real order per match',
+      (tester) async {
+    final placed = <Map<String, dynamic>>[];
+    final repo = _liveBulkRepo(2, placed: placed);
+    final secret = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await secret.load();
+
+    tester.view.physicalSize = const Size(1200, 3200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      _wrapOwner(
+        ScreenerPage(
+          market: Market.us,
+          repository: repo,
+          secretStore: secret,
+        ),
+        repo,
+      ),
+    );
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pumpAndSettle();
+    }
+
+    // LIVE button is visible to the owner on US.
+    final liveBtn = find.byKey(const Key('screener_buy_all_live_button'));
+    expect(liveBtn, findsOneWidget);
+
+    await tester.tap(liveBtn);
+    await tester.pumpAndSettle();
+
+    // Confirm is disabled until the real-money acknowledgement is checked.
+    final confirm = tester.widget<FilledButton>(
+      find.byKey(const Key('live_bulk_confirm_button')),
+    );
+    expect(confirm.onPressed, isNull);
+
+    await tester.enterText(
+        find.byKey(const Key('live_bulk_qty_field')), '1');
+    await tester.tap(find.byKey(const Key('live_bulk_ack')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('live_bulk_confirm_button')));
+    await tester.pumpAndSettle(const Duration(milliseconds: 800));
+
+    // Two real Moomoo orders were placed (MARKET, BUY, confirm=true).
+    expect(placed.length, 2);
+    expect(placed.every((b) => b['side'] == 'BUY'), isTrue);
+    expect(placed.every((b) => b['order_type'] == 'MARKET'), isTrue);
+    expect(placed.every((b) => b['confirm'] == true), isTrue);
+    expect(find.byKey(const Key('bulk_result_dialog')), findsOneWidget);
+    expect(find.text('LIVE buy complete'), findsOneWidget);
+  });
+
+  testWidgets('non-owner never sees the LIVE Buy-all button', (tester) async {
+    final repo = _liveBulkRepo(2);
+    final secret = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await secret.load();
+    await tester.pumpWidget(
+      _wrapSignedIn(
+        ScreenerPage(
+          market: Market.us,
+          repository: repo,
+          secretStore: secret,
+        ),
+        repo,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('screener_buy_all_button')), findsOneWidget);
+    expect(find.byKey(const Key('screener_buy_all_live_button')),
+        findsNothing);
+  });
+}
+
+/// Sign-in wrap as the bridge OWNER (uid 2) for the LIVE Buy-all path.
+Widget _wrapOwner(Widget child, StockRepository repo) {
+  final auth = AuthStore()
+    ..setSession(
+        'JWT',
+        const UserProfile(
+            id: 2, email: 'owner@b.com', createdAt: '', updatedAt: ''));
+  return AuthScope(store: auth, child: wrapApp(child, repository: repo));
+}
+
+/// US repo that returns [matchCount] matches and accepts REAL Moomoo order
+/// placements, recording each placed body.
+StockRepository _liveBulkRepo(
+  int matchCount, {
+  List<Map<String, dynamic>>? placed,
+}) {
+  var n = 0;
+  final live = MockClient((req) async {
+    final path = req.url.path;
+    if (path.endsWith('/broker/moomoo/order/place')) {
+      n++;
+      final body = jsonDecode(req.body) as Map<String, dynamic>;
+      placed?.add(body);
+      return http.Response(
+        jsonEncode({
+          'order_id': 'live-$n',
+          'symbol': body['symbol'],
+          'side': body['side'],
+          'quantity': body['quantity'],
+          'order_type': body['order_type'],
+          'status': 'SUBMITTED',
+          'message': 'Order submitted.',
+        }),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    }
+    final matches = List.generate(
+      matchCount,
+      (i) => {
+        'symbol': 'AAPL$i',
+        'name': 'Co $i',
+        'score': (90 - i).toDouble(),
+        'signal': 'BUY',
+        'price': 100.0 + i,
+        'change_percent': 1.0,
+        'categories': ['bullish'],
+      },
+    );
+    return http.Response(
+      jsonEncode({
+        'market': 'US',
+        'matches': matches,
+        'generated_at': '2026-06-10T00:00:00Z',
+        'total_count': matchCount,
+        'returned_count': matchCount,
+        'limit': 50,
+        'min_score': 0,
+        'categories': <String>[],
+      }),
+      200,
+      headers: {'content-type': 'application/json'},
+    );
+  });
+  return StockRepository(
+    client: ApiClient(
+      config: const AppConfig(baseUrl: 'https://test.tradewiz.app/v1'),
+      httpClient: live,
+    ),
+  );
 }
 
 /// Like [_bulkBuyRepo] but each /sim/order/place response is delayed so the
