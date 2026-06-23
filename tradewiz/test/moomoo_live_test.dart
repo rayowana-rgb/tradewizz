@@ -133,4 +133,65 @@ void main() {
     expect(find.byKey(const Key('moomoo_account_card')), findsOneWidget);
     expect(accountCalls, greaterThanOrEqualTo(1));
   });
+
+  testWidgets('shows total unrealized P/L summed from positions',
+      (tester) async {
+    final auth = await _auth(kMoomooOwnerUid);
+    final repo = _repoWith(MockClient((req) async {
+      if (req.url.path.endsWith('/broker/moomoo/account')) {
+        return http.Response(
+          jsonEncode({
+            'total_assets': 5000.0,
+            'cash': 4000.0,
+            'buying_power': 4800.0,
+            'market_value': 1000.0,
+            'currency': 'USD',
+          }),
+          200,
+        );
+      }
+      if (req.url.path.endsWith('/broker/moomoo/positions')) {
+        return http.Response(
+          jsonEncode({
+            'positions': [
+              {
+                'code': 'US.INTC',
+                'symbol': 'INTC',
+                'quantity': 10.0,
+                'can_sell_qty': 10.0,
+                'cost_price': 30.0,
+                'last_price': 33.5,
+                'pl_val': 35.0,
+                'pl_ratio': 0.1167,
+              },
+              {
+                'code': 'US.AMD',
+                'symbol': 'AMD',
+                'quantity': 5.0,
+                'can_sell_qty': 5.0,
+                'cost_price': 100.0,
+                'last_price': 96.0,
+                'pl_val': -20.0,
+                'pl_ratio': -0.04,
+              },
+            ],
+          }),
+          200,
+        );
+      }
+      return http.Response('{}', 200);
+    }));
+
+    final store = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await tester.pumpWidget(_wrap(
+        MoomooLivePage(repository: repo, secretStore: store), auth, repo));
+    await tester.pumpAndSettle();
+
+    // Net P/L = 35 - 20 = +15.00 over 800 cost basis = +1.88%.
+    expect(find.text('Unrealized P/L'), findsOneWidget);
+    expect(find.textContaining('+\$15.00'), findsWidgets);
+    // Per-position tiles render with avg cost.
+    expect(find.byKey(const Key('moomoo_pos_INTC')), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_pos_AMD')), findsOneWidget);
+  });
 }

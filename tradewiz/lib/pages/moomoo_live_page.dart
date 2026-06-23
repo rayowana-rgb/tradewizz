@@ -312,6 +312,12 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
             _kv('Cash', _money(a.cash, a.currency)),
             _kv('Buying power', _money(a.buyingPower, a.currency)),
             _kv('Market value', _money(a.marketValue, a.currency)),
+            // Total unrealized P/L across open positions (summed from the
+            // broker's per-position values; no extra fetch).
+            if (_positions.isNotEmpty) ...[
+              const Divider(height: TWSpace.lg, color: TWColors.hairline),
+              _kvPL('Unrealized P/L', _totalPlVal, _totalPlRatio, a.currency),
+            ],
           ],
         ],
       ),
@@ -353,6 +359,11 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                     '${_qty(p.quantity)} @ ${_money(p.lastPrice, "USD")}',
                     style: TWType.caption,
                   ),
+                  if (p.costPrice > 0) ...[
+                    const SizedBox(height: 2),
+                    Text('Avg cost ${_money(p.costPrice, "USD")}',
+                        style: TWType.caption),
+                  ],
                 ],
               ),
             ),
@@ -360,13 +371,16 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  '${up ? '+' : ''}${_money(p.plVal, "USD")}',
+                  '${up ? '+' : '-'}${_money(p.plVal.abs(), "USD")}',
                   style: TWType.label
                       .copyWith(color: up ? TWColors.up : TWColors.down),
                 ),
                 const SizedBox(height: 2),
-                Text('${(p.plRatio * 100).toStringAsFixed(2)}%',
-                    style: TWType.caption),
+                Text(
+                  '${up ? '+' : ''}${(p.plRatio * 100).toStringAsFixed(2)}%',
+                  style: TWType.caption
+                      .copyWith(color: up ? TWColors.up : TWColors.down),
+                ),
               ],
             ),
             const SizedBox(width: TWSpace.sm),
@@ -381,6 +395,21 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
     );
   }
 
+  /// Total unrealized P/L = sum of each position's broker-reported pl_val.
+  double get _totalPlVal =>
+      _positions.fold(0.0, (sum, p) => sum + p.plVal);
+
+  /// Total cost basis = sum(qty * cost_price). Used only to derive an overall
+  /// P/L %; falls back to 0 (hidden %) when unavailable.
+  double get _totalCostBasis =>
+      _positions.fold(0.0, (sum, p) => sum + p.quantity * p.costPrice);
+
+  /// Overall P/L ratio (fraction, e.g. 0.0125 = +1.25%). 0 when no cost basis.
+  double get _totalPlRatio {
+    final cost = _totalCostBasis;
+    return cost > 0 ? _totalPlVal / cost : 0;
+  }
+
   Widget _kv(String k, String v) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: Row(
@@ -391,6 +420,28 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
           ],
         ),
       );
+
+  /// Colored P/L row: green when up, red when down, with signed amount and
+  /// (optionally) percentage.
+  Widget _kvPL(String k, double plVal, double plRatio, String currency) {
+    final up = plVal >= 0;
+    final color = up ? TWColors.up : TWColors.down;
+    final amount = '${up ? '+' : '-'}${_money(plVal.abs(), currency)}';
+    final pct = plRatio != 0
+        ? '  (${up ? '+' : ''}${(plRatio * 100).toStringAsFixed(2)}%)'
+        : '';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(k, style: TWType.caption),
+          Text('$amount$pct',
+              style: TWType.tabular(TWType.label).copyWith(color: color)),
+        ],
+      ),
+    );
+  }
 
   Widget _card({Key? key, required Widget child}) => Container(
         key: key,
