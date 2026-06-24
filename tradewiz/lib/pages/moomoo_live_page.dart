@@ -714,6 +714,17 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                           '→ ${a.targetWeight.toStringAsFixed(0)}%',
                           style: TWType.label,
                         ),
+                        if (a.pnlValue != 0 || a.pnlPct != 0) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            _pnlText(a.pnlPct, a.pnlValue),
+                            style: TWType.caption.copyWith(
+                              color: a.pnlValue >= 0
+                                  ? TWColors.up
+                                  : TWColors.down,
+                            ),
+                          ),
+                        ],
                         if (a.reason.isNotEmpty) ...[
                           const SizedBox(height: 2),
                           Text(a.reason, style: TWType.caption),
@@ -1150,6 +1161,13 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
   static String _qty(double q) {
     if (q == q.roundToDouble()) return q.toStringAsFixed(0);
     return q.toString();
+  }
+
+  // Unrealized P/L line for a rebalance action: "+12.3% (+$1,234.56)".
+  static String _pnlText(double pct, double value) {
+    final sign = value >= 0 ? '+' : '-';
+    return '$sign${pct.abs().toStringAsFixed(1)}% '
+        '($sign${_money(value.abs(), "USD")})';
   }
 }
 
