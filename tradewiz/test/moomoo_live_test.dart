@@ -246,6 +246,112 @@ void main() {
     expect(find.byKey(const Key('moomoo_pos_AMD')), findsOneWidget);
   });
 
+  testWidgets(
+      'rebalance action for a held position is tappable and shows a sell '
+      'slider; Sell opens the prefilled order ticket', (tester) async {
+    final auth = await _auth(kMoomooOwnerUid);
+    final repo = _repoWith(MockClient((req) async {
+      final path = req.url.path;
+      if (path.endsWith('/broker/moomoo/account')) {
+        return http.Response(
+          jsonEncode({
+            'total_assets': 5000.0,
+            'cash': 4000.0,
+            'buying_power': 4800.0,
+            'market_value': 1000.0,
+            'currency': 'USD',
+          }),
+          200,
+        );
+      }
+      if (path.endsWith('/broker/moomoo/positions')) {
+        return http.Response(
+          jsonEncode({
+            'positions': [
+              {
+                'code': 'US.INTC',
+                'symbol': 'INTC',
+                'quantity': 10.0,
+                'can_sell_qty': 10.0,
+                'cost_price': 30.0,
+                'last_price': 33.5,
+                'pl_val': 35.0,
+                'pl_ratio': 0.1167,
+              },
+            ],
+          }),
+          200,
+        );
+      }
+      if (path.contains('/broker/moomoo/rebalance')) {
+        return http.Response(
+          jsonEncode({
+            'profile': 'Balanced',
+            'portfolio_score': 80.0,
+            'summary': 'Trim the overweight name.',
+            'actions': [
+              {
+                'symbol': 'INTC',
+                'market': 'US',
+                'action': 'REDUCE',
+                'reason': 'Overweight vs target.',
+                'current_weight': 20.0,
+                'target_weight': 10.0,
+              },
+            ],
+          }),
+          200,
+        );
+      }
+      // Skip the other advisory cards.
+      if (path.contains('/broker/moomoo/manager') ||
+          path.contains('/broker/moomoo/health')) {
+        return http.Response('{"detail":"nope"}', 404);
+      }
+      // Preview returns within-cap so the ticket can proceed if used.
+      if (path.endsWith('/broker/moomoo/order/preview')) {
+        final body = jsonDecode(req.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode({
+            'symbol': body['symbol'],
+            'side': body['side'],
+            'quantity': body['quantity'],
+            'order_type': body['order_type'],
+            'within_cap': true,
+            'notional': 0.0,
+          }),
+          200,
+        );
+      }
+      return http.Response('{}', 200);
+    }));
+
+    tester.view.physicalSize = const Size(1200, 3200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final store = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await tester.pumpWidget(_wrap(
+        MoomooLivePage(repository: repo, secretStore: store), auth, repo));
+    await tester.pumpAndSettle();
+
+    // The REDUCE row, its drag-to-sell slider and Buy/Sell buttons render.
+    expect(find.byKey(const Key('moomoo_reb_INTC')), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_reb_slider_INTC')), findsOneWidget);
+    expect(
+        find.byKey(const Key('moomoo_reb_sell_range_INTC')), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_reb_buy_btn_INTC')), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_reb_sell_btn_INTC')), findsOneWidget);
+
+    // Tapping Sell (default = full sellable qty) opens the order ticket
+    // prefilled for INTC on the SELL side.
+    await tester.tap(find.byKey(const Key('moomoo_reb_sell_btn_INTC')));
+    await tester.pumpAndSettle();
+    expect(find.byType(MoomooOrderTicketPage), findsOneWidget);
+    expect(find.text('SELL'), findsWidgets);
+  });
+
   testWidgets('hide positions toggle hides tiles and persists',
       (tester) async {
     final auth = await _auth(kMoomooOwnerUid);
