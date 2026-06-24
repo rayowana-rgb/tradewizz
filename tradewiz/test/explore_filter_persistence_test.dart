@@ -263,4 +263,26 @@ void main() {
     expect(find.text('XBND'), findsOneWidget);
     expect(find.text('BBCA'), findsNothing);
   });
+
+  testWidgets('Stocks filter hides ETF rows (no ETF leaks through)',
+      (tester) async {
+    await _pump(tester);
+
+    // All three visible before filtering.
+    expect(find.text('XBND'), findsOneWidget);
+    expect(find.text('BBCA'), findsOneWidget);
+    expect(find.text('TLKM'), findsOneWidget);
+
+    // Pick the Stocks type chip.
+    await _tap(tester, find.byKey(const Key('screener_filters_button')));
+    await _tap(tester, find.byKey(const Key('screener_type_stock')));
+    await _tap(tester, find.byKey(const Key('screener_filters_apply')));
+
+    // The ETF row (XBND) must be gone; the two stocks remain.
+    expect(find.text('XBND'), findsNothing);
+    expect(find.text('BBCA'), findsOneWidget);
+    expect(find.text('TLKM'), findsOneWidget);
+    expect(ExploreFilterStore.instance.instrumentType,
+        InstrumentTypeFilter.stock);
+  });
 }
