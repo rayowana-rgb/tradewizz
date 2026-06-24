@@ -89,7 +89,11 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
     await prefs.setBool(_kHidePositionsPref, next);
   }
 
-  Future<void> _toggleHide(String key, bool current, void Function(bool) set) async {
+  Future<void> _toggleHide(
+    String key,
+    bool current,
+    void Function(bool) set,
+  ) async {
     final next = !current;
     setState(() => set(next));
     final prefs = await SharedPreferences.getInstance();
@@ -105,10 +109,14 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
       _error = null;
     });
     try {
-      final acct = await widget.repository
-          .moomooAccount(token: token, secret: secret);
-      final pos = await widget.repository
-          .moomooPositions(token: token, secret: secret);
+      final acct = await widget.repository.moomooAccount(
+        token: token,
+        secret: secret,
+      );
+      final pos = await widget.repository.moomooPositions(
+        token: token,
+        secret: secret,
+      );
       if (!mounted) return;
       setState(() {
         _account = acct;
@@ -118,25 +126,41 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
       // Advisory analytics (Manager / Health / Rebalance) are fetched without
       // blocking; a failure must never clear the account / positions view.
       try {
-        final mgr = await widget.repository
-            .moomooManager(token: token, secret: secret);
+        final mgr = await widget.repository.moomooManager(
+          token: token,
+          secret: secret,
+        );
         if (mounted) setState(() => _manager = mgr);
-      } catch (_) {/* keep account + positions */}
+      } catch (_) {
+        /* keep account + positions */
+      }
       try {
-        final h = await widget.repository
-            .moomooHealth(token: token, secret: secret);
+        final h = await widget.repository.moomooHealth(
+          token: token,
+          secret: secret,
+        );
         if (mounted) setState(() => _health = h);
-      } catch (_) {/* keep account + positions */}
+      } catch (_) {
+        /* keep account + positions */
+      }
       try {
-        final rb = await widget.repository
-            .moomooRebalance(token: token, secret: secret);
+        final rb = await widget.repository.moomooRebalance(
+          token: token,
+          secret: secret,
+        );
         if (mounted) setState(() => _rebalance = rb);
-      } catch (_) {/* keep account + positions */}
+      } catch (_) {
+        /* keep account + positions */
+      }
       try {
-        final eq = await widget.repository
-            .moomooAccountHistory(token: token, secret: secret);
+        final eq = await widget.repository.moomooAccountHistory(
+          token: token,
+          secret: secret,
+        );
         if (mounted) setState(() => _equity = eq);
-      } catch (_) {/* growth chart is best-effort */}
+      } catch (_) {
+        /* growth chart is best-effort */
+      }
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -153,8 +177,9 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
   }
 
   Future<void> _editSecret() async {
-    final controller =
-        TextEditingController(text: widget.secretStore.secret ?? '');
+    final controller = TextEditingController(
+      text: widget.secretStore.secret ?? '',
+    );
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -192,8 +217,10 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
           if (widget.secretStore.hasSecret)
             TextButton(
               onPressed: () => Navigator.of(ctx).pop('__clear__'),
-              child: const Text('Clear',
-                  style: TextStyle(color: TWColors.down)),
+              child: const Text(
+                'Clear',
+                style: TextStyle(color: TWColors.down),
+              ),
             ),
           FilledButton(
             key: const Key('moomoo_secret_save'),
@@ -270,7 +297,11 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
           onRefresh: _refresh,
           child: ListView(
             padding: const EdgeInsets.fromLTRB(
-                TWSpace.lg, TWSpace.lg, TWSpace.lg, TWSpace.xxxxl),
+              TWSpace.lg,
+              TWSpace.lg,
+              TWSpace.lg,
+              TWSpace.xxxxl,
+            ),
             children: [
               _liveBanner(),
               const SizedBox(height: TWSpace.lg),
@@ -285,11 +316,11 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                 ],
                 if (_manager != null) ...[
                   const SizedBox(height: TWSpace.lg),
-                  _managerCard(_manager!),
+                  _managerSection(_manager!),
                 ],
                 if (_health != null) ...[
                   const SizedBox(height: TWSpace.lg),
-                  _healthCard(_health!),
+                  _healthSection(_health!),
                 ],
                 if (_rebalance != null) ...[
                   const SizedBox(height: TWSpace.lg),
@@ -315,8 +346,11 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
       ),
       child: Row(
         children: [
-          const Icon(Icons.warning_amber_rounded,
-              color: TWColors.down, size: 20),
+          const Icon(
+            Icons.warning_amber_rounded,
+            color: TWColors.down,
+            size: 20,
+          ),
           const SizedBox(width: TWSpace.sm),
           Expanded(
             child: Text(
@@ -412,12 +446,16 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
   Widget _scoreChip(String label, double value) {
     return Column(
       children: [
-        Text(value.toStringAsFixed(0),
-            style: TWType.title3.copyWith(color: TWColors.textPrimary)),
+        Text(
+          value.toStringAsFixed(0),
+          style: TWType.title3.copyWith(color: TWColors.textPrimary),
+        ),
         const SizedBox(height: 2),
-        Text(label,
-            textAlign: TextAlign.center,
-            style: TWType.overline.copyWith(color: TWColors.textTertiary)),
+        Text(
+          label,
+          textAlign: TextAlign.center,
+          style: TWType.overline.copyWith(color: TWColors.textTertiary),
+        ),
       ],
     );
   }
@@ -430,7 +468,9 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
       borderRadius: BorderRadius.circular(TWRadius.chip),
       child: Padding(
         padding: const EdgeInsets.symmetric(
-            horizontal: TWSpace.sm, vertical: TWSpace.xs),
+          horizontal: TWSpace.sm,
+          vertical: TWSpace.xs,
+        ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -442,8 +482,10 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
               color: TWColors.textTertiary,
             ),
             const SizedBox(width: TWSpace.xs),
-            Text(hidden ? 'Show' : 'Hide',
-                style: TWType.overline.copyWith(color: TWColors.textTertiary)),
+            Text(
+              hidden ? 'Show' : 'Hide',
+              style: TWType.overline.copyWith(color: TWColors.textTertiary),
+            ),
           ],
         ),
       ),
@@ -456,57 +498,63 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
     return TWColors.down;
   }
 
-  Widget _healthCard(PortfolioHealth h) {
+  // Flat section (no card box): Stockbits-style header + hairline rows,
+  // matching Home. Replaces the boxed Health score card.
+  Widget _healthSection(PortfolioHealth h) {
     final c = _healthColor(h.healthScore);
-    return _card(
+    return Column(
       key: const Key('moomoo_health_card'),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Expanded(
-                  child: Text('Health score', style: TWType.title3)),
-              Text(h.healthScore.toStringAsFixed(0),
-                  style: TWType.title3.copyWith(color: c)),
-              const SizedBox(width: TWSpace.xs),
-              Text('/100',
-                  style:
-                      TWType.caption.copyWith(color: TWColors.textTertiary)),
-              if (h.exitWarnings.isNotEmpty ||
-                  h.warnings.isNotEmpty ||
-                  h.strengths.isNotEmpty)
-                _toggleChip(
-                  const Key('moomoo_toggle_health'),
-                  _hideHealth,
-                  () => _toggleHide(_kHideHealthPref, _hideHealth,
-                      (v) => _hideHealth = v),
-                ),
-            ],
-          ),
-          if (h.rating.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Text(h.rating,
-                  style: TWType.caption.copyWith(color: c)),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: 1, thickness: 1, color: TWColors.hairlineTop),
+        const SizedBox(height: TWSpace.md),
+        Row(
+          children: [
+            const Expanded(child: Text('Health score', style: TWType.title3)),
+            Text(
+              h.healthScore.toStringAsFixed(0),
+              style: TWType.title3.copyWith(color: c),
             ),
-          const SizedBox(height: TWSpace.md),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _scoreChip('Diversif.', h.components.diversification),
-              _scoreChip('Concentr.', h.components.concentrationRisk),
-              _scoreChip('Liquidity', h.components.liquidity),
-              _scoreChip('Quality', h.components.quality),
-            ],
-          ),
-          if (!_hideHealth) ...[
-            for (final w in h.exitWarnings) _healthLine(w, TWColors.down),
-            for (final w in h.warnings) _healthLine(w, TWColors.warn),
-            for (final s in h.strengths) _healthLine(s, TWColors.up),
+            const SizedBox(width: TWSpace.xs),
+            Text(
+              '/100',
+              style: TWType.caption.copyWith(color: TWColors.textTertiary),
+            ),
+            if (h.exitWarnings.isNotEmpty ||
+                h.warnings.isNotEmpty ||
+                h.strengths.isNotEmpty)
+              _toggleChip(
+                const Key('moomoo_toggle_health'),
+                _hideHealth,
+                () => _toggleHide(
+                  _kHideHealthPref,
+                  _hideHealth,
+                  (v) => _hideHealth = v,
+                ),
+              ),
           ],
+        ),
+        if (h.rating.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(h.rating, style: TWType.caption.copyWith(color: c)),
+          ),
+        const SizedBox(height: TWSpace.md),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _scoreChip('Diversif.', h.components.diversification),
+            _scoreChip('Concentr.', h.components.concentrationRisk),
+            _scoreChip('Liquidity', h.components.liquidity),
+            _scoreChip('Quality', h.components.quality),
+          ],
+        ),
+        if (!_hideHealth) ...[
+          for (final w in h.exitWarnings) _healthLine(w, TWColors.down),
+          for (final w in h.warnings) _healthLine(w, TWColors.warn),
+          for (final s in h.strengths) _healthLine(s, TWColors.up),
         ],
-      ),
+      ],
     );
   }
 
@@ -547,36 +595,39 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
     // Only show actions for symbols still held (client-side safety net).
     final held = _positions.map((p) => '${p.symbol}@US').toSet();
     final report = r.reconciledWith(held);
-    final acted =
-        report.actions.where((a) => a.action != 'HOLD').toList();
+    final acted = report.actions.where((a) => a.action != 'HOLD').toList();
     return Column(
       key: const Key('moomoo_rebalance_card'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Divider(
-            height: 1, thickness: 1, color: TWColors.hairlineTop),
+        const Divider(height: 1, thickness: 1, color: TWColors.hairlineTop),
         const SizedBox(height: TWSpace.md),
         Row(
           children: [
-            const Expanded(
-                child: Text('Rebalancing AI', style: TWType.title3)),
+            const Expanded(child: Text('Rebalancing AI', style: TWType.title3)),
             Container(
               padding: const EdgeInsets.symmetric(
-                  horizontal: TWSpace.sm, vertical: 3),
+                horizontal: TWSpace.sm,
+                vertical: 3,
+              ),
               decoration: BoxDecoration(
                 color: TWColors.accent.withValues(alpha: 0.16),
                 borderRadius: BorderRadius.circular(TWRadius.chip),
               ),
-              child: Text(report.profile,
-                  style: TWType.overline
-                      .copyWith(color: TWColors.accentBright)),
+              child: Text(
+                report.profile,
+                style: TWType.overline.copyWith(color: TWColors.accentBright),
+              ),
             ),
             if (acted.isNotEmpty)
               _toggleChip(
                 const Key('moomoo_toggle_rebalance'),
                 _hideRebalance,
-                () => _toggleHide(_kHideRebalancePref, _hideRebalance,
-                    (v) => _hideRebalance = v),
+                () => _toggleHide(
+                  _kHideRebalancePref,
+                  _hideRebalance,
+                  (v) => _hideRebalance = v,
+                ),
               ),
           ],
         ),
@@ -586,15 +637,20 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
         ],
         const SizedBox(height: TWSpace.md),
         if (acted.isEmpty)
-          Text('No rebalancing actions — portfolio looks balanced.',
-              style: TWType.caption)
+          Text(
+            'No rebalancing actions — portfolio looks balanced.',
+            style: TWType.caption,
+          )
         else if (_hideRebalance)
           Text('Rebalancing actions hidden.', style: TWType.caption)
         else
           for (var i = 0; i < acted.length; i++) ...[
             if (i > 0)
               const Divider(
-                  height: 1, thickness: 1, color: TWColors.hairlineTop),
+                height: 1,
+                thickness: 1,
+                color: TWColors.hairlineTop,
+              ),
             _rebalanceTile(acted[i]),
           ],
         if (!_hideRebalance)
@@ -612,14 +668,18 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: TWSpace.sm, vertical: 2),
+            padding: const EdgeInsets.symmetric(
+              horizontal: TWSpace.sm,
+              vertical: 2,
+            ),
             decoration: BoxDecoration(
               color: color.withValues(alpha: 0.16),
               borderRadius: BorderRadius.circular(TWRadius.chip),
             ),
-            child: Text(a.action,
-                style: TWType.overline.copyWith(color: color)),
+            child: Text(
+              a.action,
+              style: TWType.overline.copyWith(color: color),
+            ),
           ),
           const SizedBox(width: TWSpace.sm),
           Expanded(
@@ -643,54 +703,63 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
     );
   }
 
-  Widget _managerCard(MoomooLiveManagerReport m) {
+  // Flat section (no card box): Stockbits-style header + hairline rows,
+  // matching Home. Replaces the boxed Portfolio Manager card.
+  Widget _managerSection(MoomooLiveManagerReport m) {
     final riskColor = _riskColor(m.riskLevel);
-    return _card(
+    return Column(
       key: const Key('moomoo_manager_card'),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Text('Portfolio Manager', style: TWType.title3),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(height: 1, thickness: 1, color: TWColors.hairlineTop),
+        const SizedBox(height: TWSpace.md),
+        Row(
+          children: [
+            const Expanded(
+              child: Text('Portfolio Manager', style: TWType.title3),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: TWSpace.sm,
+                vertical: 3,
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: TWSpace.sm, vertical: 3),
-                decoration: BoxDecoration(
-                  color: riskColor.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(TWRadius.chip),
-                ),
-                child: Text('${m.riskLevel} risk',
-                    style: TWType.overline.copyWith(color: riskColor)),
+              decoration: BoxDecoration(
+                color: riskColor.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(TWRadius.chip),
               ),
-              if (m.recommendations.isNotEmpty)
-                _toggleChip(
-                  const Key('moomoo_toggle_manager'),
+              child: Text(
+                '${m.riskLevel} risk',
+                style: TWType.overline.copyWith(color: riskColor),
+              ),
+            ),
+            if (m.recommendations.isNotEmpty)
+              _toggleChip(
+                const Key('moomoo_toggle_manager'),
+                _hideManager,
+                () => _toggleHide(
+                  _kHideManagerPref,
                   _hideManager,
-                  () => _toggleHide(_kHideManagerPref, _hideManager,
-                      (v) => _hideManager = v),
+                  (v) => _hideManager = v,
                 ),
-            ],
-          ),
-          const SizedBox(height: TWSpace.md),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _scoreChip('Diversif.', m.diversificationScore),
-              _scoreChip('Concentr.', m.concentrationScore),
-              _scoreChip('Cash %', m.cashPct),
-              _scoreChip('Top pos %', m.largestPositionPct),
-            ],
-          ),
-          if (m.recommendations.isNotEmpty && !_hideManager) ...[
-            const Divider(height: TWSpace.lg, color: TWColors.hairline),
-            for (var i = 0; i < m.recommendations.length; i++)
-              _recTile(m.recommendations[i], i),
+              ),
           ],
+        ),
+        const SizedBox(height: TWSpace.md),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _scoreChip('Diversif.', m.diversificationScore),
+            _scoreChip('Concentr.', m.concentrationScore),
+            _scoreChip('Cash %', m.cashPct),
+            _scoreChip('Top pos %', m.largestPositionPct),
+          ],
+        ),
+        if (m.recommendations.isNotEmpty && !_hideManager) ...[
+          const Divider(height: TWSpace.lg, color: TWColors.hairline),
+          for (var i = 0; i < m.recommendations.length; i++)
+            _recTile(m.recommendations[i], i),
         ],
-      ),
+      ],
     );
   }
 
@@ -758,13 +827,18 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(up ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-                        color: color, size: 18),
+                    Icon(
+                      up ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+                      color: color,
+                      size: 18,
+                    ),
                     Text(
                       '${up ? '+' : '-'}${_money(delta.abs(), currency)} '
                       '(${pct.abs().toStringAsFixed(2)}%)',
                       style: TWType.caption.copyWith(
-                          color: color, fontWeight: FontWeight.w700),
+                        color: color,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ],
                 ),
@@ -783,9 +857,10 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
             ),
           ),
           const SizedBox(height: TWSpace.xs),
-          Text(span,
-              style:
-                  TWType.caption.copyWith(color: TWColors.textTertiary)),
+          Text(
+            span,
+            style: TWType.caption.copyWith(color: TWColors.textTertiary),
+          ),
         ],
       ),
     );
@@ -812,9 +887,10 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
               const Expanded(child: Text('Account', style: TWType.title3)),
               if (_loading)
                 const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2)),
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
             ],
           ),
           const SizedBox(height: TWSpace.md),
@@ -846,8 +922,10 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
           child: Row(
             children: [
               Expanded(
-                child: Text('Positions (${_positions.length})',
-                    style: TWType.overline),
+                child: Text(
+                  'Positions (${_positions.length})',
+                  style: TWType.overline,
+                ),
               ),
               InkWell(
                 key: const Key('moomoo_toggle_positions'),
@@ -855,7 +933,9 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                 borderRadius: BorderRadius.circular(TWRadius.chip),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: TWSpace.sm, vertical: TWSpace.xs),
+                    horizontal: TWSpace.sm,
+                    vertical: TWSpace.xs,
+                  ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -867,9 +947,12 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                         color: TWColors.textTertiary,
                       ),
                       const SizedBox(width: TWSpace.xs),
-                      Text(_hidePositions ? 'Show' : 'Hide',
-                          style: TWType.overline
-                              .copyWith(color: TWColors.textTertiary)),
+                      Text(
+                        _hidePositions ? 'Show' : 'Hide',
+                        style: TWType.overline.copyWith(
+                          color: TWColors.textTertiary,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -878,9 +961,7 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
           ),
         ),
         if (_hidePositions)
-          _card(
-            child: Text('Positions hidden.', style: TWType.caption),
-          )
+          _card(child: Text('Positions hidden.', style: TWType.caption))
         else if (_positions.isEmpty)
           _card(child: Text('No open positions.', style: TWType.caption))
         else
@@ -909,8 +990,10 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                   ),
                   if (p.costPrice > 0) ...[
                     const SizedBox(height: 2),
-                    Text('Avg cost ${_money(p.costPrice, "USD")}',
-                        style: TWType.caption),
+                    Text(
+                      'Avg cost ${_money(p.costPrice, "USD")}',
+                      style: TWType.caption,
+                    ),
                   ],
                 ],
               ),
@@ -920,14 +1003,16 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
               children: [
                 Text(
                   '${up ? '+' : '-'}${_money(p.plVal.abs(), "USD")}',
-                  style: TWType.label
-                      .copyWith(color: up ? TWColors.up : TWColors.down),
+                  style: TWType.label.copyWith(
+                    color: up ? TWColors.up : TWColors.down,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   '${up ? '+' : ''}${(p.plRatio * 100).toStringAsFixed(2)}%',
-                  style: TWType.caption
-                      .copyWith(color: up ? TWColors.up : TWColors.down),
+                  style: TWType.caption.copyWith(
+                    color: up ? TWColors.up : TWColors.down,
+                  ),
                 ),
               ],
             ),
@@ -944,8 +1029,7 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
   }
 
   /// Total unrealized P/L = sum of each position's broker-reported pl_val.
-  double get _totalPlVal =>
-      _positions.fold(0.0, (sum, p) => sum + p.plVal);
+  double get _totalPlVal => _positions.fold(0.0, (sum, p) => sum + p.plVal);
 
   /// Total cost basis = sum(qty * cost_price). Used only to derive an overall
   /// P/L %; falls back to 0 (hidden %) when unavailable.
@@ -959,15 +1043,15 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
   }
 
   Widget _kv(String k, String v) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 3),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(k, style: TWType.caption),
-            Text(v, style: TWType.tabular(TWType.label)),
-          ],
-        ),
-      );
+    padding: const EdgeInsets.symmetric(vertical: 3),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(k, style: TWType.caption),
+        Text(v, style: TWType.tabular(TWType.label)),
+      ],
+    ),
+  );
 
   /// Colored P/L row: green when up, red when down, with signed amount and
   /// (optionally) percentage.
@@ -984,24 +1068,26 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(k, style: TWType.caption),
-          Text('$amount$pct',
-              style: TWType.tabular(TWType.label).copyWith(color: color)),
+          Text(
+            '$amount$pct',
+            style: TWType.tabular(TWType.label).copyWith(color: color),
+          ),
         ],
       ),
     );
   }
 
   Widget _card({Key? key, required Widget child}) => Container(
-        key: key,
-        width: double.infinity,
-        padding: const EdgeInsets.all(TWSpace.lg),
-        decoration: BoxDecoration(
-          color: TWColors.surfaceCard.withValues(alpha: 0.55),
-          borderRadius: TWRadius.rCard,
-          border: Border.all(color: TWColors.hairline),
-        ),
-        child: child,
-      );
+    key: key,
+    width: double.infinity,
+    padding: const EdgeInsets.all(TWSpace.lg),
+    decoration: BoxDecoration(
+      color: TWColors.surfaceCard.withValues(alpha: 0.55),
+      borderRadius: TWRadius.rCard,
+      border: Border.all(color: TWColors.hairline),
+    ),
+    child: child,
+  );
 
   static String _money(double v, String currency) {
     final sym = currency == 'USD' ? '\$' : '';
@@ -1083,8 +1169,10 @@ class _MoomooOrderTicketPageState extends State<MoomooOrderTicketPage> {
     // (matches the backend / Moomoo rule). LIMIT requires whole shares.
     final isFractional = qty != qty.roundToDouble();
     if (isFractional && _orderType != 'MARKET') {
-      setState(() => _error =
-          'Fractional quantities are only allowed for MARKET orders.');
+      setState(
+        () => _error =
+            'Fractional quantities are only allowed for MARKET orders.',
+      );
       return;
     }
     if (_orderType == 'LIMIT' && (price == null || price <= 0)) {
@@ -1183,8 +1271,12 @@ class _MoomooOrderTicketPageState extends State<MoomooOrderTicketPage> {
           _errorBox(_error!),
           const SizedBox(height: TWSpace.md),
         ],
-        _segmented(['BUY', 'SELL'], _side, (v) => setState(() => _side = v),
-            key: const Key('moomoo_side_seg')),
+        _segmented(
+          ['BUY', 'SELL'],
+          _side,
+          (v) => setState(() => _side = v),
+          key: const Key('moomoo_side_seg'),
+        ),
         const SizedBox(height: TWSpace.md),
         TextField(
           key: const Key('moomoo_symbol_field'),
@@ -1200,8 +1292,7 @@ class _MoomooOrderTicketPageState extends State<MoomooOrderTicketPage> {
         TextField(
           key: const Key('moomoo_qty_field'),
           controller: _qtyCtl,
-          keyboardType:
-              const TextInputType.numberWithOptions(decimal: true),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
           // Digits plus a single decimal separator. Locales that emit a comma
           // (e.g. Indonesian keyboards) have it normalised to a dot so odd-lot
           // quantities like "0,001" still parse as 0.001.
@@ -1218,16 +1309,18 @@ class _MoomooOrderTicketPageState extends State<MoomooOrderTicketPage> {
           ),
         ),
         const SizedBox(height: TWSpace.md),
-        _segmented(['MARKET', 'LIMIT'], _orderType,
-            (v) => setState(() => _orderType = v),
-            key: const Key('moomoo_type_seg')),
+        _segmented(
+          ['MARKET', 'LIMIT'],
+          _orderType,
+          (v) => setState(() => _orderType = v),
+          key: const Key('moomoo_type_seg'),
+        ),
         if (_orderType == 'LIMIT') ...[
           const SizedBox(height: TWSpace.md),
           TextField(
             key: const Key('moomoo_price_field'),
             controller: _priceCtl,
-            keyboardType:
-                const TextInputType.numberWithOptions(decimal: true),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
             style: TWType.body,
             decoration: const InputDecoration(
               labelText: 'Limit price',
@@ -1248,7 +1341,10 @@ class _MoomooOrderTicketPageState extends State<MoomooOrderTicketPage> {
                   width: 18,
                   height: 18,
                   child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Colors.white))
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
               : const Text('Review order'),
         ),
       ],
@@ -1269,8 +1365,11 @@ class _MoomooOrderTicketPageState extends State<MoomooOrderTicketPage> {
           ),
           child: Row(
             children: [
-              const Icon(Icons.warning_amber_rounded,
-                  color: TWColors.down, size: 20),
+              const Icon(
+                Icons.warning_amber_rounded,
+                color: TWColors.down,
+                size: 20,
+              ),
               const SizedBox(width: TWSpace.sm),
               Expanded(
                 child: Text(
@@ -1292,7 +1391,8 @@ class _MoomooOrderTicketPageState extends State<MoomooOrderTicketPage> {
         const SizedBox(height: TWSpace.xl),
         if (overCap)
           _errorBox(
-              'Order exceeds the per-order cap. Reduce size and try again.'),
+            'Order exceeds the per-order cap. Reduce size and try again.',
+          ),
         if (!overCap)
           FilledButton(
             key: const Key('moomoo_confirm_button'),
@@ -1306,7 +1406,10 @@ class _MoomooOrderTicketPageState extends State<MoomooOrderTicketPage> {
                     width: 18,
                     height: 18,
                     child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white))
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
                 : Text('Place LIVE ${pv.side} order'),
           ),
         const SizedBox(height: TWSpace.md),
@@ -1325,8 +1428,7 @@ class _MoomooOrderTicketPageState extends State<MoomooOrderTicketPage> {
     return ListView(
       children: [
         const SizedBox(height: TWSpace.xl),
-        const Icon(Icons.check_circle_outline,
-            color: TWColors.up, size: 56),
+        const Icon(Icons.check_circle_outline, color: TWColors.up, size: 56),
         const SizedBox(height: TWSpace.md),
         Center(child: Text('Order submitted', style: TWType.title2)),
         const SizedBox(height: TWSpace.lg),
@@ -1349,14 +1451,20 @@ class _MoomooOrderTicketPageState extends State<MoomooOrderTicketPage> {
     );
   }
 
-  Widget _segmented(List<String> options, String value,
-      ValueChanged<String> onChanged,
-      {Key? key}) {
+  Widget _segmented(
+    List<String> options,
+    String value,
+    ValueChanged<String> onChanged, {
+    Key? key,
+  }) {
     return SegmentedButton<String>(
       key: key,
       segments: [
         for (final o in options)
-          ButtonSegment(value: o, label: Text(o, style: TWType.label)),
+          ButtonSegment(
+            value: o,
+            label: Text(o, style: TWType.label),
+          ),
       ],
       selected: {value},
       onSelectionChanged: (s) => onChanged(s.first),
@@ -1365,35 +1473,37 @@ class _MoomooOrderTicketPageState extends State<MoomooOrderTicketPage> {
   }
 
   Widget _row(String k, String v) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(k, style: TWType.caption),
-            Flexible(
-              child: Text(v,
-                  style: TWType.tabular(TWType.label),
-                  textAlign: TextAlign.right),
-            ),
-          ],
+    padding: const EdgeInsets.symmetric(vertical: 6),
+    child: Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(k, style: TWType.caption),
+        Flexible(
+          child: Text(
+            v,
+            style: TWType.tabular(TWType.label),
+            textAlign: TextAlign.right,
+          ),
         ),
-      );
+      ],
+    ),
+  );
 
   Widget _errorBox(String message) => Container(
-        padding: const EdgeInsets.all(TWSpace.md),
-        decoration: BoxDecoration(
-          color: TWColors.down.withValues(alpha: 0.12),
-          borderRadius: TWRadius.rCard,
-          border: Border.all(color: TWColors.down.withValues(alpha: 0.4)),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.error_outline, color: TWColors.down, size: 18),
-            const SizedBox(width: TWSpace.sm),
-            Expanded(child: Text(message, style: TWType.caption)),
-          ],
-        ),
-      );
+    padding: const EdgeInsets.all(TWSpace.md),
+    decoration: BoxDecoration(
+      color: TWColors.down.withValues(alpha: 0.12),
+      borderRadius: TWRadius.rCard,
+      border: Border.all(color: TWColors.down.withValues(alpha: 0.4)),
+    ),
+    child: Row(
+      children: [
+        const Icon(Icons.error_outline, color: TWColors.down, size: 18),
+        const SizedBox(width: TWSpace.sm),
+        Expanded(child: Text(message, style: TWType.caption)),
+      ],
+    ),
+  );
 }
 
 /// Normalises the quantity field to a clean decimal: any comma typed as a
@@ -1423,8 +1533,7 @@ class _GrowthChartPainter extends CustomPainter {
     final dx = size.width / (n - 1);
 
     double x(int i) => dx * i;
-    double y(double v) =>
-        size.height - ((v - lo) / range) * size.height;
+    double y(double v) => size.height - ((v - lo) / range) * size.height;
 
     // Baseline grid (subtle).
     final grid = Paint()
@@ -1451,10 +1560,7 @@ class _GrowthChartPainter extends CustomPainter {
         ..shader = LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            color.withValues(alpha: 0.28),
-            color.withValues(alpha: 0.0),
-          ],
+          colors: [color.withValues(alpha: 0.28), color.withValues(alpha: 0.0)],
         ).createShader(Offset.zero & size),
     );
 
@@ -1470,7 +1576,10 @@ class _GrowthChartPainter extends CustomPainter {
 
     // Endpoint marker.
     canvas.drawCircle(
-        Offset(x(n - 1), y(values.last)), 3.5, Paint()..color = color);
+      Offset(x(n - 1), y(values.last)),
+      3.5,
+      Paint()..color = color,
+    );
   }
 
   @override
@@ -1481,7 +1590,9 @@ class _GrowthChartPainter extends CustomPainter {
 class _DecimalQtyFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
-      TextEditingValue oldValue, TextEditingValue newValue) {
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
     var text = newValue.text.replaceAll(',', '.');
     // Keep only the first dot; drop any extras.
     final firstDot = text.indexOf('.');
