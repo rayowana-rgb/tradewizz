@@ -65,6 +65,10 @@ TARGET_WEAK = 5.0       # < 70
 
 # REDUCE trigger: a single name above this share of invested value.
 CONCENTRATION_REDUCE = 30.0
+# A soft "quality below 60" only justifies a REDUCE when the engine score is
+# also weak. A strong, high-score BUY name whose quality merely dipped after a
+# hard down day should be HELD, not trimmed.
+QUALITY_REDUCE_SCORE_CEILING = 75.0
 # Loss threshold (%) for the EXIT "large loss, no recovery" rule.
 EXIT_LOSS_THRESHOLD = -20.0
 REGIME_BEAR = "BEAR"
@@ -139,6 +143,12 @@ class RebalanceService:
         quality_by_key: Dict[tuple, float] = {
             (q.symbol, q.market): q.quality_score for q in health.positions
         }
+        # Names with no live engine score have a neutral PLACEHOLDER quality;
+        # we must not let that placeholder trigger a REDUCE.
+        low_conf_by_key: Dict[tuple, bool] = {
+            (q.symbol, q.market): bool(getattr(q, "low_confidence", False))
+            for q in health.positions
+        }
 
         values = {
             (p.symbol, p.market): max(0.0, p.market_value) for p in positions
@@ -167,6 +177,8 @@ class RebalanceService:
             score = float(match.score) if match else 50.0
             signal = (match.signal if match else "HOLD") or "HOLD"
             quality = float(quality_by_key.get(key, 50.0))
+            # A missing engine score also means we have no real quality read.
+            low_conf = low_conf_by_key.get(key, match is None)
             if p.market not in regime_by_market:
                 regime_by_market[p.market] = self._safe_regime(p.market)
             regime = regime_by_market[p.market]
@@ -176,6 +188,7 @@ class RebalanceService:
             action, reason, priority = _decide(
                 score=score, signal=signal, quality=quality, weight=weight,
                 regime=regime, pnl_pct=pnl_pct, target=target,
+                low_confidence=low_conf,
             )
             actions.append(RebalanceAction(
                 symbol=p.symbol,
@@ -241,22 +254,33 @@ def _position_pnl_pct(p) -> float:
     return 0.0
 
 
-def _decide(*, score, signal, quality, weight, regime, pnl_pct, target):
+def _decide(
+    *, score, signal, quality, weight, regime, pnl_pct, target,
+    low_confidence=False,
+):
     sig = (signal or "HOLD").upper()
     bearish = regime == REGIME_BEAR
+    # When there is no live engine score, BOTH `score` and `quality` are
+    # neutral PLACEHOLDERS (50). Treat the score- and quality-based triggers as
+    # inactive so an "unknown" name is never auto-EXITed / auto-REDUCEd on a
+    # fabricated read. Only signals we DO trust still apply: a real SELL signal,
+    # over-concentration, and a confirmed loss. Such a name is held with low
+    # confidence until a real score is available.
+    real = not low_confidence
 
     # EXIT (highest priority).
-    if score < 45 or sig == "SELL" or quality < 40 or (
-        pnl_pct <= EXIT_LOSS_THRESHOLD and score < 55
-    ):
+    score_exit = real and score < 45
+    quality_exit = real and quality < 40
+    loss_exit = real and pnl_pct <= EXIT_LOSS_THRESHOLD and score < 55
+    if score_exit or sig == "SELL" or quality_exit or loss_exit:
         reasons = []
-        if score < 45:
+        if score_exit:
             reasons.append("score very weak")
         if sig == "SELL":
             reasons.append("engine signal is SELL")
-        if quality < 40:
+        if quality_exit:
             reasons.append("quality very low")
-        if pnl_pct <= EXIT_LOSS_THRESHOLD and score < 55:
+        if loss_exit:
             reasons.append(f"loss {pnl_pct:.0f}% with no recovery signal")
         return (
             ACTION_EXIT,
@@ -264,16 +288,27 @@ def _decide(*, score, signal, quality, weight, regime, pnl_pct, target):
             PRIORITY_HIGH,
         )
 
-    # REDUCE.
-    if weight > CONCENTRATION_REDUCE or score < 65 or quality < 60 or bearish:
+    # REDUCE. A "quality below 60" only counts when the engine score is also
+    # soft (< QUALITY_REDUCE_SCORE_CEILING); a strong high-score name whose
+    # quality merely dipped after a down day is NOT trimmed on that alone.
+    score_reduce = real and score < 65
+    quality_reduce = (
+        real and quality < 60 and score < QUALITY_REDUCE_SCORE_CEILING
+    )
+    if (
+        weight > CONCENTRATION_REDUCE
+        or score_reduce
+        or quality_reduce
+        or bearish
+    ):
         reasons = []
         if weight > CONCENTRATION_REDUCE:
             reasons.append(
                 f"position concentration too high ({weight:.0f}%)"
             )
-        if score < 65:
+        if score_reduce:
             reasons.append("score weakening")
-        if quality < 60:
+        if quality_reduce:
             reasons.append("quality below 60")
         if bearish:
             reasons.append("market regime bearish")

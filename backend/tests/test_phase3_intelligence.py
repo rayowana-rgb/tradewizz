@@ -141,7 +141,13 @@ def _build_client(*, score_map=None):
 
     def _score(symbol, market):
         if symbol in score_map:
-            sc, sig, chg = score_map[symbol]
+            entry = score_map[symbol]
+            # A None entry simulates a held name with NO live engine score
+            # (below the liquidity floor / uncached): the services must treat
+            # it as low-confidence neutral, never auto-trim it.
+            if entry is None:
+                return None
+            sc, sig, chg = entry
             return _match(symbol, sc, chg, 3e9, signal=sig)
         return _match(symbol, 90, 2.0, 3e9)
 
@@ -385,6 +391,82 @@ def test_rebalance_weak_score_causes_exit():
     by = {a["symbol"]: a for a in body["actions"]}
     assert by["WEAK"]["action"] == "EXIT"
     assert by["WEAK"]["priority"] == "HIGH"
+    sub_router.set_service(SubscriptionService())
+
+
+def test_rebalance_strong_name_after_hard_down_day_is_not_reduced():
+    # A strong, high-score BUY name that just sold off hard (-12% today) must
+    # NOT be flipped to REDUCE on a quality dip alone. Before the fix the
+    # short-term-change terms zeroed out and dragged quality below 60, which
+    # told the user to trim a winner right after a dip.
+    c = _build_client(score_map={
+        "DIPPED": (86, "BUY", -12.0),
+        "F1": (80, "BUY", 1.0),
+        "F2": (80, "BUY", 1.0),
+        "F3": (80, "BUY", 1.0),
+    })
+    h = _register(c)
+    c._simstate["positions"] = [
+        _Pos("DIPPED", Market.US, 250_000.0),
+        _Pos("F1", Market.US, 250_000.0),
+        _Pos("F2", Market.US, 250_000.0),
+        _Pos("F3", Market.US, 250_000.0),
+    ]
+    body = c.get("/v1/portfolio/rebalance", headers=h).json()
+    by = {a["symbol"]: a for a in body["actions"]}
+    assert by["DIPPED"]["action"] != "REDUCE", by["DIPPED"]
+    assert by["DIPPED"]["action"] in ("HOLD", "ADD")
+    sub_router.set_service(SubscriptionService())
+
+
+def test_rebalance_weak_score_still_reduces_after_down_day():
+    # The down-day softening must NOT mask a genuinely weak name: a soft score
+    # (< 65) is still a REDUCE on its own regardless of the change clipping.
+    c = _build_client(score_map={
+        "SOFT": (60, "HOLD", -12.0),
+        "F1": (80, "BUY", 1.0),
+        "F2": (80, "BUY", 1.0),
+        "F3": (80, "BUY", 1.0),
+    })
+    h = _register(c)
+    c._simstate["positions"] = [
+        _Pos("SOFT", Market.US, 250_000.0),
+        _Pos("F1", Market.US, 250_000.0),
+        _Pos("F2", Market.US, 250_000.0),
+        _Pos("F3", Market.US, 250_000.0),
+    ]
+    body = c.get("/v1/portfolio/rebalance", headers=h).json()
+    by = {a["symbol"]: a for a in body["actions"]}
+    assert by["SOFT"]["action"] == "REDUCE"
+    assert "score weakening" in by["SOFT"]["reason"].lower()
+    sub_router.set_service(SubscriptionService())
+
+
+def test_rebalance_unknown_score_is_not_auto_reduced():
+    # A held name with NO live engine score (None) gets a neutral placeholder
+    # quality. That placeholder must never trigger a REDUCE/EXIT; the name is
+    # held with low confidence until a real score is available.
+    c = _build_client(score_map={
+        "UNKNOWN": None,
+        "F1": (80, "BUY", 1.0),
+        "F2": (80, "BUY", 1.0),
+        "F3": (80, "BUY", 1.0),
+    })
+    h = _register(c)
+    c._simstate["positions"] = [
+        _Pos("UNKNOWN", Market.US, 250_000.0),
+        _Pos("F1", Market.US, 250_000.0),
+        _Pos("F2", Market.US, 250_000.0),
+        _Pos("F3", Market.US, 250_000.0),
+    ]
+    body = c.get("/v1/portfolio/rebalance", headers=h).json()
+    by = {a["symbol"]: a for a in body["actions"]}
+    # No live score -> placeholder score/quality (50) are suppressed: with no
+    # concentration, no SELL signal and a bullish regime the name is simply
+    # HELD, not auto-trimmed on fabricated reads.
+    assert by["UNKNOWN"]["action"] == "HOLD", by["UNKNOWN"]
+    assert "quality below 60" not in by["UNKNOWN"]["reason"].lower()
+    assert "score weakening" not in by["UNKNOWN"]["reason"].lower()
     sub_router.set_service(SubscriptionService())
 
 

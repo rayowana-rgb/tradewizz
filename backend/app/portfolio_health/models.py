@@ -30,6 +30,10 @@ class PositionQuality(BaseModel):
     risk: float = 0.0           # higher = safer
     rating: str = ""            # Strong / Solid / Weak
     note: str = ""
+    # True when no live engine score was available: the quality is a neutral
+    # placeholder, NOT a real read. Downstream rebalancing must not turn this
+    # into a REDUCE.
+    low_confidence: bool = False
 
 
 class PortfolioHealth(BaseModel):

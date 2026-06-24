@@ -74,6 +74,7 @@ class PortfolioHealthService:
                 risk=50.0,
                 rating="Unknown",
                 note="No live score available; treated as neutral.",
+                low_confidence=True,
             )
 
         score = match.score
@@ -81,8 +82,16 @@ class PortfolioHealthService:
         # Trend: anchored on the engine score (multi-factor).
         trend = score
         # Relative strength / momentum: short-term change, mapped to 0..100.
-        rs = _clamp(50.0 + chg * 5.0)
-        momentum = _clamp(50.0 + chg * 6.0)
+        # ASYMMETRIC by design: a green day still lifts these at the original
+        # slope (so strong up-movers are recognized), but a red day is damped
+        # and FLOORED at 25. A single hard down day (a -10% selloff) must NOT
+        # zero these out and drag a strong, high-score name's quality below 60
+        # -- that previously made the Rebalancing AI recommend trimming winners
+        # right after a dip.
+        rs = _clamp(50.0 + (chg * 5.0 if chg >= 0 else max(-25.0, chg * 2.0)))
+        momentum = _clamp(
+            50.0 + (chg * 6.0 if chg >= 0 else max(-25.0, chg * 2.4))
+        )
         # Volume / liquidity: log-ish bucket of value_traded.
         volume = _liquidity_score(match.value_traded)
         # Risk (higher = safer): blends score with liquidity, penalizes SELL.
