@@ -454,7 +454,7 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
       children: [
         Text(
           value.toStringAsFixed(0),
-          style: TWType.title3.copyWith(color: TWColors.textPrimary),
+          style: TWType.body.copyWith(color: TWColors.textPrimary),
         ),
         const SizedBox(height: 2),
         Text(
@@ -516,7 +516,7 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
         const SizedBox(height: TWSpace.md),
         Row(
           children: [
-            const Expanded(child: Text('Health score', style: TWType.title3)),
+            const Expanded(child: Text('Health score', style: TWType.body)),
             Text(
               h.healthScore.toStringAsFixed(0),
               style: TWType.title3.copyWith(color: c),
@@ -610,7 +610,7 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
         const SizedBox(height: TWSpace.md),
         Row(
           children: [
-            const Expanded(child: Text('Rebalancing AI', style: TWType.title3)),
+            const Expanded(child: Text('Rebalancing AI', style: TWType.body)),
             Container(
               padding: const EdgeInsets.symmetric(
                 horizontal: TWSpace.sm,
@@ -769,7 +769,7 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
         Row(
           children: [
             const Expanded(
-              child: Text('Portfolio Manager', style: TWType.title3),
+              child: Text('Portfolio Manager', style: TWType.body),
             ),
             Container(
               padding: const EdgeInsets.symmetric(
