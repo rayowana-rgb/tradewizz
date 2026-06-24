@@ -293,6 +293,20 @@ class StockRepository {
     return MoomooLiveAccount.fromJson(j);
   }
 
+  /// Recorded real equity history for the portfolio-growth chart.
+  /// Backs `GET /v1/broker/moomoo/account/history`.
+  Future<List<MoomooLiveEquityPoint>> moomooAccountHistory({
+    required String token,
+    required String secret,
+  }) async {
+    final j = await _client.moomooGet('/broker/moomoo/account/history',
+        bearer: token, secret: secret);
+    return (j['points'] as List<dynamic>? ?? [])
+        .map((e) =>
+            MoomooLiveEquityPoint.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   /// Rule-based portfolio analysis over LIVE Moomoo holdings.
   /// Backs `GET /v1/broker/moomoo/manager`.
   Future<MoomooLiveManagerReport> moomooManager({

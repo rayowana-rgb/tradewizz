@@ -24,6 +24,8 @@ from ..auth.service import AuthError
 from .models import (
     MoomooAccountModel,
     MoomooCancelResult,
+    MoomooEquityHistory,
+    MoomooEquityPoint,
     MoomooManagerReport,
     MoomooOrderPreview,
     MoomooOrderRequest,
@@ -114,6 +116,20 @@ def moomoo_account(
     return MoomooAccountModel(
         total_assets=a.total_assets, cash=a.cash, buying_power=a.buying_power,
         market_value=a.market_value, currency=a.currency,
+    )
+
+
+@router.get("/account/history", response_model=MoomooEquityHistory)
+def moomoo_account_history(
+    authorization: Optional[str] = Header(default=None),
+    x_moomoo_secret: Optional[str] = Header(default=None),
+) -> MoomooEquityHistory:
+    _require_owner(authorization, x_moomoo_secret)
+    points = get_service().equity_tracker.history()
+    return MoomooEquityHistory(
+        points=[
+            MoomooEquityPoint(ts=p.ts, equity=p.equity) for p in points
+        ],
     )
 
 

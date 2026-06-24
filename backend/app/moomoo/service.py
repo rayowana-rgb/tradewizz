@@ -105,6 +105,12 @@ class MoomooService:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._ctx = None  # type: ignore
+        from app.moomoo.equity_tracker import EquityTracker
+        self._equity = EquityTracker()
+
+    @property
+    def equity_tracker(self):
+        return self._equity
 
     # -- connection -------------------------------------------------------
     def _ctx_obj(self):
@@ -203,13 +209,20 @@ class MoomooService:
             except Exception:
                 return 0.0
 
-        return MoomooAccount(
+        acct = MoomooAccount(
             total_assets=_f("total_assets"),
             cash=_f("cash"),
             buying_power=_f("power"),
             market_value=_f("market_val"),
             currency="USD",
         )
+        # Record this real observation so the portfolio-growth chart can be
+        # built from genuine data points (no fabricated history).
+        try:
+            self._equity.record(acct.total_assets)
+        except Exception:
+            pass
+        return acct
 
     def positions(self) -> List[MoomooPosition]:
         from moomoo import TrdEnv  # type: ignore

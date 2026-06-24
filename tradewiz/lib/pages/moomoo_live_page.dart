@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -44,6 +46,7 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
   MoomooLiveManagerReport? _manager;
   PortfolioHealth? _health;
   RebalanceReport? _rebalance;
+  List<MoomooLiveEquityPoint> _equity = const [];
 
   /// Whether the positions list is collapsed. Persisted across launches via
   /// SharedPreferences (key [_kHidePositionsPref]).
@@ -129,6 +132,11 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
             .moomooRebalance(token: token, secret: secret);
         if (mounted) setState(() => _rebalance = rb);
       } catch (_) {/* keep account + positions */}
+      try {
+        final eq = await widget.repository
+            .moomooAccountHistory(token: token, secret: secret);
+        if (mounted) setState(() => _equity = eq);
+      } catch (_) {/* growth chart is best-effort */}
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -271,6 +279,10 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
               else ...[
                 if (_error != null) _errorCard(_error!),
                 _accountCard(),
+                if (_equity.length >= 2) ...[
+                  const SizedBox(height: TWSpace.lg),
+                  _growthCard(_equity),
+                ],
                 if (_manager != null) ...[
                   const SizedBox(height: TWSpace.lg),
                   _managerCard(_manager!),
@@ -453,9 +465,6 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
         children: [
           Row(
             children: [
-              const Icon(Icons.favorite_outline,
-                  color: TWColors.accent, size: 20),
-              const SizedBox(width: TWSpace.sm),
               const Expanded(
                   child: Text('Health score', style: TWType.title3)),
               Text(h.healthScore.toStringAsFixed(0),
@@ -545,8 +554,6 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
         children: [
           Row(
             children: [
-              const Icon(Icons.tune, color: TWColors.accent, size: 20),
-              const SizedBox(width: TWSpace.sm),
               const Expanded(
                   child: Text('Rebalancing AI', style: TWType.title3)),
               Container(
@@ -637,9 +644,6 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
         children: [
           Row(
             children: [
-              const Icon(Icons.smart_toy_outlined,
-                  color: TWColors.accent, size: 20),
-              const SizedBox(width: TWSpace.sm),
               const Expanded(
                 child: Text('Portfolio Manager', style: TWType.title3),
               ),
@@ -713,6 +717,79 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
         ],
       ),
     );
+  }
+
+  // -- portfolio-growth chart ------------------------------------------
+
+  /// Real-equity growth chart (Stockbits-style: hero value + delta, clean
+  /// line + soft area fill). Built only from genuine recorded observations.
+  Widget _growthCard(List<MoomooLiveEquityPoint> points) {
+    final first = points.first.equity;
+    final last = points.last.equity;
+    final delta = last - first;
+    final pct = first > 0 ? (delta / first * 100.0) : 0.0;
+    final up = delta >= 0;
+    final color = up ? TWColors.up : TWColors.down;
+    final currency = _account?.currency ?? 'USD';
+    final span = _spanLabel(points.first.time, points.last.time);
+
+    return _card(
+      key: const Key('moomoo_growth_card'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Portfolio growth', style: TWType.overline),
+          const SizedBox(height: TWSpace.xs),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(_money(last, currency), style: TWType.title3),
+              const SizedBox(width: TWSpace.sm),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 2),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(up ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+                        color: color, size: 18),
+                    Text(
+                      '${up ? '+' : '-'}${_money(delta.abs(), currency)} '
+                      '(${pct.abs().toStringAsFixed(2)}%)',
+                      style: TWType.caption.copyWith(
+                          color: color, fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: TWSpace.md),
+          SizedBox(
+            height: 132,
+            width: double.infinity,
+            child: CustomPaint(
+              painter: _GrowthChartPainter(
+                values: points.map((p) => p.equity).toList(),
+                color: color,
+              ),
+            ),
+          ),
+          const SizedBox(height: TWSpace.xs),
+          Text(span,
+              style:
+                  TWType.caption.copyWith(color: TWColors.textTertiary)),
+        ],
+      ),
+    );
+  }
+
+  static String _spanLabel(DateTime a, DateTime b) {
+    String d(DateTime t) =>
+        '${t.day.toString().padLeft(2, '0')}/'
+        '${t.month.toString().padLeft(2, '0')}';
+    final days = b.difference(a).inDays;
+    if (days <= 0) return 'Today';
+    return '${d(a)} → ${d(b)} · $days day${days == 1 ? '' : 's'}';
   }
 
   Widget _accountCard() {
@@ -1315,6 +1392,84 @@ class _MoomooOrderTicketPageState extends State<MoomooOrderTicketPage> {
 /// decimal separator (common on Indonesian/EU keyboards) becomes a dot, and at
 /// most one dot is kept. This guarantees values like "0.001" parse correctly
 /// instead of silently dropping the separator and becoming a whole number.
+/// Minimal Stockbits-style line + soft area-fill chart for the equity series.
+/// No external dependency; flat aesthetic with a single accent colour.
+class _GrowthChartPainter extends CustomPainter {
+  _GrowthChartPainter({required this.values, required this.color});
+
+  final List<double> values;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (values.length < 2) return;
+    var lo = values.reduce(math.min);
+    var hi = values.reduce(math.max);
+    if (hi - lo < 1e-9) {
+      // Flat series: pad so the line sits centred, not on the edge.
+      hi += 1;
+      lo -= 1;
+    }
+    final range = hi - lo;
+    final n = values.length;
+    final dx = size.width / (n - 1);
+
+    double x(int i) => dx * i;
+    double y(double v) =>
+        size.height - ((v - lo) / range) * size.height;
+
+    // Baseline grid (subtle).
+    final grid = Paint()
+      ..color = TWColors.hairline
+      ..strokeWidth = 1;
+    for (var g = 0; g <= 2; g++) {
+      final gy = size.height * g / 2;
+      canvas.drawLine(Offset(0, gy), Offset(size.width, gy), grid);
+    }
+
+    final line = Path()..moveTo(x(0), y(values[0]));
+    for (var i = 1; i < n; i++) {
+      line.lineTo(x(i), y(values[i]));
+    }
+
+    // Soft area fill under the line.
+    final fill = Path.from(line)
+      ..lineTo(x(n - 1), size.height)
+      ..lineTo(x(0), size.height)
+      ..close();
+    canvas.drawPath(
+      fill,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            color.withValues(alpha: 0.28),
+            color.withValues(alpha: 0.0),
+          ],
+        ).createShader(Offset.zero & size),
+    );
+
+    canvas.drawPath(
+      line,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2
+        ..strokeJoin = StrokeJoin.round
+        ..strokeCap = StrokeCap.round,
+    );
+
+    // Endpoint marker.
+    canvas.drawCircle(
+        Offset(x(n - 1), y(values.last)), 3.5, Paint()..color = color);
+  }
+
+  @override
+  bool shouldRepaint(covariant _GrowthChartPainter old) =>
+      old.values != values || old.color != color;
+}
+
 class _DecimalQtyFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(

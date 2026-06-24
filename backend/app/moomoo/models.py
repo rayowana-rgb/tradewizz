@@ -16,6 +16,17 @@ class MoomooAccountModel(BaseModel):
     live: bool = True
 
 
+class MoomooEquityPoint(BaseModel):
+    ts: int          # epoch seconds (UTC)
+    equity: float    # total account assets in USD
+
+
+class MoomooEquityHistory(BaseModel):
+    points: List[MoomooEquityPoint] = []
+    currency: str = "USD"
+    live: bool = True
+
+
 class MoomooPositionModel(BaseModel):
     code: str
     symbol: str

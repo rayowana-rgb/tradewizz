@@ -35,9 +35,16 @@ class FakeMoomooService:
     def __init__(self, cap: float = 1000.0):
         self.cap = cap
         self.placed = []
+        import tempfile, os
+        from app.moomoo.equity_tracker import EquityTracker
+        self.equity_tracker = EquityTracker(
+            os.path.join(tempfile.mkdtemp(), "eq.json")
+        )
 
     def account(self):
-        return MoomooAccount(5630.62, 4425.69, 4848.57, 1204.93, "USD")
+        acct = MoomooAccount(5630.62, 4425.69, 4848.57, 1204.93, "USD")
+        self.equity_tracker.record(acct.total_assets)
+        return acct
 
     def positions(self):
         return [
@@ -150,6 +157,29 @@ def test_non_owner_forbidden(client, monkeypatch):
     monkeypatch.setenv("TRADEWIZZ_MOOMOO_OWNER_UIDS", "999999")
     assert client.get("/v1/broker/moomoo/account",
                       headers=client._owner).status_code == 403
+
+
+def test_account_history_records_real_equity(client):
+    # Empty until the account is observed at least once.
+    h0 = client.get("/v1/broker/moomoo/account/history",
+                    headers=client._owner)
+    assert h0.status_code == 200, h0.text
+    assert h0.json()["points"] == []
+    # Hitting /account records one real equity observation.
+    client.get("/v1/broker/moomoo/account", headers=client._owner)
+    h1 = client.get("/v1/broker/moomoo/account/history",
+                    headers=client._owner)
+    pts = h1.json()["points"]
+    assert len(pts) == 1
+    assert pts[0]["equity"] == 5630.62
+    assert pts[0]["ts"] > 0
+
+
+def test_account_history_requires_owner(client, monkeypatch):
+    monkeypatch.setenv("TRADEWIZZ_MOOMOO_OWNER_UIDS", "999999")
+    r = client.get("/v1/broker/moomoo/account/history",
+                   headers=client._owner)
+    assert r.status_code == 403
 
 
 def test_account_and_positions(client):

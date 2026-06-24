@@ -452,6 +452,60 @@ void main() {
     expect(find.byKey(const Key('moomoo_reb_INTC')), findsNothing);
     expect(find.text('Rebalancing actions hidden.'), findsOneWidget);
   });
+
+  testWidgets('portfolio growth chart renders from recorded equity history',
+      (tester) async {
+    final auth = await _auth(kMoomooOwnerUid);
+    final repo = _repoWith(MockClient((req) async {
+      if (req.url.path.endsWith('/broker/moomoo/account')) {
+        return http.Response(
+          jsonEncode({
+            'total_assets': 5200.0,
+            'cash': 4000.0,
+            'buying_power': 4800.0,
+            'market_value': 1200.0,
+            'currency': 'USD',
+          }),
+          200,
+        );
+      }
+      if (req.url.path.endsWith('/broker/moomoo/account/history')) {
+        return http.Response(
+          jsonEncode({
+            'points': [
+              {'ts': 1700000000, 'equity': 5000.0},
+              {'ts': 1700003600, 'equity': 5100.0},
+              {'ts': 1700007200, 'equity': 5200.0},
+            ],
+          }),
+          200,
+        );
+      }
+      if (req.url.path.endsWith('/broker/moomoo/positions')) {
+        return http.Response(jsonEncode({'positions': []}), 200);
+      }
+      if (req.url.path.contains('/broker/moomoo/manager') ||
+          req.url.path.contains('/broker/moomoo/health') ||
+          req.url.path.contains('/broker/moomoo/rebalance')) {
+        return http.Response('{"detail":"nope"}', 404);
+      }
+      return http.Response('{}', 200);
+    }));
+
+    final store = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await tester.pumpWidget(_wrap(
+        MoomooLivePage(repository: repo, secretStore: store), auth, repo));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pumpAndSettle();
+    }
+
+    // Growth card renders with the latest value and a +$200 / +4.00% delta.
+    expect(find.byKey(const Key('moomoo_growth_card')), findsOneWidget);
+    expect(find.text('Portfolio growth'), findsOneWidget);
+    expect(find.textContaining('+\$200.00'), findsOneWidget);
+    expect(find.textContaining('4.00%'), findsOneWidget);
+  });
 }
 
 /// Mock client that serves account + positions + all three analytics endpoints

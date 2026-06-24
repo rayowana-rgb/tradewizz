@@ -28,6 +28,23 @@ class MoomooLiveAccount {
       );
 }
 
+/// A single real equity observation for the portfolio-growth chart.
+class MoomooLiveEquityPoint {
+  const MoomooLiveEquityPoint({required this.ts, required this.equity});
+
+  /// Epoch seconds (UTC).
+  final int ts;
+  final double equity;
+
+  DateTime get time => DateTime.fromMillisecondsSinceEpoch(ts * 1000);
+
+  factory MoomooLiveEquityPoint.fromJson(Map<String, dynamic> j) =>
+      MoomooLiveEquityPoint(
+        ts: (j['ts'] as num?)?.toInt() ?? 0,
+        equity: (j['equity'] as num?)?.toDouble() ?? 0,
+      );
+}
+
 class MoomooLivePosition {
   const MoomooLivePosition({
     this.code = '',
