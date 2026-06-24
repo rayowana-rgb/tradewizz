@@ -293,7 +293,7 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                 ],
                 if (_rebalance != null) ...[
                   const SizedBox(height: TWSpace.lg),
-                  _rebalanceCard(_rebalance!),
+                  _rebalanceSection(_rebalance!),
                 ],
                 const SizedBox(height: TWSpace.lg),
                 _positionsSection(),
@@ -541,57 +541,65 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
     }
   }
 
-  Widget _rebalanceCard(RebalanceReport r) {
+  // Flat section (no card box): Stockbits-style header + hairline-separated
+  // rows, matching the Home layout. Replaces the boxed Rebalancing AI card.
+  Widget _rebalanceSection(RebalanceReport r) {
     // Only show actions for symbols still held (client-side safety net).
     final held = _positions.map((p) => '${p.symbol}@US').toSet();
     final report = r.reconciledWith(held);
     final acted =
         report.actions.where((a) => a.action != 'HOLD').toList();
-    return _card(
+    return Column(
       key: const Key('moomoo_rebalance_card'),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Expanded(
-                  child: Text('Rebalancing AI', style: TWType.title3)),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: TWSpace.sm, vertical: 3),
-                decoration: BoxDecoration(
-                  color: TWColors.accent.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(TWRadius.chip),
-                ),
-                child: Text(report.profile,
-                    style: TWType.overline
-                        .copyWith(color: TWColors.accentBright)),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(
+            height: 1, thickness: 1, color: TWColors.hairlineTop),
+        const SizedBox(height: TWSpace.md),
+        Row(
+          children: [
+            const Expanded(
+                child: Text('Rebalancing AI', style: TWType.title3)),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: TWSpace.sm, vertical: 3),
+              decoration: BoxDecoration(
+                color: TWColors.accent.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(TWRadius.chip),
               ),
-              if (acted.isNotEmpty)
-                _toggleChip(
-                  const Key('moomoo_toggle_rebalance'),
-                  _hideRebalance,
-                  () => _toggleHide(_kHideRebalancePref, _hideRebalance,
-                      (v) => _hideRebalance = v),
-                ),
-            ],
-          ),
-          if (report.summary.isNotEmpty) ...[
-            const SizedBox(height: TWSpace.sm),
-            Text(report.summary, style: TWType.caption),
+              child: Text(report.profile,
+                  style: TWType.overline
+                      .copyWith(color: TWColors.accentBright)),
+            ),
+            if (acted.isNotEmpty)
+              _toggleChip(
+                const Key('moomoo_toggle_rebalance'),
+                _hideRebalance,
+                () => _toggleHide(_kHideRebalancePref, _hideRebalance,
+                    (v) => _hideRebalance = v),
+              ),
           ],
-          const SizedBox(height: TWSpace.md),
-          if (acted.isEmpty)
-            Text('No rebalancing actions — portfolio looks balanced.',
-                style: TWType.caption)
-          else if (_hideRebalance)
-            Text('Rebalancing actions hidden.', style: TWType.caption)
-          else
-            ...acted.map(_rebalanceTile),
-          if (!_hideRebalance)
-            for (final w in report.warnings) _healthLine(w, TWColors.warn),
+        ),
+        if (report.summary.isNotEmpty) ...[
+          const SizedBox(height: TWSpace.sm),
+          Text(report.summary, style: TWType.caption),
         ],
-      ),
+        const SizedBox(height: TWSpace.md),
+        if (acted.isEmpty)
+          Text('No rebalancing actions — portfolio looks balanced.',
+              style: TWType.caption)
+        else if (_hideRebalance)
+          Text('Rebalancing actions hidden.', style: TWType.caption)
+        else
+          for (var i = 0; i < acted.length; i++) ...[
+            if (i > 0)
+              const Divider(
+                  height: 1, thickness: 1, color: TWColors.hairlineTop),
+            _rebalanceTile(acted[i]),
+          ],
+        if (!_hideRebalance)
+          for (final w in report.warnings) _healthLine(w, TWColors.warn),
+      ],
     );
   }
 
@@ -599,7 +607,7 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
     final color = _actionColor(a.action);
     return Padding(
       key: Key('moomoo_reb_${a.symbol}'),
-      padding: const EdgeInsets.only(bottom: TWSpace.sm),
+      padding: const EdgeInsets.symmetric(vertical: TWSpace.sm),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
