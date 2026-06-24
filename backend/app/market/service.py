@@ -614,6 +614,12 @@ class MarketConditionService:
         self._clock = clock
         self._lock = threading.Lock()
         self._cache: Dict[Market, tuple] = {}
+        # Last reading that actually carried a usable Fear/Greed signal (with
+        # daily/weekly/monthly horizons). When a later fetch fails (Yahoo
+        # rate-limit / an index symbol like ^JKSE returning an empty frame) we
+        # serve this stale-but-real reading instead of collapsing the whole
+        # Market Pulse psychology strip to a horizon-less UNKNOWN.
+        self._last_good: Dict[Market, MarketCondition] = {}
         # Optional sentiment inputs. Both are best-effort: any error is swallowed
         # and the corresponding signal is simply skipped (price-only fallback).
         self._breadth_provider = breadth_provider
@@ -704,9 +710,40 @@ class MarketConditionService:
             result = MarketCondition(
                 "UNKNOWN", 50, "Market condition data unavailable."
             )
+        # A transient fetch failure (or an empty index frame) yields a
+        # signal-less UNKNOWN with no horizons. Rather than wiping the
+        # daily/weekly/monthly breakdown from Home, fall back to the last
+        # reading that did carry a real signal for this market. We only adopt
+        # the fresh result when it is itself usable; otherwise the previous
+        # good reading is preserved (and re-served).
+        if _has_signal(result):
+            with self._lock:
+                self._last_good[market] = result
+        else:
+            with self._lock:
+                fallback = self._last_good.get(market)
+            if fallback is not None:
+                result = fallback
         with self._lock:
             self._cache[market] = (self._clock(), result, trading_date)
         return result
+
+
+def _has_signal(result) -> bool:
+    """True when a MarketCondition carries a usable Fear/Greed signal.
+
+    A reading is "good" when it is available, not UNKNOWN, and ships at least
+    one available horizon -- i.e. the multi-horizon classifier ran on real
+    index data. A horizon-less UNKNOWN (the fetch-failure fallback) is not.
+    """
+    if result is None:
+        return False
+    if not getattr(result, "available", True):
+        return False
+    if getattr(result, "condition", "UNKNOWN") == "UNKNOWN":
+        return False
+    horizons = getattr(result, "horizons", None) or []
+    return any(getattr(h, "available", False) for h in horizons)
 
 
 def _ohlc_series(df: pd.DataFrame):

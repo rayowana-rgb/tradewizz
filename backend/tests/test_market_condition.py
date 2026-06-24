@@ -82,6 +82,39 @@ def test_condition_service_handles_fetch_failure():
     assert cond.condition_score == 50
 
 
+def test_condition_service_serves_last_good_on_fetch_failure():
+    # A later fetch failure (Yahoo rate-limit / ^JKSE empty frame) must NOT
+    # collapse the daily/weekly/monthly psychology to a horizon-less UNKNOWN.
+    # Once a real reading has been seen, it is served stale until a fresh good
+    # one arrives.
+    closes = [100 + i * 0.8 for i in range(260)]
+    state = {"fail": False, "now": 0.0}
+
+    def flaky(symbol, period="1y", interval="1d"):
+        if state["fail"]:
+            raise RuntimeError("rate limited")
+        return pd.DataFrame({"Close": closes})
+
+    # ttl=0 + advancing clock forces a re-fetch on every call regardless of
+    # session state, so we exercise the failure path deterministically.
+    svc = MarketConditionService(
+        fetcher=flaky, ttl_seconds=0, clock=lambda: state["now"]
+    )
+    good = svc.get(Market.IDX)
+    assert good.condition != "UNKNOWN"
+    assert good.horizons
+    assert any(h.available for h in good.horizons)
+
+    # Now Yahoo starts failing. The reading must stay the last good one,
+    # horizons intact -- not a blank UNKNOWN.
+    state["fail"] = True
+    state["now"] = 10_000.0
+    after = svc.get(Market.IDX)
+    assert after.condition == good.condition
+    assert after.horizons
+    assert any(h.available for h in after.horizons)
+
+
 # --- Breadth + VIX sentiment signals (optional, backward-compatible) ---
 
 def _flat_closes(n: int = 260):
