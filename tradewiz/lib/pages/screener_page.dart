@@ -505,13 +505,20 @@ class _ScreenerPageState extends State<ScreenerPage> {
         break;
       }
       final m = matches[i];
+      final qty = config.quantityFor(m.price);
+      if (qty == null) {
+        // Cannot size this order (e.g. missing price in dollar mode): skip.
+        skipped++;
+        progress.value = i + 1;
+        continue;
+      }
       try {
         await repo.moomooPlace(
           token: token,
           secret: secret,
           symbol: m.symbol,
           side: 'BUY',
-          quantity: config.quantity,
+          quantity: qty,
           orderType: 'MARKET',
         );
         filled++;
@@ -995,9 +1002,40 @@ class _BulkBuyConfig {
 
 /// Immutable result of the LIVE bulk-buy sheet: quantity-per-stock. LIVE bulk
 /// orders are MARKET only (fractional allowed), so there is no order-type.
+/// How a LIVE bulk buy sizes each order.
+///   * [shares]  — the same fractional share quantity for every stock.
+///   * [dollars] — a fixed dollar amount per stock; the per-stock share
+///     quantity is derived from each stock's price (amount / price). This
+///     avoids Moomoo's \$1 minimum-order rejection as long as the amount is
+///     at least \$1.
+enum _LiveBulkSizing { shares, dollars }
+
 class _LiveBulkBuyConfig {
-  const _LiveBulkBuyConfig({required this.quantity});
+  const _LiveBulkBuyConfig({
+    required this.sizing,
+    this.quantity = 0,
+    this.dollarAmount = 0,
+  });
+
+  /// Fixed share quantity per stock (used when [sizing] is shares).
   final double quantity;
+
+  /// Fixed dollar amount per stock (used when [sizing] is dollars).
+  final double dollarAmount;
+
+  final _LiveBulkSizing sizing;
+
+  /// Resolve the share quantity for a stock trading at [price]. Returns null
+  /// when the order cannot be sized (e.g. a missing/zero price in dollar mode).
+  double? quantityFor(double price) {
+    if (sizing == _LiveBulkSizing.shares) return quantity;
+    if (price <= 0) return null;
+    // Round to 4 dp — Moomoo accepts fractional MARKET orders; this keeps the
+    // notional close to the requested dollar amount without odd precision.
+    final q = dollarAmount / price;
+    final rounded = (q * 10000).round() / 10000;
+    return rounded > 0 ? rounded : null;
+  }
 }
 
 /// Owner-only confirmation sheet for a REAL (Moomoo LIVE) bulk buy. Requires an
@@ -1015,13 +1053,32 @@ class _LiveBulkBuySheet extends StatefulWidget {
 
 class _LiveBulkBuySheetState extends State<_LiveBulkBuySheet> {
   final _qtyController = TextEditingController(text: '1');
+  final _dollarController = TextEditingController(text: '5');
   final _formKey = GlobalKey<FormState>();
   bool _acknowledged = false;
+  _LiveBulkSizing _sizing = _LiveBulkSizing.shares;
 
   @override
   void dispose() {
     _qtyController.dispose();
+    _dollarController.dispose();
     super.dispose();
+  }
+
+  _LiveBulkBuyConfig? _buildConfig() {
+    if (!_formKey.currentState!.validate()) return null;
+    if (_sizing == _LiveBulkSizing.dollars) {
+      return _LiveBulkBuyConfig(
+        sizing: _LiveBulkSizing.dollars,
+        dollarAmount: double.parse(
+            _dollarController.text.trim().replaceAll(',', '.')),
+      );
+    }
+    return _LiveBulkBuyConfig(
+      sizing: _LiveBulkSizing.shares,
+      quantity:
+          double.parse(_qtyController.text.trim().replaceAll(',', '.')),
+    );
   }
 
   @override
@@ -1065,23 +1122,72 @@ class _LiveBulkBuySheetState extends State<_LiveBulkBuySheet> {
                     color: TWColors.textTertiary, fontSize: 12),
               ),
               const SizedBox(height: 16),
-              TextFormField(
-                key: const Key('live_bulk_qty_field'),
-                controller: _qtyController,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [_DecimalQtyFormatter()],
-                decoration: const InputDecoration(
-                  labelText: 'Quantity per stock (fractional allowed)',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (v) {
-                  final q = double.tryParse(
-                      (v ?? '').trim().replaceAll(',', '.'));
-                  if (q == null || q <= 0) return 'Enter a positive quantity';
-                  return null;
-                },
+              SegmentedButton<_LiveBulkSizing>(
+                key: const Key('live_bulk_sizing_toggle'),
+                segments: const [
+                  ButtonSegment(
+                    value: _LiveBulkSizing.shares,
+                    label: Text('Shares'),
+                    icon: Icon(Icons.tag, size: 16),
+                  ),
+                  ButtonSegment(
+                    value: _LiveBulkSizing.dollars,
+                    label: Text('\$ / stock'),
+                    icon: Icon(Icons.attach_money, size: 16),
+                  ),
+                ],
+                selected: {_sizing},
+                showSelectedIcon: false,
+                onSelectionChanged: (s) =>
+                    setState(() => _sizing = s.first),
               ),
+              const SizedBox(height: 12),
+              if (_sizing == _LiveBulkSizing.shares)
+                TextFormField(
+                  key: const Key('live_bulk_qty_field'),
+                  controller: _qtyController,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [_DecimalQtyFormatter()],
+                  decoration: const InputDecoration(
+                    labelText: 'Quantity per stock (fractional allowed)',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (v) {
+                    final q = double.tryParse(
+                        (v ?? '').trim().replaceAll(',', '.'));
+                    if (q == null || q <= 0) {
+                      return 'Enter a positive quantity';
+                    }
+                    return null;
+                  },
+                )
+              else
+                TextFormField(
+                  key: const Key('live_bulk_dollar_field'),
+                  controller: _dollarController,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [_DecimalQtyFormatter()],
+                  decoration: const InputDecoration(
+                    labelText: 'Amount per stock (USD)',
+                    prefixText: '\$ ',
+                    helperText:
+                        'Shares = amount ÷ price. Keep ≥ \$1 to clear '
+                        'Moomoo\'s minimum.',
+                    helperMaxLines: 2,
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (v) {
+                    final d = double.tryParse(
+                        (v ?? '').trim().replaceAll(',', '.'));
+                    if (d == null || d <= 0) {
+                      return 'Enter a positive amount';
+                    }
+                    if (d < 1) return 'Use at least \$1 per stock';
+                    return null;
+                  },
+                ),
               const SizedBox(height: 14),
               CheckboxListTile(
                 key: const Key('live_bulk_ack'),
@@ -1107,14 +1213,9 @@ class _LiveBulkBuySheetState extends State<_LiveBulkBuySheet> {
                   ),
                   onPressed: _acknowledged
                       ? () {
-                          if (!_formKey.currentState!.validate()) return;
-                          Navigator.of(context).pop(
-                            _LiveBulkBuyConfig(
-                              quantity: double.parse(_qtyController.text
-                                  .trim()
-                                  .replaceAll(',', '.')),
-                            ),
-                          );
+                          final cfg = _buildConfig();
+                          if (cfg == null) return;
+                          Navigator.of(context).pop(cfg);
                         }
                       : null,
                   child: Text('Buy all ${widget.count} · LIVE'),

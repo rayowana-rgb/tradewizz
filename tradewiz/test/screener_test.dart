@@ -803,6 +803,55 @@ void main() {
     expect(find.textContaining('2 skipped'), findsOneWidget);
     expect(find.textContaining('failed'), findsNothing);
   });
+
+  testWidgets('LIVE Buy-all dollar-per-stock derives qty from each price',
+      (tester) async {
+    final placed = <Map<String, dynamic>>[];
+    // Prices are 100, 101, 102 for AAPL0..AAPL2.
+    final repo = _liveBulkRepo(3, placed: placed);
+    final secret = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await secret.load();
+
+    tester.view.physicalSize = const Size(1200, 3200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      _wrapOwner(
+        ScreenerPage(
+          market: Market.us,
+          repository: repo,
+          secretStore: secret,
+        ),
+        repo,
+      ),
+    );
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pumpAndSettle();
+    }
+
+    await tester.tap(find.byKey(const Key('screener_buy_all_live_button')));
+    await tester.pumpAndSettle();
+    // Switch to dollar-per-stock mode and enter \$10.
+    await tester.tap(find.text('\$ / stock'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const Key('live_bulk_dollar_field')), '10');
+    await tester.tap(find.byKey(const Key('live_bulk_ack')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('live_bulk_confirm_button')));
+    await tester.pumpAndSettle(const Duration(milliseconds: 800));
+
+    // qty = 10 / price, rounded to 4 dp: 0.1, ~0.099, ~0.098.
+    expect(placed.length, 3);
+    expect(placed[0]['symbol'], 'AAPL0');
+    expect((placed[0]['quantity'] as num).toDouble(), closeTo(0.1, 1e-9));
+    expect((placed[1]['quantity'] as num).toDouble(),
+        closeTo(10 / 101, 1e-4));
+    expect(find.text('3 placed (LIVE)'), findsOneWidget);
+  });
 }
 
 /// Sign-in wrap as the bridge OWNER (uid 2) for the LIVE Buy-all path.
