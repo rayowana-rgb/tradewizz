@@ -747,6 +747,62 @@ void main() {
     expect(find.byKey(const Key('screener_buy_all_live_button')),
         findsNothing);
   });
+
+  testWidgets(
+      'LIVE Buy-all counts \$1-min and MAS-evaluation rejects as skipped',
+      (tester) async {
+    final placed = <Map<String, dynamic>>[];
+    // 3 matches: AAPL0 succeeds, AAPL1 hits the \$1 fractional minimum,
+    // AAPL2 needs the Singapore (MAS) suitability evaluation. Neither reject
+    // should be reported as a hard failure.
+    final repo = _liveBulkRepo(
+      3,
+      placed: placed,
+      rejectWith: {
+        'AAPL1': 'Fractional share orders require a minimum order amount '
+            'of \$1.00. Please increase your order quantity and try again.',
+        'AAPL2': 'As required by the Monetary Authority of Singapore, please '
+            'complete the evaluation before trading.',
+      },
+    );
+    final secret = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await secret.load();
+
+    tester.view.physicalSize = const Size(1200, 3200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      _wrapOwner(
+        ScreenerPage(
+          market: Market.us,
+          repository: repo,
+          secretStore: secret,
+        ),
+        repo,
+      ),
+    );
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pumpAndSettle();
+    }
+
+    await tester.tap(find.byKey(const Key('screener_buy_all_live_button')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const Key('live_bulk_qty_field')), '1');
+    await tester.tap(find.byKey(const Key('live_bulk_ack')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('live_bulk_confirm_button')));
+    await tester.pumpAndSettle(const Duration(milliseconds: 800));
+
+    // 1 placed, 2 skipped (not failed): no 'failed' line.
+    expect(find.byKey(const Key('bulk_result_dialog')), findsOneWidget);
+    expect(find.text('1 placed (LIVE)'), findsOneWidget);
+    expect(find.textContaining('2 skipped'), findsOneWidget);
+    expect(find.textContaining('failed'), findsNothing);
+  });
 }
 
 /// Sign-in wrap as the bridge OWNER (uid 2) for the LIVE Buy-all path.
@@ -760,10 +816,13 @@ Widget _wrapOwner(Widget child, StockRepository repo) {
 }
 
 /// US repo that returns [matchCount] matches and accepts REAL Moomoo order
-/// placements, recording each placed body.
+/// placements, recording each placed body. [rejectWith] maps a match symbol to
+/// a broker error detail returned as HTTP 400 (to exercise skip vs fail
+/// classification).
 StockRepository _liveBulkRepo(
   int matchCount, {
   List<Map<String, dynamic>>? placed,
+  Map<String, String>? rejectWith,
 }) {
   var n = 0;
   final live = MockClient((req) async {
@@ -772,6 +831,15 @@ StockRepository _liveBulkRepo(
       n++;
       final body = jsonDecode(req.body) as Map<String, dynamic>;
       placed?.add(body);
+      final sym = body['symbol'] as String;
+      final detail = rejectWith?[sym];
+      if (detail != null) {
+        return http.Response(
+          jsonEncode({'detail': detail}),
+          400,
+          headers: {'content-type': 'application/json'},
+        );
+      }
       return http.Response(
         jsonEncode({
           'order_id': 'live-$n',

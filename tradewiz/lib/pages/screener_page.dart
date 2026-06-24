@@ -517,12 +517,19 @@ class _ScreenerPageState extends State<ScreenerPage> {
         filled++;
       } on ApiException catch (e) {
         final msg = e.message.toLowerCase();
-        // Notional cap exceeded or insufficient buying power are expected,
-        // non-fatal per-stock outcomes: skip & continue the run.
+        // Expected, non-fatal per-stock outcomes from the broker: skip &
+        // continue the run instead of flagging a hard failure. Covers our
+        // own cap/cash guards plus two common Moomoo broker rejections:
+        //   * fractional orders below the $1 minimum order amount, and
+        //   * names that need a MAS (Singapore) suitability evaluation first.
         if (msg.contains('cap') ||
             msg.contains('notional') ||
             msg.contains('cash') ||
-            msg.contains('buying power')) {
+            msg.contains('buying power') ||
+            msg.contains('minimum order amount') ||
+            (msg.contains('fractional') && msg.contains('minimum')) ||
+            msg.contains('monetary authority') ||
+            msg.contains('complete the evaluation')) {
           skipped++;
         } else {
           failed++;
@@ -1050,8 +1057,10 @@ class _LiveBulkBuySheetState extends State<_LiveBulkBuySheet> {
               Text(
                 '${widget.market.flag} ${widget.market.code} · REAL MONEY. The '
                 'same quantity is bought for every stock in the current list '
-                'as a MARKET order on your live Moomoo account. Orders over the '
-                'per-order cap or short on buying power are skipped.',
+                'as a MARKET order on your live Moomoo account. Moomoo rejects '
+                'fractional orders worth under \$1, names pending a Moomoo '
+                'suitability evaluation, and orders over the cap or short on '
+                'buying power — those are skipped, not failed.',
                 style: const TextStyle(
                     color: TWColors.textTertiary, fontSize: 12),
               ),
@@ -1494,7 +1503,8 @@ class _BulkResultDialog extends StatelessWidget {
                 Icons.account_balance_wallet_outlined,
                 TWColors.warn,
                 live
-                    ? '$skipped skipped — over cap or not enough buying power'
+                    ? '$skipped skipped — under \$1 min, cap, buying power, '
+                        'or pending Moomoo evaluation'
                     : '$skipped skipped — not enough simulated cash'),
           if (failed > 0)
             line(Icons.error_outline, TWColors.down, '$failed failed'),
