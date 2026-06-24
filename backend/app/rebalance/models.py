@@ -36,6 +36,11 @@ class RebalanceAction(BaseModel):
     priority: str = PRIORITY_LOW
     score: float = 0.0
     quality_score: float = 0.0
+    # Unrealized P/L for the held position (drives the take-profit trim and
+    # the app's profit display). pnl_pct is the % return on cost basis;
+    # pnl_value is the absolute gain/loss in account currency.
+    pnl_pct: float = 0.0
+    pnl_value: float = 0.0
 
 
 class RebalanceResponse(BaseModel):

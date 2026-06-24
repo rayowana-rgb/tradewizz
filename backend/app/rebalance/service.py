@@ -71,6 +71,12 @@ CONCENTRATION_REDUCE = 30.0
 QUALITY_REDUCE_SCORE_CEILING = 75.0
 # Loss threshold (%) for the EXIT "large loss, no recovery" rule.
 EXIT_LOSS_THRESHOLD = -20.0
+# Take-profit (let-winners-run friendly): only trim a winner to lock in gains
+# once its momentum is fading. A position up at least TAKE_PROFIT_PCT whose
+# engine score has slipped below TAKE_PROFIT_SCORE_CEILING is REDUCED to secure
+# profit. A still-strong winner (score >= ceiling) keeps running untouched.
+TAKE_PROFIT_PCT = 30.0
+TAKE_PROFIT_SCORE_CEILING = 80.0
 REGIME_BEAR = "BEAR"
 
 
@@ -183,6 +189,7 @@ class RebalanceService:
                 regime_by_market[p.market] = self._safe_regime(p.market)
             regime = regime_by_market[p.market]
             pnl_pct = _position_pnl_pct(p)
+            pnl_value = _position_pnl_value(p)
             target = _target_weight(score, profile_cap)
 
             action, reason, priority = _decide(
@@ -201,6 +208,8 @@ class RebalanceService:
                 priority=priority,
                 score=round(score, 1),
                 quality_score=round(quality, 1),
+                pnl_pct=round(pnl_pct, 1),
+                pnl_value=round(pnl_value, 2),
             ))
 
         # Sort HIGH first, then by how far off target (largest gaps first).
@@ -254,6 +263,14 @@ def _position_pnl_pct(p) -> float:
     return 0.0
 
 
+def _position_pnl_value(p) -> float:
+    """Absolute unrealized P/L in account currency, when available."""
+    try:
+        return float(getattr(p, "unrealized_pnl", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _decide(
     *, score, signal, quality, weight, regime, pnl_pct, target,
     low_confidence=False,
@@ -295,10 +312,20 @@ def _decide(
     quality_reduce = (
         real and quality < 60 and score < QUALITY_REDUCE_SCORE_CEILING
     )
+    # Take-profit (Option 1): lock in gains on a big winner only once its
+    # momentum is fading. Up >= TAKE_PROFIT_PCT AND score has slipped below
+    # the ceiling -> trim. A still-strong winner (score >= ceiling) is left to
+    # keep running, in line with the let-winners-run philosophy.
+    take_profit = (
+        real
+        and pnl_pct >= TAKE_PROFIT_PCT
+        and score < TAKE_PROFIT_SCORE_CEILING
+    )
     if (
         weight > CONCENTRATION_REDUCE
         or score_reduce
         or quality_reduce
+        or take_profit
         or bearish
     ):
         reasons = []
@@ -310,6 +337,10 @@ def _decide(
             reasons.append("score weakening")
         if quality_reduce:
             reasons.append("quality below 60")
+        if take_profit:
+            reasons.append(
+                f"secure profit (+{pnl_pct:.0f}%) as momentum fades"
+            )
         if bearish:
             reasons.append("market regime bearish")
         priority = (

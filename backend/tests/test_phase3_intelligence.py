@@ -394,6 +394,55 @@ def test_rebalance_weak_score_causes_exit():
     sub_router.set_service(SubscriptionService())
 
 
+def test_rebalance_take_profit_trims_fading_winner():
+    # A big winner (+60%) whose engine score has slipped below 80 -> REDUCE to
+    # secure profit. A still-strong winner (score >= 80) keeps running.
+    c = _build_client(score_map={
+        "FADING": (72, "HOLD", 0.5),
+        "RUNNER": (88, "BUY", 1.0),
+        "F1": (80, "BUY", 1.0),
+        "F2": (80, "BUY", 1.0),
+    })
+    h = _register(c)
+    c._simstate["positions"] = [
+        # +60%: market_value 240k, cost 150k -> pnl 90k.
+        _Pos("FADING", Market.US, 240_000.0, unrealized_pnl=90_000.0),
+        _Pos("RUNNER", Market.US, 240_000.0, unrealized_pnl=90_000.0),
+        _Pos("F1", Market.US, 240_000.0),
+        _Pos("F2", Market.US, 240_000.0),
+    ]
+    body = c.get("/v1/portfolio/rebalance", headers=h).json()
+    by = {a["symbol"]: a for a in body["actions"]}
+    assert by["FADING"]["action"] == "REDUCE"
+    assert "secure profit" in by["FADING"]["reason"].lower()
+    assert by["FADING"]["pnl_pct"] == 60.0
+    assert by["FADING"]["pnl_value"] == 90_000.0
+    # The strong runner is NOT trimmed on profit alone.
+    assert by["RUNNER"]["action"] != "REDUCE", by["RUNNER"]
+    sub_router.set_service(SubscriptionService())
+
+
+def test_rebalance_strong_winner_not_take_profited():
+    # A strong winner up big with a healthy score must keep running (no trim).
+    c = _build_client(score_map={
+        "WINNER": (90, "BUY", 2.0),
+        "F1": (80, "BUY", 1.0),
+        "F2": (80, "BUY", 1.0),
+        "F3": (80, "BUY", 1.0),
+    })
+    h = _register(c)
+    c._simstate["positions"] = [
+        _Pos("WINNER", Market.US, 200_000.0, unrealized_pnl=120_000.0),
+        _Pos("F1", Market.US, 250_000.0),
+        _Pos("F2", Market.US, 250_000.0),
+        _Pos("F3", Market.US, 250_000.0),
+    ]
+    body = c.get("/v1/portfolio/rebalance", headers=h).json()
+    by = {a["symbol"]: a for a in body["actions"]}
+    assert by["WINNER"]["action"] != "REDUCE", by["WINNER"]
+    sub_router.set_service(SubscriptionService())
+
+
 def test_rebalance_strong_name_after_hard_down_day_is_not_reduced():
     # A strong, high-score BUY name that just sold off hard (-12% today) must
     # NOT be flipped to REDUCE on a quality dip alone. Before the fix the

@@ -31,6 +31,7 @@ class _PosAdapter:
     market: Market
     quantity: float
     market_value: float
+    unrealized_pnl: float = 0.0
 
 
 @dataclass
@@ -72,6 +73,7 @@ class MoomooAnalytics:
                     market=_MOOMOO_MARKET,
                     quantity=p.qty,
                     market_value=max(0.0, p.qty * p.last_price),
+                    unrealized_pnl=float(getattr(p, "pl_val", 0.0) or 0.0),
                 )
             )
         return out
