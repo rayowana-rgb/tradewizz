@@ -690,6 +690,7 @@ void main() {
           market: Market.us,
           repository: repo,
           secretStore: secret,
+          liveBulkOrderGap: Duration.zero,
         ),
         repo,
       ),
@@ -738,6 +739,7 @@ void main() {
           market: Market.us,
           repository: repo,
           secretStore: secret,
+          liveBulkOrderGap: Duration.zero,
         ),
         repo,
       ),
@@ -779,6 +781,7 @@ void main() {
           market: Market.us,
           repository: repo,
           secretStore: secret,
+          liveBulkOrderGap: Duration.zero,
         ),
         repo,
       ),
@@ -823,6 +826,7 @@ void main() {
           market: Market.us,
           repository: repo,
           secretStore: secret,
+          liveBulkOrderGap: Duration.zero,
         ),
         repo,
       ),
@@ -852,6 +856,61 @@ void main() {
         closeTo(10 / 101, 1e-4));
     expect(find.text('3 placed (LIVE)'), findsOneWidget);
   });
+
+  testWidgets(
+      'LIVE Buy-all retries a rate-limited order instead of failing it',
+      (tester) async {
+    final placed = <Map<String, dynamic>>[];
+    // 3 matches; AAPL1 is rate-limited on its first attempt (Moomoo
+    // "high frequency") and must succeed on retry, not count as failed.
+    final repo = _liveBulkRepo(
+      3,
+      placed: placed,
+      rateLimitOnce: {'AAPL1'},
+    );
+    final secret = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await secret.load();
+
+    tester.view.physicalSize = const Size(1200, 3200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      _wrapOwner(
+        ScreenerPage(
+          market: Market.us,
+          repository: repo,
+          secretStore: secret,
+          // Disable real-time pacing so the test runs instantly.
+          liveBulkOrderGap: Duration.zero,
+        ),
+        repo,
+      ),
+    );
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pumpAndSettle();
+    }
+
+    await tester.tap(find.byKey(const Key('screener_buy_all_live_button')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const Key('live_bulk_qty_field')), '1');
+    await tester.tap(find.byKey(const Key('live_bulk_ack')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('live_bulk_confirm_button')));
+    await tester.pumpAndSettle(const Duration(milliseconds: 800));
+
+    // AAPL1 was attempted twice (rate-limit then retry); all 3 end placed,
+    // none failed.
+    final aapl1Tries =
+        placed.where((b) => b['symbol'] == 'AAPL1').length;
+    expect(aapl1Tries, 2);
+    expect(find.byKey(const Key('bulk_result_dialog')), findsOneWidget);
+    expect(find.text('3 placed (LIVE)'), findsOneWidget);
+    expect(find.textContaining('failed'), findsNothing);
+  });
 }
 
 /// Sign-in wrap as the bridge OWNER (uid 2) for the LIVE Buy-all path.
@@ -872,8 +931,10 @@ StockRepository _liveBulkRepo(
   int matchCount, {
   List<Map<String, dynamic>>? placed,
   Map<String, String>? rejectWith,
+  Set<String>? rateLimitOnce,
 }) {
   var n = 0;
+  final attempts = <String, int>{};
   final live = MockClient((req) async {
     final path = req.url.path;
     if (path.endsWith('/broker/moomoo/order/place')) {
@@ -881,6 +942,23 @@ StockRepository _liveBulkRepo(
       final body = jsonDecode(req.body) as Map<String, dynamic>;
       placed?.add(body);
       final sym = body['symbol'] as String;
+      // Transient rate limit: fail the FIRST attempt for these symbols, then
+      // succeed on the retry (exercises the throttle/retry path).
+      if (rateLimitOnce != null && rateLimitOnce.contains(sym)) {
+        final a = (attempts[sym] ?? 0) + 1;
+        attempts[sym] = a;
+        if (a == 1) {
+          return http.Response(
+            jsonEncode({
+              'detail':
+                  'Place Order request failed due to high frequency. '
+                      'Maximum 15 times per 30 seconds.'
+            }),
+            400,
+            headers: {'content-type': 'application/json'},
+          );
+        }
+      }
       final detail = rejectWith?[sym];
       if (detail != null) {
         return http.Response(

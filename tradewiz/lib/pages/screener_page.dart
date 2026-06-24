@@ -33,6 +33,7 @@ class ScreenerPage extends StatefulWidget {
     this.repository,
     this.filterStore,
     this.secretStore,
+    this.liveBulkOrderGap,
   });
 
   /// Market preselected from the app shell.
@@ -47,12 +48,30 @@ class ScreenerPage extends StatefulWidget {
   /// selections survive tab switches; tests can inject a fresh store.
   final ExploreFilterStore? filterStore;
 
+  /// Delay between LIVE bulk-buy order placements. Defaults to a value that
+  /// keeps the run under Moomoo's ~15-orders / 30s rate limit; tests inject
+  /// [Duration.zero] so they run instantly.
+  final Duration? liveBulkOrderGap;
+
   @override
   State<ScreenerPage> createState() => _ScreenerPageState();
 }
 
+/// Default pacing for LIVE bulk-buy: Moomoo allows ~15 orders per 30s, so a
+/// ~2.2s gap keeps us comfortably under the limit (≈ 13-14 orders / 30s).
+const Duration _kDefaultLiveBulkOrderGap = Duration(milliseconds: 2200);
+
+/// How long to wait after a transient rate-limit rejection before retrying
+/// the same order (slightly longer than the 30s window edge can need).
+const Duration _kLiveBulkRetryBackoff = Duration(seconds: 8);
+
+/// Attempts per order (1 try + retries) when the broker rate-limits us.
+const int _kLiveBulkMaxRetries = 3;
+
 class _ScreenerPageState extends State<ScreenerPage> {
   late final StockRepository _repo = widget.repository ?? StockRepository();
+  Duration get _liveBulkOrderGap =>
+      widget.liveBulkOrderGap ?? _kDefaultLiveBulkOrderGap;
   ExploreFilterStore get _store =>
       widget.filterStore ?? ExploreFilterStore.instance;
   // Owner-only Moomoo LIVE bridge secret (secure-storage backed). Created
@@ -512,39 +531,83 @@ class _ScreenerPageState extends State<ScreenerPage> {
         progress.value = i + 1;
         continue;
       }
-      try {
-        await repo.moomooPlace(
-          token: token,
-          secret: secret,
-          symbol: m.symbol,
-          side: 'BUY',
-          quantity: qty,
-          orderType: 'MARKET',
-        );
-        filled++;
-      } on ApiException catch (e) {
-        final msg = e.message.toLowerCase();
-        // Expected, non-fatal per-stock outcomes from the broker: skip &
-        // continue the run instead of flagging a hard failure. Covers our
-        // own cap/cash guards plus two common Moomoo broker rejections:
-        //   * fractional orders below the $1 minimum order amount, and
-        //   * names that need a MAS (Singapore) suitability evaluation first.
-        if (msg.contains('cap') ||
-            msg.contains('notional') ||
-            msg.contains('cash') ||
-            msg.contains('buying power') ||
-            msg.contains('minimum order amount') ||
-            (msg.contains('fractional') && msg.contains('minimum')) ||
-            msg.contains('monetary authority') ||
-            msg.contains('complete the evaluation')) {
-          skipped++;
-        } else {
-          failed++;
-          failures.add('${m.symbol}: ${e.message}');
+
+      // Moomoo throttles placement to ~15 orders / 30s. Pace ourselves so a
+      // large "Buy all" run does not trip the broker's rate limiter (which
+      // previously caused everything after the 15th order to fail).
+      if (i > 0 && _liveBulkOrderGap > Duration.zero) {
+        await Future<void>.delayed(_liveBulkOrderGap);
+      }
+
+      var outcome = 0; // 0=filled, 1=skipped, 2=failed
+      String? failMsg;
+      // Up to a few attempts so a transient rate-limit hit is retried with
+      // backoff rather than counted as a hard failure.
+      for (var attempt = 0; attempt < _kLiveBulkMaxRetries; attempt++) {
+        if (cancel.isCancelled) break;
+        try {
+          await repo.moomooPlace(
+            token: token,
+            secret: secret,
+            symbol: m.symbol,
+            side: 'BUY',
+            quantity: qty,
+            orderType: 'MARKET',
+          );
+          outcome = 0;
+          break;
+        } on ApiException catch (e) {
+          final msg = e.message.toLowerCase();
+          // Transient broker rate limit: wait out the window and retry the
+          // same order instead of dropping it.
+          if (msg.contains('high frequency') ||
+              msg.contains('per 30 seconds') ||
+              msg.contains('rate limit') ||
+              msg.contains('too many requests')) {
+            outcome = 2;
+            failMsg = e.message;
+            if (attempt < _kLiveBulkMaxRetries - 1) {
+              // Skip the backoff entirely when pacing is disabled (tests).
+              if (_liveBulkOrderGap > Duration.zero) {
+                await Future<void>.delayed(_kLiveBulkRetryBackoff);
+              }
+              continue;
+            }
+            break;
+          }
+          // Expected, non-fatal per-stock outcomes from the broker: skip &
+          // continue the run instead of flagging a hard failure. Covers our
+          // own cap/cash guards plus two common Moomoo broker rejections:
+          //   * fractional orders below the $1 minimum order amount, and
+          //   * names that need a MAS (Singapore) suitability evaluation.
+          if (msg.contains('cap') ||
+              msg.contains('notional') ||
+              msg.contains('cash') ||
+              msg.contains('buying power') ||
+              msg.contains('minimum order amount') ||
+              (msg.contains('fractional') && msg.contains('minimum')) ||
+              msg.contains('monetary authority') ||
+              msg.contains('complete the evaluation')) {
+            outcome = 1;
+          } else {
+            outcome = 2;
+            failMsg = e.message;
+          }
+          break;
+        } catch (e) {
+          outcome = 2;
+          failMsg = '$e';
+          break;
         }
-      } catch (e) {
+      }
+
+      if (outcome == 0) {
+        filled++;
+      } else if (outcome == 1) {
+        skipped++;
+      } else {
         failed++;
-        failures.add('${m.symbol}: $e');
+        failures.add('${m.symbol}: ${failMsg ?? 'failed'}');
       }
       progress.value = i + 1;
     }
