@@ -1142,6 +1142,18 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                           style: TWType.caption,
                         ),
                       ],
+                      // Equity tied up in this name: what you paid in
+                      // (qty * avg cost) and its value now (qty * last price).
+                      if (p.costPrice > 0 && p.quantity > 0) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Invested ${_money(p.quantity * p.costPrice, "USD")}'
+                          ' · now ${_money(p.quantity * p.lastPrice, "USD")}',
+                          style: TWType.caption.copyWith(
+                            color: TWColors.textSecondary,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

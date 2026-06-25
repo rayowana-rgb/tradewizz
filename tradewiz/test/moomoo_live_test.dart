@@ -477,6 +477,31 @@ void main() {
     expect(topOf(intc), lessThan(topOf(amd)));
   });
 
+  testWidgets('position tile shows invested equity (qty * avg cost) and now',
+      (tester) async {
+    tester.view.physicalSize = const Size(1200, 3200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final auth = await _auth(kMoomooOwnerUid);
+    final repo = _repoWithTwoPositions();
+    final store = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await tester.pumpWidget(_wrap(
+        MoomooLivePage(repository: repo, secretStore: store), auth, repo));
+    await tester.pumpAndSettle();
+
+    // INTC: 10 sh * $30 avg cost = $300 invested; now 10 * $33.50 = $335.
+    expect(
+      find.textContaining('Invested \$300.00 · now \$335.00'),
+      findsOneWidget,
+    );
+    // AMD: 5 sh * $100 = $500 invested; now 5 * $96 = $480.
+    expect(
+      find.textContaining('Invested \$500.00 · now \$480.00'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('position Sell expands an inline qty slider for held shares',
       (tester) async {
     tester.view.physicalSize = const Size(1200, 3200);
