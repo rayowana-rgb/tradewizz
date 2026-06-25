@@ -133,7 +133,10 @@ def test_category_bonus_lifts_final_above_base():
     ind = {}  # no conviction
     overlay = explore.compute_overlay(base, cats, ind)
     assert overlay["category_bonus"] == 8
-    assert overlay["final_score"] == 68.0
+    # Phase 9A+: the overlay consumes headroom proportionally, so a +8 bonus on
+    # a Base of 60 lifts the final to 60 + (100-60)*(8/45) = 67.1, still above
+    # the Base (the "bonus lifts final above base" contract holds).
+    assert overlay["final_score"] == 67.1
 
 
 def test_overlay_respects_liquidity_score_ceiling():

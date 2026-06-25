@@ -46,6 +46,13 @@ CATEGORY_WEIGHTS: Dict[ScreenerCategory, int] = {
 CATEGORY_BONUS_CAP = 25
 CONVICTION_MAX = 20
 
+# The overlay's theoretical maximum (full category bonus + full conviction).
+# The Final Explore Score consumes the headroom between the Base Score and 100
+# *proportionally* to how much of this maximum a name earns, so 100 is reserved
+# for genuine confluence (high Base AND near-complete overlay) instead of being
+# reached by almost any liquid, mildly-confirmed name. See ``explore_score``.
+OVERLAY_MAX = CATEGORY_BONUS_CAP + CONVICTION_MAX  # 45
+
 
 def category_bonus(cats: List[ScreenerCategory]) -> int:
     """Sum the per-category weights, capped at +25.
@@ -121,9 +128,34 @@ def conviction_score(ind: dict) -> int:
 def explore_score(
     base_score: float, bonus: int, conviction: int
 ) -> float:
-    """Final Explore Score = clamp(base + bonus + conviction, 0..100)."""
-    total = float(base_score) + float(bonus) + float(conviction)
-    return round(max(0.0, min(100.0, total)), 1)
+    """Final Explore Score with diminishing returns toward 100 (Phase 9A+).
+
+    The overlay (category bonus + conviction) consumes the *headroom* between
+    the Base Score and 100 in proportion to how much of ``OVERLAY_MAX`` the
+    name earns::
+
+        headroom = 100 - base
+        final    = base + headroom * (bonus + conviction) / OVERLAY_MAX
+
+    Properties (vs the previous additive ``base + bonus + conviction`` clamp):
+      * The overlay can still only *lift* the score (final >= base), preserving
+        the "bonus lifts final above base" contract.
+      * 100 is reserved for genuine confluence: it requires BOTH a high Base
+        Score AND a near-complete overlay. A merely-liquid, mildly-confirmed
+        name no longer saturates at 100, so the top of Explore differentiates
+        again instead of collapsing into a wall of 100s.
+      * Monotonic in base, bonus, and conviction, so ranking order is stable.
+      * Degrades cleanly: zero overlay -> final == base; full overlay on a
+        base of 100 -> 100.
+    """
+    base = max(0.0, min(100.0, float(base_score)))
+    overlay = float(bonus) + float(conviction)
+    if OVERLAY_MAX <= 0 or overlay <= 0:
+        return round(base, 1)
+    headroom = 100.0 - base
+    fraction = min(1.0, overlay / OVERLAY_MAX)
+    final = base + headroom * fraction
+    return round(max(0.0, min(100.0, final)), 1)
 
 
 # --------------------------------------------------------------------------- #
