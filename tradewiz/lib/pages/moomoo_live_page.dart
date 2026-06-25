@@ -24,15 +24,28 @@ import '../widgets/ds/tw_scaffold_background.dart';
 /// orders to go through; otherwise the backend surfaces a clear error.
 const int kMoomooOwnerUid = 2;
 
+// Live bulk pacing for the "Trim" (take-profit-all) flow. Moomoo throttles
+// placement to ~15 orders / 30s, so we space orders out and retry a transient
+// rate-limit hit instead of dropping it. Mirrors the screener "Buy all" pacing.
+const Duration _kTrimOrderGap = Duration(milliseconds: 2200);
+const Duration _kTrimRetryBackoff = Duration(seconds: 8);
+const int _kTrimMaxRetries = 3;
+
 class MoomooLivePage extends StatefulWidget {
   const MoomooLivePage({
     super.key,
     required this.repository,
     required this.secretStore,
+    this.liveBulkOrderGap,
   });
 
   final StockRepository repository;
   final MoomooSecretStore secretStore;
+
+  /// Test seam: pacing between live bulk "Trim" orders. Inject [Duration.zero]
+  /// in widget tests so the take-profit-all flow runs instantly without the
+  /// real broker rate-limit backoff. Production uses [_kTrimOrderGap].
+  final Duration? liveBulkOrderGap;
 
   @override
   State<MoomooLivePage> createState() => _MoomooLivePageState();
@@ -67,7 +80,22 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
   // list (null = none). Tapping Sell on a tile toggles its slider open/closed.
   String? _sellExpanded;
 
+  // Profit threshold (in PERCENT) for the "Trim" take-profit-all flow. A
+  // position qualifies when its unrealized P/L% is strictly greater than this.
+  // Persisted so the user's preferred threshold survives relaunches.
+  static const String _kTrimThresholdPref = 'tradewizz.moomoo.trimThreshold';
+  double _trimThreshold = 0.0;
+
+  Duration get _trimOrderGap => widget.liveBulkOrderGap ?? _kTrimOrderGap;
+
   String? get _token => AuthScope.read(context).token;
+
+  /// Open positions that are in profit above the current [_trimThreshold] and
+  /// have sellable shares. plRatio is a fraction (0.05 = 5%).
+  List<MoomooLivePosition> _trimCandidates(double thresholdPct) => _positions
+      .where((p) =>
+          p.canSellQty > 0 && p.plRatio * 100.0 > thresholdPct)
+      .toList();
 
   @override
   void initState() {
@@ -88,6 +116,7 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
       _hideHealth = prefs.getBool(_kHideHealthPref) ?? false;
       _hideRebalance = prefs.getBool(_kHideRebalancePref) ?? false;
       _posSort = prefs.getString(_kPosSortPref) ?? 'default';
+      _trimThreshold = prefs.getDouble(_kTrimThresholdPref) ?? 0.0;
     });
   }
 
@@ -290,6 +319,281 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
       ),
     );
     if (placed == true && mounted) _refresh();
+  }
+
+  Future<void> _setTrimThreshold(double pct) async {
+    setState(() => _trimThreshold = pct);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_kTrimThresholdPref, pct);
+  }
+
+  /// Bottom sheet: pick a profit threshold, preview which winners qualify, then
+  /// take profit on ALL of them in one go (full sellable qty, MARKET).
+  Future<void> _openTrimSheet() async {
+    if (!widget.secretStore.hasSecret) return;
+    var threshold = _trimThreshold;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: TWColors.surfaceCard,
+      shape: const RoundedRectangleBorder(
+        borderRadius:
+            BorderRadius.vertical(top: Radius.circular(TWRadius.cardLg)),
+      ),
+      builder: (sheetCtx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheet) {
+            final candidates = _trimCandidates(threshold);
+            final winners =
+                _positions.where((p) => p.plRatio > 0).length;
+            return Padding(
+              padding: EdgeInsets.only(
+                left: TWSpace.lg,
+                right: TWSpace.lg,
+                top: TWSpace.lg,
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + TWSpace.lg,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.content_cut,
+                          size: 18, color: TWColors.up),
+                      const SizedBox(width: TWSpace.sm),
+                      const Text('Take profit', style: TWType.body),
+                    ],
+                  ),
+                  const SizedBox(height: TWSpace.xs),
+                  Text(
+                    'Sell every position whose unrealized P/L is above the '
+                    'threshold. $winners of ${_positions.length} are in profit.',
+                    style: TWType.caption.copyWith(
+                        color: TWColors.textSecondary),
+                  ),
+                  const SizedBox(height: TWSpace.lg),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Profit greater than',
+                          style: TWType.label,
+                        ),
+                      ),
+                      Text(
+                        '${threshold.toStringAsFixed(1)}%',
+                        key: const Key('moomoo_trim_threshold_label'),
+                        style: TWType.body.copyWith(color: TWColors.up),
+                      ),
+                    ],
+                  ),
+                  SliderTheme(
+                    data: SliderTheme.of(ctx).copyWith(
+                      trackHeight: 4,
+                      activeTrackColor: TWColors.up,
+                      inactiveTrackColor: TWColors.hairlineTop,
+                      thumbColor: TWColors.up,
+                      overlayShape:
+                          const RoundSliderOverlayShape(overlayRadius: 14),
+                    ),
+                    child: Slider(
+                      key: const Key('moomoo_trim_slider'),
+                      value: threshold.clamp(0.0, 50.0),
+                      max: 50.0,
+                      divisions: 100,
+                      label: '${threshold.toStringAsFixed(1)}%',
+                      onChanged: (v) {
+                        setSheet(() => threshold = v);
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: TWSpace.sm),
+                  if (candidates.isEmpty)
+                    Text(
+                      'No positions are above this threshold.',
+                      key: const Key('moomoo_trim_empty'),
+                      style: TWType.caption
+                          .copyWith(color: TWColors.textTertiary),
+                    )
+                  else ...[
+                    Text(
+                      'Will sell ${candidates.length}:',
+                      style: TWType.caption
+                          .copyWith(color: TWColors.textSecondary),
+                    ),
+                    const SizedBox(height: TWSpace.xs),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 180),
+                      child: SingleChildScrollView(
+                        child: Column(
+                          children: [
+                            for (final p in candidates)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 2),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        '${p.symbol}  ${_qty(p.canSellQty)} sh',
+                                        style: TWType.caption,
+                                      ),
+                                    ),
+                                    Text(
+                                      '+${(p.plRatio * 100).toStringAsFixed(1)}%',
+                                      style: TWType.caption
+                                          .copyWith(color: TWColors.up),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: TWSpace.lg),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      key: const Key('moomoo_trim_execute'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: TWColors.up,
+                        padding: const EdgeInsets.symmetric(
+                            vertical: TWSpace.md),
+                      ),
+                      onPressed: candidates.isEmpty
+                          ? null
+                          : () async {
+                              final nav = Navigator.of(sheetCtx);
+                              final chosen = threshold;
+                              await _setTrimThreshold(chosen);
+                              nav.pop();
+                              await _confirmAndRunTrim(chosen);
+                            },
+                      child: Text(
+                        candidates.isEmpty
+                            ? 'Nothing to take profit'
+                            : 'Take profit on ${candidates.length} · LIVE',
+                        style: TWType.label,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// LIVE confirmation gate before placing real sell orders, then run.
+  Future<void> _confirmAndRunTrim(double thresholdPct) async {
+    final candidates = _trimCandidates(thresholdPct);
+    if (candidates.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: TWColors.surfaceCard,
+        title: const Text('Confirm take profit', style: TWType.body),
+        content: Text(
+          'This places REAL market SELL orders for '
+          '${candidates.length} position(s) with P/L above '
+          '${thresholdPct.toStringAsFixed(1)}%. Real money.',
+          style: TWType.caption.copyWith(color: TWColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel', style: TWType.label),
+          ),
+          FilledButton(
+            key: const Key('moomoo_trim_confirm'),
+            style: FilledButton.styleFrom(backgroundColor: TWColors.up),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Sell now', style: TWType.label),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) await _runTrim(thresholdPct);
+  }
+
+  /// Execute the take-profit-all: a throttled, retried MARKET SELL of the full
+  /// sellable quantity for each qualifying position. Mirrors the screener
+  /// "Buy all" pacing so we don't trip Moomoo's ~15 orders / 30s rate limit.
+  Future<void> _runTrim(double thresholdPct) async {
+    final token = _token;
+    final secret = widget.secretStore.secret;
+    if (token == null || secret == null) return;
+    final candidates = _trimCandidates(thresholdPct);
+    if (candidates.isEmpty) return;
+
+    var sold = 0;
+    var failed = 0;
+    final failures = <String>[];
+    final gap = _trimOrderGap;
+
+    for (var i = 0; i < candidates.length; i++) {
+      final p = candidates[i];
+      if (i > 0 && gap > Duration.zero) {
+        await Future<void>.delayed(gap);
+      }
+      var ok = false;
+      String? failMsg;
+      for (var attempt = 0; attempt < _kTrimMaxRetries; attempt++) {
+        try {
+          await widget.repository.moomooPlace(
+            token: token,
+            secret: secret,
+            symbol: p.symbol,
+            side: 'SELL',
+            quantity: p.canSellQty,
+            orderType: 'MARKET',
+          );
+          ok = true;
+          break;
+        } on ApiException catch (e) {
+          final msg = e.message.toLowerCase();
+          // Transient broker rate limit: wait the window out and retry.
+          if (msg.contains('high frequency') ||
+              msg.contains('per 30 seconds') ||
+              msg.contains('rate limit') ||
+              msg.contains('too many requests')) {
+            failMsg = e.message;
+            if (attempt < _kTrimMaxRetries - 1) {
+              if (gap > Duration.zero) {
+                await Future<void>.delayed(_kTrimRetryBackoff);
+              }
+              continue;
+            }
+            break;
+          }
+          failMsg = e.message;
+          break;
+        } catch (e) {
+          failMsg = '$e';
+          break;
+        }
+      }
+      if (ok) {
+        sold++;
+      } else {
+        failed++;
+        failures.add('${p.symbol}: ${failMsg ?? 'failed'}');
+      }
+    }
+
+    if (!mounted) return;
+    final msg = failed == 0
+        ? 'Took profit on $sold position(s).'
+        : 'Sold $sold, $failed failed: ${failures.join('; ')}';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg, key: const Key('moomoo_trim_result'))),
+    );
+    await _refresh();
   }
 
   @override
@@ -1011,6 +1315,34 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                   style: TWType.overline,
                 ),
               ),
+              // Take-profit-all: only meaningful when there's something to sell.
+              if (widget.secretStore.hasSecret && _positions.isNotEmpty)
+                InkWell(
+                  key: const Key('moomoo_trim_open'),
+                  onTap: _openTrimSheet,
+                  borderRadius: BorderRadius.circular(TWRadius.chip),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: TWSpace.sm,
+                      vertical: TWSpace.xs,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.content_cut,
+                          size: 16,
+                          color: TWColors.up,
+                        ),
+                        const SizedBox(width: TWSpace.xs),
+                        Text(
+                          'Trim',
+                          style: TWType.overline.copyWith(color: TWColors.up),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               InkWell(
                 key: const Key('moomoo_toggle_positions'),
                 onTap: _toggleHidePositions,
