@@ -443,6 +443,77 @@ def test_rebalance_strong_winner_not_take_profited():
     sub_router.set_service(SubscriptionService())
 
 
+def test_rebalance_averages_down_a_loser_with_intact_thesis():
+    # A holding down 18% whose engine score still holds (60) and that the engine
+    # is NOT exiting/reducing -> ADD, suggesting averaging down to lower cost.
+    c = _build_client(score_map={
+        "DIP": (70, "HOLD", -1.0),
+        "F1": (80, "BUY", 1.0),
+        "F2": (80, "BUY", 1.0),
+        "F3": (80, "BUY", 1.0),
+    })
+    h = _register(c)
+    c._simstate["positions"] = [
+        # -18%: market_value 41k, cost 50k -> pnl -9k. Small weight (~4%) so it
+        # sits below its 10% watch-band target and is eligible to add.
+        _Pos("DIP", Market.US, 41_000.0, unrealized_pnl=-9_000.0),
+        _Pos("F1", Market.US, 320_000.0),
+        _Pos("F2", Market.US, 320_000.0),
+        _Pos("F3", Market.US, 320_000.0),
+    ]
+    body = c.get("/v1/portfolio/rebalance", headers=h).json()
+    by = {a["symbol"]: a for a in body["actions"]}
+    assert by["DIP"]["action"] == "ADD"
+    assert "averaging down" in by["DIP"]["reason"].lower()
+    assert by["DIP"]["pnl_pct"] == -18.0
+    sub_router.set_service(SubscriptionService())
+
+
+def test_rebalance_does_not_average_down_a_weak_score_loser():
+    # Same big loss but a collapsing score (40) -> the engine EXITs/leaves it,
+    # it is NOT offered as a buy-the-dip.
+    c = _build_client(score_map={
+        "FALLER": (40, "HOLD", -3.0),
+        "F1": (80, "BUY", 1.0),
+        "F2": (80, "BUY", 1.0),
+        "F3": (80, "BUY", 1.0),
+    })
+    h = _register(c)
+    c._simstate["positions"] = [
+        _Pos("FALLER", Market.US, 41_000.0, unrealized_pnl=-9_000.0),
+        _Pos("F1", Market.US, 320_000.0),
+        _Pos("F2", Market.US, 320_000.0),
+        _Pos("F3", Market.US, 320_000.0),
+    ]
+    body = c.get("/v1/portfolio/rebalance", headers=h).json()
+    by = {a["symbol"]: a for a in body["actions"]}
+    assert by["FALLER"]["action"] != "ADD", by["FALLER"]
+    assert "averaging down" not in by["FALLER"]["reason"].lower()
+    sub_router.set_service(SubscriptionService())
+
+
+def test_rebalance_reduces_name_far_above_average_holding():
+    # One name at ~27% weight vs a ~12% average across 8 holdings (> 2x the
+    # average) -> REDUCE on relative concentration, even though it is below the
+    # 30% absolute cap.
+    sm = {f"S{i}": (80, "BUY", 1.0) for i in range(8)}
+    sm["BIG"] = (80, "BUY", 1.0)
+    c = _build_client(score_map=sm)
+    h = _register(c)
+    positions = [_Pos("BIG", Market.US, 216_000.0)]  # 27% of 800k
+    positions += [
+        _Pos(f"S{i}", Market.US, 83_428.0) for i in range(7)
+    ]
+    c._simstate["positions"] = positions
+    body = c.get("/v1/portfolio/rebalance", headers=h).json()
+    by = {a["symbol"]: a for a in body["actions"]}
+    assert by["BIG"]["action"] == "REDUCE", by["BIG"]
+    assert "average holding" in by["BIG"]["reason"].lower()
+    # A name at the average weight is NOT flagged on relative concentration.
+    assert by["S0"]["action"] != "REDUCE", by["S0"]
+    sub_router.set_service(SubscriptionService())
+
+
 def test_rebalance_strong_name_after_hard_down_day_is_not_reduced():
     # A strong, high-score BUY name that just sold off hard (-12% today) must
     # NOT be flipped to REDUCE on a quality dip alone. Before the fix the

@@ -77,6 +77,18 @@ EXIT_LOSS_THRESHOLD = -20.0
 # profit. A still-strong winner (score >= ceiling) keeps running untouched.
 TAKE_PROFIT_PCT = 30.0
 TAKE_PROFIT_SCORE_CEILING = 80.0
+# Average-down: a holding sitting on an unrealized loss worse than this (more
+# negative) is flagged to consider adding to the position at a better cost
+# basis -- but only when the name is NOT an exit candidate (we never average
+# into a falling knife the engine wants gone).
+AVERAGE_DOWN_PCT = -15.0
+# A holding may average down only while its engine score stays at or above this
+# floor; below it the loss is treated as a warning, not a buy-the-dip.
+AVERAGE_DOWN_SCORE_FLOOR = 50.0
+# Relative-concentration REDUCE: a holding whose weight exceeds the average
+# holding weight by more than 100% (i.e. more than 2x the average position) is
+# flagged to trim/take-profit, independent of the absolute concentration cap.
+RELATIVE_CONCENTRATION_MULTIPLE = 2.0
 REGIME_BEAR = "BEAR"
 
 
@@ -160,6 +172,10 @@ class RebalanceService:
             (p.symbol, p.market): max(0.0, p.market_value) for p in positions
         }
         invested = sum(values.values())
+        # Average holding weight (% of invested value). Used for the
+        # relative-concentration REDUCE (a name far above the average position).
+        n_held = sum(1 for v in values.values() if v > 0)
+        avg_weight = (100.0 / n_held) if n_held > 0 else 0.0
         try:
             cash = float(getattr(account, "cash", 0.0) or 0.0)
             equity = float(getattr(account, "equity", 0.0) or 0.0)
@@ -195,6 +211,7 @@ class RebalanceService:
             action, reason, priority = _decide(
                 score=score, signal=signal, quality=quality, weight=weight,
                 regime=regime, pnl_pct=pnl_pct, target=target,
+                avg_weight=avg_weight,
                 low_confidence=low_conf,
             )
             actions.append(RebalanceAction(
@@ -273,7 +290,7 @@ def _position_pnl_value(p) -> float:
 
 def _decide(
     *, score, signal, quality, weight, regime, pnl_pct, target,
-    low_confidence=False,
+    avg_weight=0.0, low_confidence=False,
 ):
     sig = (signal or "HOLD").upper()
     bearish = regime == REGIME_BEAR
@@ -321,8 +338,17 @@ def _decide(
         and pnl_pct >= TAKE_PROFIT_PCT
         and score < TAKE_PROFIT_SCORE_CEILING
     )
+    # Relative concentration: this holding is more than 2x the average position
+    # weight (i.e. > 100% above the average held name). Trim it back toward the
+    # rest of the book / take some profit, regardless of the absolute cap.
+    rel_concentration = (
+        avg_weight > 0
+        and weight > avg_weight * RELATIVE_CONCENTRATION_MULTIPLE
+        and weight > CONCENTRATION_REDUCE * 0.5
+    )
     if (
         weight > CONCENTRATION_REDUCE
+        or rel_concentration
         or score_reduce
         or quality_reduce
         or take_profit
@@ -332,6 +358,11 @@ def _decide(
         if weight > CONCENTRATION_REDUCE:
             reasons.append(
                 f"position concentration too high ({weight:.0f}%)"
+            )
+        elif rel_concentration:
+            reasons.append(
+                f"position {weight:.0f}% is well above the "
+                f"{avg_weight:.0f}% average holding"
             )
         if score_reduce:
             reasons.append("score weakening")
@@ -344,7 +375,9 @@ def _decide(
         if bearish:
             reasons.append("market regime bearish")
         priority = (
-            PRIORITY_HIGH if weight > CONCENTRATION_REDUCE else PRIORITY_MEDIUM
+            PRIORITY_HIGH
+            if (weight > CONCENTRATION_REDUCE or rel_concentration)
+            else PRIORITY_MEDIUM
         )
         return (
             ACTION_REDUCE,
@@ -359,6 +392,28 @@ def _decide(
             (
                 f"Strong name (score {score:.0f}, quality {quality:.0f}) below "
                 f"its {target:.0f}% target — consider increasing."
+            ),
+            PRIORITY_MEDIUM,
+        )
+
+    # AVERAGE DOWN. A holding nursing a loss worse than AVERAGE_DOWN_PCT, that
+    # the engine is NOT trying to exit/reduce and whose score still holds above
+    # the floor, is a buy-the-dip candidate: adding shares lowers the cost
+    # basis. Gated by score so we never average into a name the engine dislikes
+    # (those already fell through EXIT/REDUCE above), and never in a bear regime.
+    average_down = (
+        real
+        and pnl_pct <= AVERAGE_DOWN_PCT
+        and score >= AVERAGE_DOWN_SCORE_FLOOR
+        and weight < target
+        and not bearish
+    )
+    if average_down:
+        return (
+            ACTION_ADD,
+            (
+                f"Down {pnl_pct:.0f}% but thesis intact (score {score:.0f}) — "
+                f"consider averaging down to lower your cost basis."
             ),
             PRIORITY_MEDIUM,
         )
