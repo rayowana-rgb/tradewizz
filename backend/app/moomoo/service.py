@@ -245,6 +245,13 @@ class MoomooService:
                 except Exception:
                     return 0.0
 
+            # The Moomoo SDK returns pl_ratio already in PERCENT units
+            # (e.g. 1.86 means +1.86%). The rest of the app (Flutter UI and
+            # the manager rules below) treats pl_ratio as a FRACTION and
+            # multiplies by 100, so normalise it to a fraction here at the
+            # single ingestion point to avoid a 100x blow-up (e.g. 186%).
+            pl_ratio_raw = _f("pl_ratio")
+            pl_ratio = pl_ratio_raw / 100.0
             out.append(
                 MoomooPosition(
                     code=code,
@@ -254,7 +261,7 @@ class MoomooService:
                     cost_price=_f("cost_price"),
                     last_price=_f("nominal_price"),
                     pl_val=_f("pl_val"),
-                    pl_ratio=_f("pl_ratio"),
+                    pl_ratio=pl_ratio,
                 )
             )
         return out
