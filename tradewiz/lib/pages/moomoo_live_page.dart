@@ -63,6 +63,9 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
   bool _hideRebalance = false;
   // One of: 'default' | 'pl' | 'weight'. High-to-low for pl/weight.
   String _posSort = 'default';
+  // Symbol whose inline sell slider is currently expanded in the Positions
+  // list (null = none). Tapping Sell on a tile toggles its slider open/closed.
+  String? _sellExpanded;
 
   String? get _token => AuthScope.read(context).token;
 
@@ -1111,56 +1114,87 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
 
   Widget _positionTile(MoomooLivePosition p) {
     final up = p.plVal >= 0;
+    final canSell = p.canSellQty;
+    final expanded = _sellExpanded == p.symbol;
     return Padding(
       padding: const EdgeInsets.only(bottom: TWSpace.sm),
       child: _card(
         key: Key('moomoo_pos_${p.symbol}'),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(p.symbol, style: TWType.label),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${_qty(p.quantity)} @ ${_money(p.lastPrice, "USD")}',
-                    style: TWType.caption,
-                  ),
-                  if (p.costPrice > 0) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      'Avg cost ${_money(p.costPrice, "USD")}',
-                      style: TWType.caption,
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+            Row(
               children: [
-                Text(
-                  '${up ? '+' : '-'}${_money(p.plVal.abs(), "USD")}',
-                  style: TWType.label.copyWith(
-                    color: up ? TWColors.up : TWColors.down,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(p.symbol, style: TWType.label),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${_qty(p.quantity)} @ ${_money(p.lastPrice, "USD")}',
+                        style: TWType.caption,
+                      ),
+                      if (p.costPrice > 0) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          'Avg cost ${_money(p.costPrice, "USD")}',
+                          style: TWType.caption,
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  '${up ? '+' : ''}${(p.plRatio * 100).toStringAsFixed(2)}%',
-                  style: TWType.caption.copyWith(
-                    color: up ? TWColors.up : TWColors.down,
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '${up ? '+' : '-'}${_money(p.plVal.abs(), "USD")}',
+                      style: TWType.label.copyWith(
+                        color: up ? TWColors.up : TWColors.down,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${up ? '+' : ''}${(p.plRatio * 100).toStringAsFixed(2)}%',
+                      style: TWType.caption.copyWith(
+                        color: up ? TWColors.up : TWColors.down,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: TWSpace.sm),
+                // Sell expands an inline quantity slider (held shares); tapping
+                // again collapses it. Positions with nothing sellable just open
+                // the order ticket directly.
+                IconButton(
+                  key: Key('moomoo_pos_sell_${p.symbol}'),
+                  icon: Icon(
+                    expanded ? Icons.expand_less : Icons.sell_outlined,
+                    size: 18,
                   ),
+                  tooltip: 'Sell',
+                  onPressed: canSell > 0
+                      ? () => setState(
+                          () => _sellExpanded = expanded ? null : p.symbol)
+                      : () => _openTicket(p.symbol, 'SELL'),
                 ),
               ],
             ),
-            const SizedBox(width: TWSpace.sm),
-            IconButton(
-              icon: const Icon(Icons.sell_outlined, size: 18),
-              tooltip: 'Sell',
-              onPressed: () => _openTicket(p.symbol),
-            ),
+            // Inline drag-to-sell bar showing how many shares are held: drag to
+            // choose the quantity (defaults to the full sellable amount) then
+            // hit Sell to open the order ticket prefilled with that quantity.
+            if (expanded && canSell > 0) ...[
+              const SizedBox(height: TWSpace.sm),
+              _RebalanceSellSlider(
+                key: Key('moomoo_pos_slider_${p.symbol}'),
+                symbol: p.symbol,
+                maxQty: canSell,
+                lastPrice: p.lastPrice,
+                onSell: (qty) => _openTicket(p.symbol, 'SELL', qty),
+                onBuy: () => _openTicket(p.symbol, 'BUY'),
+              ),
+            ],
           ],
         ),
       ),

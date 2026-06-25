@@ -477,6 +477,37 @@ void main() {
     expect(topOf(intc), lessThan(topOf(amd)));
   });
 
+  testWidgets('position Sell expands an inline qty slider for held shares',
+      (tester) async {
+    tester.view.physicalSize = const Size(1200, 3200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final auth = await _auth(kMoomooOwnerUid);
+    final repo = _repoWithTwoPositions();
+    final store = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await tester.pumpWidget(_wrap(
+        MoomooLivePage(repository: repo, secretStore: store), auth, repo));
+    await tester.pumpAndSettle();
+
+    // Slider hidden until Sell is tapped.
+    expect(find.byKey(const Key('moomoo_pos_slider_INTC')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('moomoo_pos_sell_INTC')));
+    await tester.pumpAndSettle();
+
+    // Inline slider + Sell/Buy buttons now show; max reflects held shares (10).
+    expect(find.byKey(const Key('moomoo_pos_slider_INTC')), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_reb_sell_range_INTC')), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_reb_sell_btn_INTC')), findsOneWidget);
+    expect(find.textContaining('max 10'), findsOneWidget);
+
+    // Tapping Sell again collapses it.
+    await tester.tap(find.byKey(const Key('moomoo_pos_sell_INTC')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('moomoo_pos_slider_INTC')), findsNothing);
+  });
+
   testWidgets('portfolio manager card renders risk + recommendations',
       (tester) async {
     final auth = await _auth(kMoomooOwnerUid);
