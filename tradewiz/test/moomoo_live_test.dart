@@ -720,6 +720,121 @@ void main() {
     expect(intc['quantity'], 10.0);
   });
 
+  testWidgets('Trim supports a dollar (P/L \$) threshold mode', (tester) async {
+    tester.view.physicalSize = const Size(1200, 3200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final auth = await _auth(kMoomooOwnerUid);
+    final placed = <Map<String, dynamic>>[];
+    // INTC +\$35 and MSFT +\$2 are winners by dollars; AMD -\$20 is a loser.
+    final repo = _repoWith(MockClient((req) async {
+      if (req.url.path.endsWith('/broker/moomoo/account')) {
+        return http.Response(
+          jsonEncode({
+            'total_assets': 5000.0,
+            'cash': 4000.0,
+            'buying_power': 4800.0,
+            'market_value': 1000.0,
+            'currency': 'USD',
+          }),
+          200,
+        );
+      }
+      if (req.url.path.endsWith('/broker/moomoo/positions')) {
+        return http.Response(
+          jsonEncode({
+            'positions': [
+              {
+                'code': 'US.INTC',
+                'symbol': 'INTC',
+                'quantity': 10.0,
+                'can_sell_qty': 10.0,
+                'cost_price': 30.0,
+                'last_price': 33.5,
+                'pl_val': 35.0,
+                'pl_ratio': 0.1167,
+              },
+              {
+                'code': 'US.MSFT',
+                'symbol': 'MSFT',
+                'quantity': 4.0,
+                'can_sell_qty': 4.0,
+                'cost_price': 100.0,
+                'last_price': 100.5,
+                'pl_val': 2.0,
+                'pl_ratio': 0.005,
+              },
+              {
+                'code': 'US.AMD',
+                'symbol': 'AMD',
+                'quantity': 5.0,
+                'can_sell_qty': 5.0,
+                'cost_price': 100.0,
+                'last_price': 96.0,
+                'pl_val': -20.0,
+                'pl_ratio': -0.04,
+              },
+            ],
+          }),
+          200,
+        );
+      }
+      if (req.url.path.endsWith('/broker/moomoo/order/place')) {
+        final b = jsonDecode(req.body) as Map<String, dynamic>;
+        placed.add(b);
+        return http.Response(
+          jsonEncode({
+            'order_id': 'x',
+            'symbol': b['symbol'],
+            'side': b['side'],
+            'quantity': b['quantity'],
+            'status': 'SUBMITTED',
+          }),
+          200,
+        );
+      }
+      if (req.url.path.contains('/broker/moomoo/manager') ||
+          req.url.path.contains('/broker/moomoo/health') ||
+          req.url.path.contains('/broker/moomoo/rebalance')) {
+        return http.Response('{"detail":"nope"}', 404);
+      }
+      return http.Response('{}', 200);
+    }));
+    final store = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await tester.pumpWidget(_wrap(
+        MoomooLivePage(
+          repository: repo,
+          secretStore: store,
+          liveBulkOrderGap: Duration.zero,
+        ),
+        auth,
+        repo));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('moomoo_trim_open')));
+    await tester.pumpAndSettle();
+    // Switch to dollar mode; both percent and dollar segments exist.
+    expect(find.byKey(const Key('moomoo_trim_mode_pct')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('moomoo_trim_mode_usd')));
+    await tester.pumpAndSettle();
+    // The threshold label now reads in dollars (default \$0.00).
+    expect(find.text('\$0.00'), findsWidgets);
+
+    await tester.tap(find.byKey(const Key('moomoo_trim_execute')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('moomoo_trim_confirm')));
+    await tester.pumpAndSettle();
+
+    final sells = placed
+        .where((b) => b['side'] == 'SELL')
+        .map((b) => b['symbol'])
+        .toSet();
+    // Both dollar-winners sell; the loser never does.
+    expect(sells, {'INTC', 'MSFT'});
+    expect(sells.contains('AMD'), isFalse);
+  });
+
   testWidgets('portfolio manager card renders risk + recommendations',
       (tester) async {
     final auth = await _auth(kMoomooOwnerUid);

@@ -80,22 +80,34 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
   // list (null = none). Tapping Sell on a tile toggles its slider open/closed.
   String? _sellExpanded;
 
-  // Profit threshold (in PERCENT) for the "Trim" take-profit-all flow. A
-  // position qualifies when its unrealized P/L% is strictly greater than this.
-  // Persisted so the user's preferred threshold survives relaunches.
+  // Profit threshold for the "Trim" take-profit-all flow. The user picks a
+  // mode (percent of cost or absolute dollars) and a value; a position
+  // qualifies when its unrealized P/L in that unit is strictly greater than
+  // the value. Both the mode and the per-mode value are persisted so the
+  // user's preferred setting survives relaunches.
   static const String _kTrimThresholdPref = 'tradewizz.moomoo.trimThreshold';
+  static const String _kTrimDollarPref = 'tradewizz.moomoo.trimDollar';
+  static const String _kTrimModePref = 'tradewizz.moomoo.trimMode';
+  // Percent threshold (P/L %). 0.0 means "any position in profit".
   double _trimThreshold = 0.0;
+  // Dollar threshold (absolute P/L $).
+  double _trimDollar = 0.0;
+  // 'pct' | 'usd'.
+  String _trimMode = 'pct';
 
   Duration get _trimOrderGap => widget.liveBulkOrderGap ?? _kTrimOrderGap;
 
   String? get _token => AuthScope.read(context).token;
 
-  /// Open positions that are in profit above the current [_trimThreshold] and
-  /// have sellable shares. plRatio is a fraction (0.05 = 5%).
-  List<MoomooLivePosition> _trimCandidates(double thresholdPct) => _positions
-      .where((p) =>
-          p.canSellQty > 0 && p.plRatio * 100.0 > thresholdPct)
-      .toList();
+  /// Open positions that are in profit above the given threshold (in the given
+  /// mode) and have sellable shares. plRatio is a fraction (0.05 = 5%); plVal
+  /// is the absolute unrealized P/L in account currency.
+  List<MoomooLivePosition> _trimCandidates(String mode, double value) =>
+      _positions.where((p) {
+        if (p.canSellQty <= 0) return false;
+        final metric = mode == 'usd' ? p.plVal : p.plRatio * 100.0;
+        return metric > value;
+      }).toList();
 
   @override
   void initState() {
@@ -117,6 +129,8 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
       _hideRebalance = prefs.getBool(_kHideRebalancePref) ?? false;
       _posSort = prefs.getString(_kPosSortPref) ?? 'default';
       _trimThreshold = prefs.getDouble(_kTrimThresholdPref) ?? 0.0;
+      _trimDollar = prefs.getDouble(_kTrimDollarPref) ?? 0.0;
+      _trimMode = prefs.getString(_kTrimModePref) ?? 'pct';
     });
   }
 
@@ -321,17 +335,45 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
     if (placed == true && mounted) _refresh();
   }
 
-  Future<void> _setTrimThreshold(double pct) async {
-    setState(() => _trimThreshold = pct);
+  Future<void> _setTrim(String mode, double value) async {
+    setState(() {
+      _trimMode = mode;
+      if (mode == 'usd') {
+        _trimDollar = value;
+      } else {
+        _trimThreshold = value;
+      }
+    });
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_kTrimThresholdPref, pct);
+    await prefs.setString(_kTrimModePref, mode);
+    if (mode == 'usd') {
+      await prefs.setDouble(_kTrimDollarPref, value);
+    } else {
+      await prefs.setDouble(_kTrimThresholdPref, value);
+    }
   }
 
-  /// Bottom sheet: pick a profit threshold, preview which winners qualify, then
-  /// take profit on ALL of them in one go (full sellable qty, MARKET).
+  // Format a profit-threshold value for display in the active mode.
+  String _trimLabel(String mode, double value, String currency) =>
+      mode == 'usd'
+          ? _money(value, currency)
+          : '${value.toStringAsFixed(1)}%';
+
+  // Per-position metric text in the active mode (always a gain here).
+  String _trimMetric(String mode, MoomooLivePosition p, String currency) =>
+      mode == 'usd'
+          ? '+${_money(p.plVal, currency)}'
+          : '+${(p.plRatio * 100).toStringAsFixed(1)}%';
+
+  /// Bottom sheet: pick a profit threshold (percent OR dollars), preview which
+  /// winners qualify, then take profit on ALL of them in one go (full sellable
+  /// qty, MARKET).
   Future<void> _openTrimSheet() async {
     if (!widget.secretStore.hasSecret) return;
-    var threshold = _trimThreshold;
+    final currency = _account?.currency ?? 'USD';
+    var mode = _trimMode;
+    var pctVal = _trimThreshold;
+    var usdVal = _trimDollar;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -343,9 +385,16 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
       builder: (sheetCtx) {
         return StatefulBuilder(
           builder: (ctx, setSheet) {
-            final candidates = _trimCandidates(threshold);
-            final winners =
-                _positions.where((p) => p.plRatio > 0).length;
+            final value = mode == 'usd' ? usdVal : pctVal;
+            final candidates = _trimCandidates(mode, value);
+            final winners = _positions.where((p) => p.plVal > 0).length;
+            // Slider bounds: 0-50% for percent; 0 to the biggest single gain
+            // (rounded up, min $50) for dollars so every winner is reachable.
+            final maxGain = _positions.fold<double>(
+                0, (m, p) => p.plVal > m ? p.plVal : m);
+            final usdMax = (maxGain <= 0 ? 50.0 : (maxGain.ceilToDouble()))
+                .clamp(10.0, 100000.0);
+            final sliderMax = mode == 'usd' ? usdMax : 50.0;
             return Padding(
               padding: EdgeInsets.only(
                 left: TWSpace.lg,
@@ -362,12 +411,20 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                       const Icon(Icons.content_cut,
                           size: 18, color: TWColors.up),
                       const SizedBox(width: TWSpace.sm),
-                      const Text('Take profit', style: TWType.body),
+                      const Expanded(
+                        child: Text('Take profit', style: TWType.body),
+                      ),
+                      // Percent / dollar mode toggle.
+                      _TrimModeToggle(
+                        mode: mode,
+                        currency: currency,
+                        onChanged: (m) => setSheet(() => mode = m),
+                      ),
                     ],
                   ),
                   const SizedBox(height: TWSpace.xs),
                   Text(
-                    'Sell every position whose unrealized P/L is above the '
+                    'Sell every position whose unrealized profit is above the '
                     'threshold. $winners of ${_positions.length} are in profit.',
                     style: TWType.caption.copyWith(
                         color: TWColors.textSecondary),
@@ -382,7 +439,7 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                         ),
                       ),
                       Text(
-                        '${threshold.toStringAsFixed(1)}%',
+                        _trimLabel(mode, value, currency),
                         key: const Key('moomoo_trim_threshold_label'),
                         style: TWType.body.copyWith(color: TWColors.up),
                       ),
@@ -399,12 +456,18 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                     ),
                     child: Slider(
                       key: const Key('moomoo_trim_slider'),
-                      value: threshold.clamp(0.0, 50.0),
-                      max: 50.0,
+                      value: value.clamp(0.0, sliderMax),
+                      max: sliderMax,
                       divisions: 100,
-                      label: '${threshold.toStringAsFixed(1)}%',
+                      label: _trimLabel(mode, value, currency),
                       onChanged: (v) {
-                        setSheet(() => threshold = v);
+                        setSheet(() {
+                          if (mode == 'usd') {
+                            usdVal = v;
+                          } else {
+                            pctVal = v;
+                          }
+                        });
                       },
                     ),
                   ),
@@ -441,7 +504,7 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                                       ),
                                     ),
                                     Text(
-                                      '+${(p.plRatio * 100).toStringAsFixed(1)}%',
+                                      _trimMetric(mode, p, currency),
                                       style: TWType.caption
                                           .copyWith(color: TWColors.up),
                                     ),
@@ -467,10 +530,13 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                           ? null
                           : () async {
                               final nav = Navigator.of(sheetCtx);
-                              final chosen = threshold;
-                              await _setTrimThreshold(chosen);
+                              final chosenMode = mode;
+                              final chosenVal =
+                                  chosenMode == 'usd' ? usdVal : pctVal;
+                              await _setTrim(chosenMode, chosenVal);
                               nav.pop();
-                              await _confirmAndRunTrim(chosen);
+                              await _confirmAndRunTrim(
+                                  chosenMode, chosenVal, currency);
                             },
                       child: Text(
                         candidates.isEmpty
@@ -490,8 +556,9 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
   }
 
   /// LIVE confirmation gate before placing real sell orders, then run.
-  Future<void> _confirmAndRunTrim(double thresholdPct) async {
-    final candidates = _trimCandidates(thresholdPct);
+  Future<void> _confirmAndRunTrim(
+      String mode, double value, String currency) async {
+    final candidates = _trimCandidates(mode, value);
     if (candidates.isEmpty) return;
     final ok = await showDialog<bool>(
       context: context,
@@ -500,8 +567,8 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
         title: const Text('Confirm take profit', style: TWType.body),
         content: Text(
           'This places REAL market SELL orders for '
-          '${candidates.length} position(s) with P/L above '
-          '${thresholdPct.toStringAsFixed(1)}%. Real money.',
+          '${candidates.length} position(s) with profit above '
+          '${_trimLabel(mode, value, currency)}. Real money.',
           style: TWType.caption.copyWith(color: TWColors.textSecondary),
         ),
         actions: [
@@ -518,17 +585,17 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
         ],
       ),
     );
-    if (ok == true) await _runTrim(thresholdPct);
+    if (ok == true) await _runTrim(mode, value);
   }
 
   /// Execute the take-profit-all: a throttled, retried MARKET SELL of the full
   /// sellable quantity for each qualifying position. Mirrors the screener
   /// "Buy all" pacing so we don't trip Moomoo's ~15 orders / 30s rate limit.
-  Future<void> _runTrim(double thresholdPct) async {
+  Future<void> _runTrim(String mode, double value) async {
     final token = _token;
     final secret = widget.secretStore.secret;
     if (token == null || secret == null) return;
-    final candidates = _trimCandidates(thresholdPct);
+    final candidates = _trimCandidates(mode, value);
     if (candidates.isEmpty) return;
 
     var sold = 0;
@@ -1767,6 +1834,62 @@ class _RebalanceSellSliderState extends State<_RebalanceSellSlider> {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// Compact two-segment toggle for the Trim threshold unit: '%' or '$'.
+class _TrimModeToggle extends StatelessWidget {
+  const _TrimModeToggle({
+    required this.mode,
+    required this.currency,
+    required this.onChanged,
+  });
+
+  final String mode; // 'pct' | 'usd'
+  final String currency;
+  final ValueChanged<String> onChanged;
+
+  String get _dollarGlyph => currency == 'USD' ? '\$' : currency;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget seg(String value, String label, Key key) {
+      final active = mode == value;
+      return InkWell(
+        key: key,
+        onTap: () => onChanged(value),
+        borderRadius: BorderRadius.circular(TWRadius.chip),
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+              horizontal: TWSpace.md, vertical: TWSpace.xs),
+          decoration: BoxDecoration(
+            color: active ? TWColors.up : Colors.transparent,
+            borderRadius: BorderRadius.circular(TWRadius.chip),
+          ),
+          child: Text(
+            label,
+            style: TWType.label.copyWith(
+              color: active ? TWColors.surfaceCard : TWColors.textSecondary,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: TWColors.hairlineTop,
+        borderRadius: BorderRadius.circular(TWRadius.chip),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          seg('pct', '%', const Key('moomoo_trim_mode_pct')),
+          seg('usd', _dollarGlyph, const Key('moomoo_trim_mode_usd')),
+        ],
+      ),
     );
   }
 }
