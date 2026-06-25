@@ -37,6 +37,7 @@ StockRepository _repo({
   String condition = 'GREED',
   double? valueTraded = 3.4e12,
   bool withHorizons = false,
+  bool allFearHorizons = false,
 }) {
   final fake = MockClient((req) async {
     final path = req.url.path;
@@ -71,29 +72,53 @@ StockRepository _repo({
           'reason': 'Index above its short-term average with momentum.',
           'market': 'IDX',
           if (withHorizons)
-            'horizons': [
-              {
-                'horizon': 'daily',
-                'condition': 'GREED',
-                'condition_score': 76,
-                'reason': 'Index above its 5-session trend.',
-                'available': true,
-              },
-              {
-                'horizon': 'weekly',
-                'condition': 'NEUTRAL',
-                'condition_score': 55,
-                'reason': 'Index is mixed over the weekly window.',
-                'available': true,
-              },
-              {
-                'horizon': 'monthly',
-                'condition': 'FEAR',
-                'condition_score': 24,
-                'reason': 'Index below its 20-session trend.',
-                'available': true,
-              },
-            ],
+            'horizons': allFearHorizons
+                ? [
+                    {
+                      'horizon': 'daily',
+                      'condition': 'FEAR',
+                      'condition_score': 34,
+                      'reason': 'Index below its 5-session trend.',
+                      'available': true,
+                    },
+                    {
+                      'horizon': 'weekly',
+                      'condition': 'FEAR',
+                      'condition_score': 38,
+                      'reason': 'Index below its 10-session trend.',
+                      'available': true,
+                    },
+                    {
+                      'horizon': 'monthly',
+                      'condition': 'FEAR',
+                      'condition_score': 32,
+                      'reason': 'Index below its 20-session trend.',
+                      'available': true,
+                    },
+                  ]
+                : [
+                    {
+                      'horizon': 'daily',
+                      'condition': 'GREED',
+                      'condition_score': 76,
+                      'reason': 'Index above its 5-session trend.',
+                      'available': true,
+                    },
+                    {
+                      'horizon': 'weekly',
+                      'condition': 'NEUTRAL',
+                      'condition_score': 55,
+                      'reason': 'Index is mixed over the weekly window.',
+                      'available': true,
+                    },
+                    {
+                      'horizon': 'monthly',
+                      'condition': 'FEAR',
+                      'condition_score': 24,
+                      'reason': 'Index below its 20-session trend.',
+                      'available': true,
+                    },
+                  ],
         }),
         200,
         headers: {'content-type': 'application/json'},
@@ -248,6 +273,27 @@ void main() {
     expect(find.text('WEEKLY'), findsOneWidget);
     expect(find.text('MONTHLY'), findsOneWidget);
     expect(find.text('Fear'), findsOneWidget); // monthly diverges from headline
+    // Mixed horizons (not ALL opposite) -> no reconciling note.
+    expect(find.byKey(const Key('home_condition_divergence')), findsNothing);
+  });
+
+  testWidgets(
+      'Home reconciles a Greed headline against all-Fear horizons with a note',
+      (tester) async {
+    await _pumpHome(tester,
+        _repo(condition: 'GREED', withHorizons: true, allFearHorizons: true));
+
+    final list = find.byKey(const Key('home_list'));
+    final scrollable =
+        find.descendant(of: list, matching: find.byType(Scrollable));
+    await tester.scrollUntilVisible(
+        find.byKey(const Key('home_condition_divergence')), 300,
+        scrollable: scrollable);
+
+    // Headline still reads Greed, every timeframe reads Fear -> the
+    // reconciling caption explains the apparent contradiction.
+    expect(find.byKey(const Key('home_condition_divergence')), findsOneWidget);
+    expect(find.text('Long-term uptrend, short-term pullback'), findsOneWidget);
   });
 
   testWidgets('Home renders the index card even when index data is missing',

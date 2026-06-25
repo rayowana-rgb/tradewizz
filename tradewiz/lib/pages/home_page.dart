@@ -1060,6 +1060,28 @@ class _MarketPulseCard extends StatelessWidget {
           const SizedBox(height: TWSpace.md),
           _HorizonStrip(horizons: condition.horizons),
         ],
+        // Reconciling note when the headline mood and every timeframe point
+        // the opposite way (e.g. Greed headline vs all-Fear horizons): it
+        // explains the apparent contradiction without altering any score.
+        if (condition.divergenceNote.isNotEmpty) ...[
+          const SizedBox(height: TWSpace.sm),
+          Row(
+            key: const Key('home_condition_divergence'),
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const Icon(Icons.swap_vert_rounded,
+                  size: 14, color: TWColors.textTertiary),
+              const SizedBox(width: TWSpace.xs),
+              Expanded(
+                child: Text(
+                  condition.divergenceNote,
+                  style: TWType.caption
+                      .copyWith(color: TWColors.textTertiary, height: 1.2),
+                ),
+              ),
+            ],
+          ),
+        ],
         if (condition.isKnown && condition.reason.isNotEmpty) ...[
           const SizedBox(height: TWSpace.md),
           Container(

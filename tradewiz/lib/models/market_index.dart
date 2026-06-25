@@ -106,6 +106,38 @@ class MarketCondition {
 
   bool get hasHorizons => horizons.isNotEmpty;
 
+  /// A short reconciling note shown when the headline mood and the timeframe
+  /// breakdown point in OPPOSITE directions (e.g. headline Greed because the
+  /// index sits above its 50/200-day average + broad breadth, while every
+  /// short-window horizon reads Fear from a recent pullback). Purely
+  /// presentational: it explains the apparent contradiction instead of
+  /// changing any score. Returns an empty string when there is no divergence
+  /// (or not enough data to judge).
+  String get divergenceNote {
+    if (!isKnown || !hasHorizons) return '';
+    final head = _moodDirection(condition);
+    if (head == 0) return ''; // headline neutral -> nothing to reconcile
+    final known =
+        horizons.where((h) => h.isKnown).toList(growable: false);
+    if (known.isEmpty) return '';
+    // Only call it a divergence when EVERY known horizon leans the opposite
+    // way from the headline (a single mixed timeframe is not a contradiction).
+    final allOpposite = known.every(
+      (h) => _moodDirection(h.condition) == -head,
+    );
+    if (!allOpposite) return '';
+    return head > 0
+        ? 'Long-term uptrend, short-term pullback'
+        : 'Long-term weakness, short-term bounce';
+  }
+
+  /// -1 = fear-leaning, 0 = neutral/unknown, +1 = greed-leaning.
+  static int _moodDirection(String c) => switch (c) {
+        'EXTREME_FEAR' || 'FEAR' => -1,
+        'GREED' || 'EXTREME_GREED' => 1,
+        _ => 0,
+      };
+
   factory MarketCondition.fromJson(Map<String, dynamic> j) => MarketCondition(
         condition: (j['condition'] ?? 'UNKNOWN').toString(),
         score: ((j['condition_score'] ?? 50) as num).toInt(),
