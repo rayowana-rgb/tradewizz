@@ -17,6 +17,8 @@ no broker contact, no accounting.
 
 from __future__ import annotations
 
+import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from datetime import datetime, timezone
 from typing import Callable, List, Optional, Protocol
 
@@ -38,6 +40,15 @@ from .store import AutoWatchlistStore
 # A symbol already owned is only re-suggested at/above this score.
 OWNED_OVERRIDE_SCORE = 92.0
 REGIME_BEAR = "BEAR"
+
+# Overall wall-clock budget for building suggestions. Each per-market scan is
+# cached + freshness-gated, but a COLD cache while the market is open forces a
+# live screen() that can stall for tens of seconds when the data provider
+# (Yahoo) rate-limits a market (e.g. IDX/HKEX). Without a deadline the request
+# hangs past the app's 25s client timeout and surfaces as an error on app
+# cold-start. We stop scanning further markets once this budget is spent and
+# return whatever is ready, so the endpoint always responds promptly.
+SUGGESTIONS_TIME_BUDGET_SECONDS = 12.0
 
 DEFAULT_SETTINGS = AutoWatchlistSettings()
 
@@ -132,33 +143,65 @@ class AutoWatchlistService:
 
         seen: set = set()
         out: List[AutoWatchlistSuggestion] = []
+        deadline = time.monotonic() + SUGGESTIONS_TIME_BUDGET_SECONDS
 
-        for market in markets:
-            top = self._radar.market_top(market, limit=50)
-            if not top:
-                continue
-            regime = top[0].market_regime
-            # Prefer bullish/neutral regimes; skip bearish markets entirely.
-            if regime == REGIME_BEAR:
-                continue
-            for o in top:
-                s = self._maybe_suggestion(
-                    o, settings, owned, existing_keys, already_applied,
-                    seen, origin=ORIGIN_RADAR,
-                )
-                if s is not None:
-                    out.append(s)
+        # A cold per-market scan can stall on a rate-limited provider for far
+        # longer than the whole budget (a single market_top() may rebuild the
+        # full universe live). Run each scan with a hard remaining-budget
+        # timeout so one slow market can never hang the request; a timed-out
+        # market simply contributes no suggestions this call. The executor uses
+        # daemon threads and is NOT joined on exit, so a still-running stalled
+        # scan can't block the response (its result lands in the cache for the
+        # next, then-instant call).
+        pool = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="autowl-scan"
+        )
 
-        # Multibagger candidates (high-conviction additions).
-        if settings.include_multibagger:
+        def _scan(fn, market) -> list:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return []
+            try:
+                return pool.submit(fn, market, 50).result(timeout=remaining)
+            except FutureTimeout:
+                return []
+            except Exception:  # noqa: BLE001
+                return []
+
+        try:
             for market in markets:
-                for o in self._radar.market_multibaggers(market, limit=50):
+                if time.monotonic() >= deadline:
+                    break
+                top = _scan(self._radar.market_top, market)
+                if not top:
+                    continue
+                regime = top[0].market_regime
+                # Prefer bullish/neutral regimes; skip bearish markets.
+                if regime == REGIME_BEAR:
+                    continue
+                for o in top:
                     s = self._maybe_suggestion(
                         o, settings, owned, existing_keys, already_applied,
-                        seen, origin=ORIGIN_MULTIBAGGER,
+                        seen, origin=ORIGIN_RADAR,
                     )
                     if s is not None:
                         out.append(s)
+
+            # Multibagger candidates (high-conviction additions).
+            if settings.include_multibagger:
+                for market in markets:
+                    if time.monotonic() >= deadline:
+                        break
+                    for o in _scan(self._radar.market_multibaggers, market):
+                        s = self._maybe_suggestion(
+                            o, settings, owned, existing_keys, already_applied,
+                            seen, origin=ORIGIN_MULTIBAGGER,
+                        )
+                        if s is not None:
+                            out.append(s)
+        finally:
+            # Don't wait for a stalled scan thread (it finishes into the cache).
+            pool.shutdown(wait=False)
 
         # Rank by score (desc), keep liquid names first on ties, then cap.
         out.sort(key=lambda s: (s.score, s.liquidity), reverse=True)
