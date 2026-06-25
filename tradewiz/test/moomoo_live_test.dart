@@ -533,6 +533,75 @@ void main() {
     expect(find.byKey(const Key('moomoo_pos_slider_INTC')), findsNothing);
   });
 
+  testWidgets('sold-out positions (quantity 0) are hidden from the list',
+      (tester) async {
+    tester.view.physicalSize = const Size(1200, 3200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final auth = await _auth(kMoomooOwnerUid);
+    // INTC still held (10 sh); AMD fully sold (quantity 0) -> must not show.
+    final repo = _repoWith(MockClient((req) async {
+      if (req.url.path.endsWith('/broker/moomoo/account')) {
+        return http.Response(
+          jsonEncode({
+            'total_assets': 5000.0,
+            'cash': 4000.0,
+            'buying_power': 4800.0,
+            'market_value': 1000.0,
+            'currency': 'USD',
+          }),
+          200,
+        );
+      }
+      if (req.url.path.endsWith('/broker/moomoo/positions')) {
+        return http.Response(
+          jsonEncode({
+            'positions': [
+              {
+                'code': 'US.INTC',
+                'symbol': 'INTC',
+                'quantity': 10.0,
+                'can_sell_qty': 10.0,
+                'cost_price': 30.0,
+                'last_price': 33.5,
+                'pl_val': 35.0,
+                'pl_ratio': 0.1167,
+              },
+              {
+                'code': 'US.AMD',
+                'symbol': 'AMD',
+                'quantity': 0.0,
+                'can_sell_qty': 0.0,
+                'cost_price': 100.0,
+                'last_price': 96.0,
+                'pl_val': 0.0,
+                'pl_ratio': 0.0,
+              },
+            ],
+          }),
+          200,
+        );
+      }
+      if (req.url.path.contains('/broker/moomoo/manager') ||
+          req.url.path.contains('/broker/moomoo/health') ||
+          req.url.path.contains('/broker/moomoo/rebalance')) {
+        return http.Response('{"detail":"nope"}', 404);
+      }
+      return http.Response('{}', 200);
+    }));
+    final store = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await tester.pumpWidget(_wrap(
+        MoomooLivePage(repository: repo, secretStore: store), auth, repo));
+    await tester.pumpAndSettle();
+
+    // Only the held position renders; the sold-out one is filtered out.
+    expect(find.byKey(const Key('moomoo_pos_INTC')), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_pos_AMD')), findsNothing);
+    // Count reflects only open positions (1, not 2).
+    expect(find.textContaining('Positions (1)'), findsOneWidget);
+  });
+
   testWidgets('portfolio manager card renders risk + recommendations',
       (tester) async {
     final auth = await _auth(kMoomooOwnerUid);

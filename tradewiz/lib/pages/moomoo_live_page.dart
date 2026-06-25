@@ -138,7 +138,9 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
       if (!mounted) return;
       setState(() {
         _account = acct;
-        _positions = pos;
+        // Hide fully sold-out holdings (quantity 0): the broker can still
+        // report them transiently, but they are not open positions.
+        _positions = pos.where((p) => p.quantity > 0).toList();
         _loading = false;
       });
       // Advisory analytics (Manager / Health / Rebalance) are fetched without
