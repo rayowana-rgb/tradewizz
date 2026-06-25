@@ -833,10 +833,13 @@ class _ScreenerPageState extends State<ScreenerPage> {
       );
     }
     final result = _result;
+    // Clear the floating glass nav bar (60px) plus the device safe-area inset
+    // so the footer's "Load more" control is never hidden behind it.
+    final bottomInset = MediaQuery.of(context).padding.bottom;
     return RefreshIndicator(
       onRefresh: _run,
       child: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+        padding: EdgeInsets.fromLTRB(16, 12, 16, TWSpace.xxxxl + bottomInset),
         // +1 for the footer (count + optional Load More).
         itemCount: matches.length + 1,
         separatorBuilder: (_, index) => const SizedBox(height: 12),
