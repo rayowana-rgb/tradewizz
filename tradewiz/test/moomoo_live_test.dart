@@ -105,6 +105,61 @@ StockRepository _repoWithPositions() => _repoWith(MockClient((req) async {
       return http.Response('{}', 200);
     }));
 
+// Two positions with deliberately opposite P/L and weight rankings so the sort
+// chips can be told apart:
+//   INTC: pl_val +35, weight 10*33.5 = 335
+//   AMD : pl_val -20, weight  5*96.0 = 480
+// => by P/L high->low: INTC, AMD; by weight high->low: AMD, INTC.
+StockRepository _repoWithTwoPositions() => _repoWith(MockClient((req) async {
+      if (req.url.path.endsWith('/broker/moomoo/account')) {
+        return http.Response(
+          jsonEncode({
+            'total_assets': 5000.0,
+            'cash': 4000.0,
+            'buying_power': 4800.0,
+            'market_value': 1000.0,
+            'currency': 'USD',
+          }),
+          200,
+        );
+      }
+      if (req.url.path.endsWith('/broker/moomoo/positions')) {
+        return http.Response(
+          jsonEncode({
+            'positions': [
+              {
+                'code': 'US.INTC',
+                'symbol': 'INTC',
+                'quantity': 10.0,
+                'can_sell_qty': 10.0,
+                'cost_price': 30.0,
+                'last_price': 33.5,
+                'pl_val': 35.0,
+                'pl_ratio': 0.1167,
+              },
+              {
+                'code': 'US.AMD',
+                'symbol': 'AMD',
+                'quantity': 5.0,
+                'can_sell_qty': 5.0,
+                'cost_price': 100.0,
+                'last_price': 96.0,
+                'pl_val': -20.0,
+                'pl_ratio': -0.04,
+              },
+            ],
+          }),
+          200,
+        );
+      }
+      if (req.url.path.contains('/broker/moomoo/manager') ||
+          req.url.path.contains('/broker/moomoo/health') ||
+          req.url.path.contains('/broker/moomoo/rebalance')) {
+        return http.Response('{"detail":"nope"}', 404);
+      }
+      return http.Response('{}', 200);
+    }));
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUp(() => SharedPreferences.setMockInitialValues({}));
@@ -378,6 +433,48 @@ void main() {
         MoomooLivePage(repository: repo, secretStore: store2), auth, repo));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('moomoo_pos_INTC')), findsNothing);
+  });
+
+  testWidgets('positions sort chips reorder by P/L and weight, persist',
+      (tester) async {
+    // Tall viewport so both position tiles build and stay on-screen.
+    tester.view.physicalSize = const Size(1200, 3200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final auth = await _auth(kMoomooOwnerUid);
+    final repo = _repoWithTwoPositions();
+    final store = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await tester.pumpWidget(_wrap(
+        MoomooLivePage(repository: repo, secretStore: store), auth, repo));
+    await tester.pumpAndSettle();
+
+    double topOf(Key k) => tester.getTopLeft(find.byKey(k)).dy;
+    final intc = const Key('moomoo_pos_INTC');
+    final amd = const Key('moomoo_pos_AMD');
+
+    expect(find.byKey(intc), findsOneWidget);
+    expect(find.byKey(amd), findsOneWidget);
+
+    // Sort by P/L high->low: INTC (+35) above AMD (-20).
+    await tester.tap(find.byKey(const Key('moomoo_sort_pl')));
+    await tester.pumpAndSettle();
+    expect(topOf(intc), lessThan(topOf(amd)));
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('tradewizz.moomoo.posSort'), 'pl');
+
+    // Sort by weight high->low: AMD (480) above INTC (335).
+    await tester.tap(find.byKey(const Key('moomoo_sort_weight')));
+    await tester.pumpAndSettle();
+    expect(topOf(amd), lessThan(topOf(intc)));
+    expect(prefs.getString('tradewizz.moomoo.posSort'), 'weight');
+
+    // Tapping the active chip again toggles back to the broker's default order.
+    await tester.tap(find.byKey(const Key('moomoo_sort_weight')));
+    await tester.pumpAndSettle();
+    expect(prefs.getString('tradewizz.moomoo.posSort'), 'default');
+    // Default order = broker order: INTC was listed first.
+    expect(topOf(intc), lessThan(topOf(amd)));
   });
 
   testWidgets('portfolio manager card renders risk + recommendations',

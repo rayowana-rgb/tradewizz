@@ -54,10 +54,15 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
   static const String _kHideManagerPref = 'tradewizz.moomoo.hideManager';
   static const String _kHideHealthPref = 'tradewizz.moomoo.hideHealth';
   static const String _kHideRebalancePref = 'tradewizz.moomoo.hideRebalance';
+  // Sort order for the Positions list. Persisted so the user's preferred view
+  // survives relaunches. 'default' keeps the broker's order.
+  static const String _kPosSortPref = 'tradewizz.moomoo.posSort';
   bool _hidePositions = false;
   bool _hideManager = false;
   bool _hideHealth = false;
   bool _hideRebalance = false;
+  // One of: 'default' | 'pl' | 'weight'. High-to-low for pl/weight.
+  String _posSort = 'default';
 
   String? get _token => AuthScope.read(context).token;
 
@@ -79,7 +84,17 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
       _hideManager = prefs.getBool(_kHideManagerPref) ?? false;
       _hideHealth = prefs.getBool(_kHideHealthPref) ?? false;
       _hideRebalance = prefs.getBool(_kHideRebalancePref) ?? false;
+      _posSort = prefs.getString(_kPosSortPref) ?? 'default';
     });
+  }
+
+  /// Cycle / set the positions sort. Tapping an active chip toggles it back to
+  /// the broker's default order; tapping an inactive chip selects it.
+  Future<void> _setPosSort(String mode) async {
+    final next = (_posSort == mode) ? 'default' : mode;
+    setState(() => _posSort = next);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kPosSortPref, next);
   }
 
   Future<void> _toggleHidePositions() async {
@@ -1024,13 +1039,73 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
             ],
           ),
         ),
+        if (!_hidePositions && _positions.length > 1) _positionsSortBar(),
         if (_hidePositions)
           _card(child: Text('Positions hidden.', style: TWType.caption))
         else if (_positions.isEmpty)
           _card(child: Text('No open positions.', style: TWType.caption))
         else
-          ..._positions.map(_positionTile),
+          ..._sortedPositions.map(_positionTile),
       ],
+    );
+  }
+
+  /// Sort chips for the Positions list: P/L high->low and Weight high->low.
+  /// Tapping the active chip returns to the broker's default order.
+  Widget _positionsSortBar() {
+    return Padding(
+      padding: const EdgeInsets.only(
+        left: TWSpace.xs, right: TWSpace.xs, bottom: TWSpace.sm,
+      ),
+      child: Row(
+        children: [
+          Text('Sort', style: TWType.overline),
+          const SizedBox(width: TWSpace.sm),
+          _sortChip('moomoo_sort_pl', 'P/L', 'pl'),
+          const SizedBox(width: TWSpace.xs),
+          _sortChip('moomoo_sort_weight', 'Weight', 'weight'),
+        ],
+      ),
+    );
+  }
+
+  Widget _sortChip(String keyName, String label, String mode) {
+    final active = _posSort == mode;
+    return InkWell(
+      key: Key(keyName),
+      onTap: () => _setPosSort(mode),
+      borderRadius: BorderRadius.circular(TWRadius.chip),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: TWSpace.sm, vertical: TWSpace.xs,
+        ),
+        decoration: BoxDecoration(
+          color: active ? TWColors.accent : Colors.transparent,
+          borderRadius: BorderRadius.circular(TWRadius.chip),
+          border: Border.all(
+            color: active ? TWColors.accent : TWColors.hairlineTop,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TWType.overline.copyWith(
+                color: active ? TWColors.textPrimary : TWColors.textTertiary,
+              ),
+            ),
+            if (active) ...[
+              const SizedBox(width: 2),
+              Icon(
+                Icons.arrow_downward,
+                size: 12,
+                color: TWColors.textPrimary,
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
@@ -1090,6 +1165,22 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
         ),
       ),
     );
+  }
+
+  /// Positions in the user-selected order. 'default' preserves the broker's
+  /// ordering; 'pl' sorts by unrealized P/L high->low; 'weight' sorts by
+  /// market value (quantity * last price) high->low. A stable copy is returned
+  /// so the underlying [_positions] list is never mutated in place.
+  List<MoomooLivePosition> get _sortedPositions {
+    if (_posSort == 'default') return _positions;
+    final list = List<MoomooLivePosition>.from(_positions);
+    if (_posSort == 'pl') {
+      list.sort((a, b) => b.plVal.compareTo(a.plVal));
+    } else if (_posSort == 'weight') {
+      double mv(MoomooLivePosition p) => p.quantity * p.lastPrice;
+      list.sort((a, b) => mv(b).compareTo(mv(a)));
+    }
+    return list;
   }
 
   /// Total unrealized P/L = sum of each position's broker-reported pl_val.
