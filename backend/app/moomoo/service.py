@@ -73,6 +73,9 @@ class MoomooAccount:
     buying_power: float
     market_value: float
     currency: str
+    # Broker-reported cumulative realized profit/loss on the account
+    # (gains booked from closed positions). Real SDK value, never fabricated.
+    realized_pl: float = 0.0
 
 
 @dataclass
@@ -215,6 +218,7 @@ class MoomooService:
             buying_power=_f("power"),
             market_value=_f("market_val"),
             currency="USD",
+            realized_pl=_f("realized_pl"),
         )
         # Record this real observation so the portfolio-growth chart can be
         # built from genuine data points (no fabricated history).

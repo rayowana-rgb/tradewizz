@@ -116,6 +116,7 @@ def moomoo_account(
     return MoomooAccountModel(
         total_assets=a.total_assets, cash=a.cash, buying_power=a.buying_power,
         market_value=a.market_value, currency=a.currency,
+        realized_pl=a.realized_pl,
     )
 
 

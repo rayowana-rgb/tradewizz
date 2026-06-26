@@ -13,6 +13,8 @@ class MoomooAccountModel(BaseModel):
     buying_power: float
     market_value: float
     currency: str = "USD"
+    # Cumulative realized profit/loss booked on the account (closed positions).
+    realized_pl: float = 0.0
     live: bool = True
 
 

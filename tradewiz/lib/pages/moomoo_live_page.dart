@@ -1356,12 +1356,13 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
             _kv('Cash', _money(a.cash, a.currency)),
             _kv('Buying power', _money(a.buyingPower, a.currency)),
             _kv('Market value', _money(a.marketValue, a.currency)),
-            // Total unrealized P/L across open positions (summed from the
+            // Realized gain (broker-reported, booked from closed positions)
+            // and total unrealized P/L across open positions (summed from the
             // broker's per-position values; no extra fetch).
-            if (_positions.isNotEmpty) ...[
-              const Divider(height: TWSpace.lg, color: TWColors.hairline),
+            const Divider(height: TWSpace.lg, color: TWColors.hairline),
+            _kvPL('Realized gain', a.realizedPl, 0, a.currency),
+            if (_positions.isNotEmpty)
               _kvPL('Unrealized P/L', _totalPlVal, _totalPlRatio, a.currency),
-            ],
           ],
         ],
       ),

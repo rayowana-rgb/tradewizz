@@ -10,6 +10,7 @@ class MoomooLiveAccount {
     this.buyingPower = 0,
     this.marketValue = 0,
     this.currency = 'USD',
+    this.realizedPl = 0,
   });
 
   final double totalAssets;
@@ -17,6 +18,8 @@ class MoomooLiveAccount {
   final double buyingPower;
   final double marketValue;
   final String currency;
+  // Cumulative realized profit/loss booked on the account (closed positions).
+  final double realizedPl;
 
   factory MoomooLiveAccount.fromJson(Map<String, dynamic> j) =>
       MoomooLiveAccount(
@@ -25,6 +28,7 @@ class MoomooLiveAccount {
         buyingPower: (j['buying_power'] as num?)?.toDouble() ?? 0,
         marketValue: (j['market_value'] as num?)?.toDouble() ?? 0,
         currency: j['currency'] as String? ?? 'USD',
+        realizedPl: (j['realized_pl'] as num?)?.toDouble() ?? 0,
       );
 }
 

@@ -235,7 +235,7 @@ void main() {
     expect(accountCalls, greaterThanOrEqualTo(1));
   });
 
-  testWidgets('shows total unrealized P/L summed from positions',
+  testWidgets('shows realized gain and total unrealized P/L from positions',
       (tester) async {
     final auth = await _auth(kMoomooOwnerUid);
     final repo = _repoWith(MockClient((req) async {
@@ -247,6 +247,7 @@ void main() {
             'buying_power': 4800.0,
             'market_value': 1000.0,
             'currency': 'USD',
+            'realized_pl': 123.45,
           }),
           200,
         );
@@ -293,6 +294,9 @@ void main() {
         MoomooLivePage(repository: repo, secretStore: store), auth, repo));
     await tester.pumpAndSettle();
 
+    // Realized gain comes straight from the broker account field.
+    expect(find.text('Realized gain'), findsOneWidget);
+    expect(find.textContaining('+\$123.45'), findsWidgets);
     // Net P/L = 35 - 20 = +15.00 over 800 cost basis = +1.88%.
     expect(find.text('Unrealized P/L'), findsOneWidget);
     expect(find.textContaining('+\$15.00'), findsWidgets);
