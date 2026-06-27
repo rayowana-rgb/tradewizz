@@ -76,9 +76,14 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
   bool _hideRebalance = false;
   // One of: 'default' | 'pl' | 'weight'. High-to-low for pl/weight.
   String _posSort = 'default';
-  // Symbol whose inline sell slider is currently expanded in the Positions
+  // Symbol whose inline SELL slider is currently expanded in the Positions
   // list (null = none). Tapping Sell on a tile toggles its slider open/closed.
+  // Only one of [_sellExpanded] / [_buyExpanded] can be open at a time.
   String? _sellExpanded;
+
+  // Symbol whose inline BUY slider is currently expanded in the Positions list
+  // (null = none). Tapping Buy on a tile toggles its slider open/closed.
+  String? _buyExpanded;
 
   // Profit threshold for the "Trim" take-profit-all flow. The user picks a
   // mode (percent of cost or absolute dollars) and a value; a position
@@ -1517,7 +1522,8 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
   Widget _positionTile(MoomooLivePosition p) {
     final up = p.plVal >= 0;
     final canSell = p.canSellQty;
-    final expanded = _sellExpanded == p.symbol;
+    final sellOpen = _sellExpanded == p.symbol;
+    final buyOpen = _buyExpanded == p.symbol;
     return Padding(
       padding: const EdgeInsets.only(bottom: TWSpace.sm),
       child: _card(
@@ -1577,36 +1583,79 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                     ),
                   ],
                 ),
-                const SizedBox(width: TWSpace.sm),
-                // Sell expands an inline quantity slider (held shares); tapping
-                // again collapses it. Positions with nothing sellable just open
-                // the order ticket directly.
-                IconButton(
-                  key: Key('moomoo_pos_sell_${p.symbol}'),
-                  icon: Icon(
-                    expanded ? Icons.expand_less : Icons.sell_outlined,
-                    size: 18,
+              ],
+            ),
+            // Buy / Sell buttons. Each one toggles its OWN inline quantity
+            // slider; the slider only appears AFTER the side is tapped, and
+            // opening one side collapses the other.
+            const SizedBox(height: TWSpace.sm),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    key: Key('moomoo_pos_buy_${p.symbol}'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: TWColors.up,
+                      side: BorderSide(
+                        color: buyOpen ? TWColors.up : TWColors.hairlineTop,
+                      ),
+                      padding:
+                          const EdgeInsets.symmetric(vertical: TWSpace.sm),
+                    ),
+                    onPressed: () => setState(() {
+                      _buyExpanded = buyOpen ? null : p.symbol;
+                      _sellExpanded = null;
+                    }),
+                    child: const Text('Buy', style: TWType.label),
                   ),
-                  tooltip: 'Sell',
-                  onPressed: canSell > 0
-                      ? () => setState(
-                          () => _sellExpanded = expanded ? null : p.symbol)
-                      : () => _openTicket(p.symbol, 'SELL'),
+                ),
+                const SizedBox(width: TWSpace.sm),
+                Expanded(
+                  child: OutlinedButton(
+                    key: Key('moomoo_pos_sell_${p.symbol}'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: TWColors.down,
+                      side: BorderSide(
+                        color: sellOpen ? TWColors.down : TWColors.hairlineTop,
+                      ),
+                      padding:
+                          const EdgeInsets.symmetric(vertical: TWSpace.sm),
+                    ),
+                    onPressed: canSell > 0
+                        ? () => setState(() {
+                            _sellExpanded = sellOpen ? null : p.symbol;
+                            _buyExpanded = null;
+                          })
+                        : () => _openTicket(p.symbol, 'SELL'),
+                    child: const Text('Sell', style: TWType.label),
+                  ),
                 ),
               ],
             ),
-            // Inline drag-to-sell bar showing how many shares are held: drag to
-            // choose the quantity (defaults to the full sellable amount) then
-            // hit Sell to open the order ticket prefilled with that quantity.
-            if (expanded && canSell > 0) ...[
+            // Inline SELL slider: drag to choose how many held shares to sell
+            // (defaults to the full sellable amount), then confirm.
+            if (sellOpen && canSell > 0) ...[
               const SizedBox(height: TWSpace.sm),
-              _RebalanceSellSlider(
+              _PositionTradeSlider(
                 key: Key('moomoo_pos_slider_${p.symbol}'),
                 symbol: p.symbol,
+                side: 'SELL',
                 maxQty: canSell,
                 lastPrice: p.lastPrice,
-                onSell: (qty) => _openTicket(p.symbol, 'SELL', qty),
-                onBuy: () => _openTicket(p.symbol, 'BUY'),
+                onConfirm: (qty) => _openTicket(p.symbol, 'SELL', qty),
+              ),
+            ],
+            // Inline BUY slider: drag to choose how many shares to add, then
+            // confirm to open the prefilled order ticket on the BUY side.
+            if (buyOpen) ...[
+              const SizedBox(height: TWSpace.sm),
+              _PositionTradeSlider(
+                key: Key('moomoo_pos_buy_slider_${p.symbol}'),
+                symbol: p.symbol,
+                side: 'BUY',
+                maxQty: p.quantity > 0 ? p.quantity : 1,
+                lastPrice: p.lastPrice,
+                onConfirm: (qty) => _openTicket(p.symbol, 'BUY', qty),
               ),
             ],
           ],
@@ -1707,6 +1756,119 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
     final sign = value >= 0 ? '+' : '-';
     return '$sign${pct.abs().toStringAsFixed(1)}% '
         '($sign${_money(value.abs(), "USD")})';
+  }
+}
+
+/// Inline single-side quantity slider for a Positions tile. Shown only AFTER
+/// the user taps Buy or Sell on that tile. Drag to choose a quantity (defaults
+/// to [maxQty]) then tap the confirm button to open the prefilled order ticket
+/// on [side] ('BUY' or 'SELL').
+class _PositionTradeSlider extends StatefulWidget {
+  const _PositionTradeSlider({
+    super.key,
+    required this.symbol,
+    required this.side,
+    required this.maxQty,
+    required this.lastPrice,
+    required this.onConfirm,
+  });
+
+  final String symbol;
+  final String side; // 'BUY' or 'SELL'
+  final double maxQty;
+  final double lastPrice;
+  final void Function(double qty) onConfirm;
+
+  @override
+  State<_PositionTradeSlider> createState() => _PositionTradeSliderState();
+}
+
+class _PositionTradeSliderState extends State<_PositionTradeSlider> {
+  late double _qty = widget.maxQty;
+
+  bool get _isBuy => widget.side == 'BUY';
+  Color get _color => _isBuy ? TWColors.up : TWColors.down;
+
+  @override
+  void didUpdateWidget(_PositionTradeSlider old) {
+    super.didUpdateWidget(old);
+    if (widget.maxQty != old.maxQty) {
+      _qty = _qty.clamp(0, widget.maxQty);
+      if (_qty == 0) _qty = widget.maxQty;
+    }
+  }
+
+  // Whole-share holdings get integer steps; fractional ones keep 4-dp grain.
+  bool get _wholeOnly => widget.maxQty == widget.maxQty.roundToDouble();
+
+  double _round(double q) {
+    if (_wholeOnly) return q.roundToDouble();
+    return (q * 10000).round() / 10000;
+  }
+
+  String _fmt(double q) {
+    if (q == q.roundToDouble()) return q.toStringAsFixed(0);
+    return q.toStringAsFixed(4);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final qty = _round(_qty).clamp(0.0, widget.maxQty);
+    final pct = widget.maxQty > 0 ? (qty / widget.maxQty * 100) : 0;
+    final notional = qty * widget.lastPrice;
+    final label = _isBuy ? 'Buy' : 'Sell';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(label, style: TWType.caption.copyWith(color: _color)),
+            const SizedBox(width: TWSpace.sm),
+            Expanded(
+              child: Text(
+                '${_fmt(qty)} sh · ${pct.toStringAsFixed(0)}%'
+                '${widget.lastPrice > 0 ? ' · ≈\$${notional.toStringAsFixed(2)}' : ''}',
+                style: TWType.caption.copyWith(color: TWColors.textSecondary),
+              ),
+            ),
+            Text(
+              'max ${_fmt(widget.maxQty)}',
+              style: TWType.overline.copyWith(color: TWColors.textTertiary),
+            ),
+          ],
+        ),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            trackHeight: 4,
+            activeTrackColor: _color,
+            inactiveTrackColor: TWColors.hairlineTop,
+            thumbColor: _color,
+            overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+          ),
+          child: Slider(
+            key: Key('moomoo_pos_${widget.side.toLowerCase()}_range_${widget.symbol}'),
+            value: qty.toDouble(),
+            max: widget.maxQty,
+            divisions: _wholeOnly && widget.maxQty <= 100
+                ? widget.maxQty.round().clamp(1, 100)
+                : 100,
+            onChanged: (v) => setState(() => _qty = v),
+          ),
+        ),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton(
+            key: Key('moomoo_pos_${widget.side.toLowerCase()}_confirm_${widget.symbol}'),
+            style: FilledButton.styleFrom(
+              backgroundColor: _color,
+              padding: const EdgeInsets.symmetric(vertical: TWSpace.sm),
+            ),
+            onPressed: qty > 0 ? () => widget.onConfirm(qty) : null,
+            child: Text(label, style: TWType.label),
+          ),
+        ),
+      ],
+    );
   }
 }
 

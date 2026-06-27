@@ -525,16 +525,57 @@ void main() {
     await tester.tap(find.byKey(const Key('moomoo_pos_sell_INTC')));
     await tester.pumpAndSettle();
 
-    // Inline slider + Sell/Buy buttons now show; max reflects held shares (10).
+    // Inline SELL slider + confirm button now show; max reflects held (10).
     expect(find.byKey(const Key('moomoo_pos_slider_INTC')), findsOneWidget);
-    expect(find.byKey(const Key('moomoo_reb_sell_range_INTC')), findsOneWidget);
-    expect(find.byKey(const Key('moomoo_reb_sell_btn_INTC')), findsOneWidget);
+    expect(
+        find.byKey(const Key('moomoo_pos_sell_range_INTC')), findsOneWidget);
+    expect(
+        find.byKey(const Key('moomoo_pos_sell_confirm_INTC')), findsOneWidget);
     expect(find.textContaining('max 10'), findsOneWidget);
 
     // Tapping Sell again collapses it.
     await tester.tap(find.byKey(const Key('moomoo_pos_sell_INTC')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('moomoo_pos_slider_INTC')), findsNothing);
+  });
+
+  testWidgets('position Buy expands its own inline qty slider; opening Buy '
+      'collapses an open Sell slider', (tester) async {
+    tester.view.physicalSize = const Size(1200, 3200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final auth = await _auth(kMoomooOwnerUid);
+    final repo = _repoWithTwoPositions();
+    final store = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await tester.pumpWidget(_wrap(
+        MoomooLivePage(repository: repo, secretStore: store), auth, repo));
+    await tester.pumpAndSettle();
+
+    // Both Buy/Sell buttons render; neither slider is open initially.
+    expect(find.byKey(const Key('moomoo_pos_buy_INTC')), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_pos_sell_INTC')), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_pos_buy_slider_INTC')), findsNothing);
+    expect(find.byKey(const Key('moomoo_pos_slider_INTC')), findsNothing);
+
+    // Open the Sell slider first.
+    await tester.tap(find.byKey(const Key('moomoo_pos_sell_INTC')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('moomoo_pos_slider_INTC')), findsOneWidget);
+
+    // Tapping Buy opens the BUY slider and collapses the open SELL slider.
+    await tester.tap(find.byKey(const Key('moomoo_pos_buy_INTC')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('moomoo_pos_buy_slider_INTC')), findsOneWidget);
+    expect(
+        find.byKey(const Key('moomoo_pos_buy_confirm_INTC')), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_pos_slider_INTC')), findsNothing);
+
+    // Confirming Buy opens the order ticket prefilled on the BUY side.
+    await tester.tap(find.byKey(const Key('moomoo_pos_buy_confirm_INTC')));
+    await tester.pumpAndSettle();
+    expect(find.byType(MoomooOrderTicketPage), findsOneWidget);
+    expect(find.text('BUY'), findsWidgets);
   });
 
   testWidgets('sold-out positions (quantity 0) are hidden from the list',
