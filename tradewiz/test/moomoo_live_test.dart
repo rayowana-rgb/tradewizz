@@ -395,17 +395,23 @@ void main() {
         MoomooLivePage(repository: repo, secretStore: store), auth, repo));
     await tester.pumpAndSettle();
 
-    // The REDUCE row, its drag-to-sell slider and Buy/Sell buttons render.
+    // The REDUCE row + Buy/Sell buttons render; the slider stays hidden
+    // until the side is tapped (mirrors the Positions tile behaviour).
     expect(find.byKey(const Key('moomoo_reb_INTC')), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_reb_buy_INTC')), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_reb_sell_INTC')), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_reb_slider_INTC')), findsNothing);
+
+    // Tapping the Sell button reveals its inline qty slider + confirm button.
+    await tester.tap(find.byKey(const Key('moomoo_reb_sell_INTC')));
+    await tester.pumpAndSettle();
     expect(find.byKey(const Key('moomoo_reb_slider_INTC')), findsOneWidget);
     expect(
-        find.byKey(const Key('moomoo_reb_sell_range_INTC')), findsOneWidget);
-    expect(find.byKey(const Key('moomoo_reb_buy_btn_INTC')), findsOneWidget);
-    expect(find.byKey(const Key('moomoo_reb_sell_btn_INTC')), findsOneWidget);
+        find.byKey(const Key('moomoo_pos_sell_range_INTC')), findsOneWidget);
 
-    // Tapping Sell (default = full sellable qty) opens the order ticket
+    // Confirming Sell (default = full sellable qty) opens the order ticket
     // prefilled for INTC on the SELL side.
-    await tester.tap(find.byKey(const Key('moomoo_reb_sell_btn_INTC')));
+    await tester.tap(find.byKey(const Key('moomoo_pos_sell_confirm_INTC')));
     await tester.pumpAndSettle();
     expect(find.byType(MoomooOrderTicketPage), findsOneWidget);
     expect(find.text('SELL'), findsWidgets);
