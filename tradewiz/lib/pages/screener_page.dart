@@ -1892,7 +1892,7 @@ class _FiltersSheetState extends State<_FiltersSheet> {
               Wrap(
                 spacing: 8,
                 children: [
-                  for (final v in const <double>[0, 50, 70, 90])
+                  for (final v in const <double>[0, 50, 70, 80, 90])
                     ChoiceChip(
                       selected: v == _minScore,
                       label: Text(v == 0 ? 'Any' : '≥ ${v.toInt()}'),
