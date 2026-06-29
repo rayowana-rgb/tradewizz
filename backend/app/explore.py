@@ -240,3 +240,117 @@ def compute_overlay(
         "final_score": final,
         "explore_tags": explore_tags(cats, ind),
     }
+
+
+# --------------------------------------------------------------------------- #
+# Tight-Stop Swing fit (SL -1% / TP +3% profile)                              #
+# --------------------------------------------------------------------------- #
+# A transparent, deterministic 0..100 *fit* gauge -- NOT a probability and NOT
+# a prediction. It ranks how well a name's current technical posture matches a
+# tight-stop swing plan: a -1% stop with a +3% target (risk:reward ~1:3).
+#
+# The dominant constraint is volatility. With a -1% stop, a name whose typical
+# daily range (ATR%) is large will be stopped out by ordinary intraday noise
+# before the +3% target is reached; a name that is too quiet rarely travels
+# +3% in a swing window. The sweet spot for a -1%/+3% plan is a moderate ATR%
+# (~1.5%-3.0%): enough room that -1% is not pure noise, yet a realistic path to
+# +3%. On top of that, the setup is only attractive when the trend is already
+# up (so +3% is the path of least resistance) and the name is NOT overbought
+# (so it is not entered right before a pullback hits the tight stop).
+#
+# Pure function of the already-computed indicator dict. No I/O, no fetching.
+
+# Component weights (sum = 100). Volatility dominates because it directly
+# governs how often a -1% stop survives day-to-day noise.
+_SWING_W_VOL = 45.0      # ATR% in the tight-stop sweet spot
+_SWING_W_TREND = 25.0    # price above EMA20 + MACD histogram positive
+_SWING_W_RSI = 15.0      # RSI in a healthy band (rising, not overbought)
+_SWING_W_ADX = 15.0      # trend strength (a real trend, not chop)
+
+
+def _swing_vol_fit(atr_pct: Optional[float]) -> float:
+    """0..1 fit of ATR% for a -1% stop / +3% target.
+
+    Peak fit at ~1.5%-3.0% ATR. Below ~0.8% the name is too quiet to reach +3%
+    in a swing; above ~4% a -1% stop is inside one day's noise band.
+    """
+    if atr_pct is None:
+        return 0.0
+    a = float(atr_pct)
+    if 1.5 <= a <= 3.0:
+        return 1.0
+    if 1.2 <= a < 1.5 or 3.0 < a <= 3.5:
+        return 0.8
+    if 0.8 <= a < 1.2 or 3.5 < a <= 4.5:
+        return 0.5
+    if 0.5 <= a < 0.8 or 4.5 < a <= 6.0:
+        return 0.25
+    return 0.0  # <0.5% (dead) or >6% (a -1% stop is pure noise)
+
+
+def _swing_trend_fit(ind: dict) -> float:
+    """0..1: price above EMA20 and MACD histogram positive (each half)."""
+    close = ind.get("close")
+    ema20 = ind.get("ema20")
+    macd_hist = ind.get("macd_hist")
+    score = 0.0
+    if close is not None and ema20 is not None and close > ema20:
+        score += 0.5
+    if macd_hist is not None and macd_hist > 0:
+        score += 0.5
+    return score
+
+
+def _swing_rsi_fit(rsi: Optional[float]) -> float:
+    """0..1: RSI in a healthy, not-overbought band for a fresh entry.
+
+    Best ~52-65 (rising momentum with room to run). Penalise overbought
+    (>70, likely to pull back into a -1% stop) and weak/oversold (<45).
+    """
+    if rsi is None:
+        return 0.0
+    r = float(rsi)
+    if 52 <= r <= 65:
+        return 1.0
+    if 48 <= r < 52 or 65 < r <= 70:
+        return 0.6
+    if 45 <= r < 48:
+        return 0.3
+    return 0.0
+
+
+def _swing_adx_fit(adx: Optional[float]) -> float:
+    """0..1: trend strength. A genuine trend (ADX>=25) helps +3% over noise."""
+    if adx is None:
+        return 0.0
+    a = float(adx)
+    if a >= 25:
+        return 1.0
+    if a >= 20:
+        return 0.6
+    if a >= 15:
+        return 0.3
+    return 0.0
+
+
+def swing_fit_score(ind: dict) -> float:
+    """0..100 fit for a tight-stop (-1%) / +3%-target swing entry.
+
+    Deterministic, indicator-only. Higher = current posture matches the plan
+    better (moderate volatility so -1% is not noise, an established up-trend so
+    +3% is the path of least resistance, healthy non-overbought momentum).
+    Returns 0 when the core indicators are missing (cannot assess fit).
+    """
+    if ind.get("close") is None:
+        return 0.0
+    vol = _swing_vol_fit(ind.get("atr_pct"))
+    trend = _swing_trend_fit(ind)
+    rsi = _swing_rsi_fit(ind.get("rsi"))
+    adx = _swing_adx_fit(ind.get("adx"))
+    total = (
+        _SWING_W_VOL * vol
+        + _SWING_W_TREND * trend
+        + _SWING_W_RSI * rsi
+        + _SWING_W_ADX * adx
+    )
+    return round(max(0.0, min(100.0, total)), 1)

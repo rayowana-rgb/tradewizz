@@ -125,6 +125,13 @@ class ScreenerMatch(BaseModel):
     avg_volume_20d: Optional[float] = None
     volume_ratio_20d: Optional[float] = None
     value_traded_ratio_20d: Optional[float] = None
+    # --- Tight-Stop Swing fit (additive, optional) -------------------------
+    # swing_fit_score (0..100): a transparent, deterministic FIT gauge for a
+    # tight-stop (-1%) / +3%-target swing entry (NOT a probability). atr_pct
+    # is surfaced alongside so the client can show the noise/breakeven context.
+    # Older clients ignore both fields.
+    swing_fit_score: Optional[float] = None
+    atr_pct: Optional[float] = None
 
 
 class ScreenerResult(BaseModel):

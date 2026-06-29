@@ -110,6 +110,11 @@ class _ScreenerPageState extends State<ScreenerPage> {
   bool _hideIlliquid = false;
   // Instrument-type filter: All / Stocks / ETFs (client-side, uses is_etf).
   InstrumentTypeFilter _instrumentType = InstrumentTypeFilter.all;
+  // Tight-Stop Swing mode (client-side): re-rank by the server's swing_fit
+  // score and keep only names with a workable fit for a -1% stop / +3%
+  // target. Pure view-state; never changes scoring or the query.
+  bool _swingMode = false;
+  static const double _kSwingFitFloor = 60;
 
   /// Push the current filter selection into the in-memory store so it survives
   /// tab switches / widget rebuilds. View-state only; nothing scoring-related.
@@ -636,7 +641,8 @@ class _ScreenerPageState extends State<ScreenerPage> {
   List<ScreenerMatch> get _filtered {
     final matches = _result?.matches ?? [];
     final q = _query.trim().toUpperCase();
-    return matches.where((m) {
+    final out = matches.where((m) {
+      if (_swingMode && m.effectiveSwingFit < _kSwingFitFloor) return false;
       if (_minScore > 0 && m.score < _minScore) return false;
       if (_categoryFilter != null && !m.hasCategory(_categoryFilter!)) {
         return false;
@@ -661,6 +667,12 @@ class _ScreenerPageState extends State<ScreenerPage> {
       }
       return true;
     }).toList();
+    // In swing mode, re-rank by the tight-stop fit (best setup first); the
+    // server's default ranking is by Final Explore Score.
+    if (_swingMode) {
+      out.sort((a, b) => b.effectiveSwingFit.compareTo(a.effectiveSwingFit));
+    }
+    return out;
   }
 
   int get _activeFilterCount {
@@ -777,7 +789,52 @@ class _ScreenerPageState extends State<ScreenerPage> {
           onSelected: _selectCategory,
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+          child: Row(
+            children: [
+              FilterChip(
+                key: const Key('screener_swing_mode'),
+                selected: _swingMode,
+                label: Text(
+                  _swingMode
+                      ? 'Tight-Stop Swing · -1% / +3%'
+                      : 'Tight-Stop Swing',
+                  style: TWType.caption,
+                ),
+                avatar: Icon(
+                  Icons.bolt_rounded,
+                  size: 16,
+                  color: _swingMode
+                      ? TWColors.surfaceCard
+                      : TWColors.textTertiary,
+                ),
+                selectedColor: TWColors.accent,
+                checkmarkColor: TWColors.surfaceCard,
+                backgroundColor: TWColors.surfaceCard,
+                side: const BorderSide(color: TWColors.hairline),
+                onSelected: (v) {
+                  setState(() {
+                    _swingMode = v;
+                    _limit = _pageSize;
+                  });
+                },
+              ),
+              const Spacer(),
+            ],
+          ),
+        ),
+        if (_swingMode)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+            child: Text(
+              'Ranked for a -1% stop / +3% target: moderate volatility (so -1% '
+              "isn't pure noise), an established up-trend, and healthy, "
+              'not-overbought momentum. A fit gauge, not a probability.',
+              style: TWType.caption.copyWith(color: TWColors.textTertiary),
+            ),
+          ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
           child: Row(
             children: [
               Text('Data source', style: TWType.caption),
@@ -875,6 +932,7 @@ class _ScreenerPageState extends State<ScreenerPage> {
               ),
               child: _MatchCard(
                 match: match,
+                swingMode: _swingMode,
                 onTap: () => _openAnalysis(match),
               ),
             );
@@ -1988,9 +2046,10 @@ class _FiltersSheetState extends State<_FiltersSheet> {
 }
 
 class _MatchCard extends StatelessWidget {
-  const _MatchCard({required this.match, this.onTap});
+  const _MatchCard({required this.match, this.onTap, this.swingMode = false});
   final ScreenerMatch match;
   final VoidCallback? onTap;
+  final bool swingMode;
 
   @override
   Widget build(BuildContext context) {
@@ -2041,6 +2100,12 @@ class _MatchCard extends StatelessWidget {
                 // (below Buy / Sell), not on the card itself.
               ],
             ),
+            // Tight-Stop Swing: when the mode is on, surface the fit gauge +
+            // ATR% so the basis for the ranking is visible (no hidden magic).
+            if (swingMode && match.hasSwingFit) ...[
+              const SizedBox(height: 10),
+              _SwingFitBar(match: match),
+            ],
             // Phase 9A: Explore score breakdown (Final = Base + Bonus +
             // Conviction). Only shown when the server sent the overlay.
             if (match.finalScore != null) ...[
@@ -2069,6 +2134,52 @@ class _MatchCard extends StatelessWidget {
             ],
           ],
         ),
+    );
+  }
+}
+
+/// Tight-Stop Swing fit bar: shows the 0..100 fit gauge for a -1% stop /
+/// +3% target plus the ATR% (typical daily move) so the user can sanity-check
+/// how much noise a -1% stop has to survive. A fit gauge, not a probability.
+class _SwingFitBar extends StatelessWidget {
+  const _SwingFitBar({required this.match});
+  final ScreenerMatch match;
+
+  @override
+  Widget build(BuildContext context) {
+    final fit = match.effectiveSwingFit;
+    final color = TWColors.confidence(fit);
+    final atr = match.atrPct;
+    // A -1% stop sits inside one day's noise band when ATR% is high; flag it.
+    final atrTight = atr != null && atr > 3.0;
+    return Container(
+      padding: const EdgeInsets.symmetric(
+          horizontal: TWSpace.md, vertical: TWSpace.sm),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: TWRadius.rSm,
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.bolt_rounded, size: 16, color: color),
+          const SizedBox(width: 6),
+          Text('Swing fit', style: TWType.caption),
+          const SizedBox(width: 6),
+          Text(
+            fit.toStringAsFixed(0),
+            style: TWType.tabular(TWType.label).copyWith(color: color),
+          ),
+          const Spacer(),
+          if (atr != null)
+            Text(
+              'ATR ${atr.toStringAsFixed(1)}%',
+              style: TWType.tabular(TWType.caption).copyWith(
+                color: atrTight ? TWColors.warn : TWColors.textTertiary,
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

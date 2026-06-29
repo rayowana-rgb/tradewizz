@@ -25,6 +25,8 @@ class ScreenerMatch {
     this.avgVolume20d,
     this.volumeRatio20d,
     this.valueTradedRatio20d,
+    this.swingFitScore,
+    this.atrPct,
   });
 
   final String symbol;
@@ -78,6 +80,21 @@ class ScreenerMatch {
   final double? volumeRatio20d;
   final double? valueTradedRatio20d;
 
+  // --- Tight-Stop Swing fit (backward compatible) -------------------------
+  /// Deterministic 0..100 FIT gauge for a tight-stop (-1%) / +3%-target swing
+  /// entry (NOT a probability). Null on older servers/snapshots.
+  final double? swingFitScore;
+
+  /// Average True Range as a percent of price (typical daily move). Surfaced
+  /// so the UI can show the noise/breakeven context for a -1% stop.
+  final double? atrPct;
+
+  /// The swing fit to sort/filter by (0 when the server didn't send it).
+  double get effectiveSwingFit => swingFitScore ?? 0;
+
+  /// True when the server sent the tight-stop swing fields.
+  bool get hasSwingFit => swingFitScore != null;
+
   /// True when the server sent the Phase 11B liquidity fields.
   bool get hasLiquidityBreakdown => liquidityScore != null;
 
@@ -120,6 +137,8 @@ class ScreenerMatch {
       volumeRatio20d: (json['volume_ratio_20d'] as num?)?.toDouble(),
       valueTradedRatio20d:
           (json['value_traded_ratio_20d'] as num?)?.toDouble(),
+      swingFitScore: (json['swing_fit_score'] as num?)?.toDouble(),
+      atrPct: (json['atr_pct'] as num?)?.toDouble(),
     );
   }
 }

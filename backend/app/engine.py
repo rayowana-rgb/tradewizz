@@ -1374,6 +1374,12 @@ class AnalysisEngine:
                 value_traded_ratio_20d=_num(
                     ind.get("value_traded_ratio_20d")
                 ),
+                # Tight-Stop Swing fit: deterministic indicator-only gauge for
+                # a -1% stop / +3% target. Illiquid names get 0 (never a fit).
+                swing_fit_score=(
+                    0.0 if illiquid else explore.swing_fit_score(ind)
+                ),
+                atr_pct=_num(ind.get("atr_pct")),
             )
         except Exception as exc:  # noqa: BLE001
             # Keep the universe fully populated; response stays 200 "live".
