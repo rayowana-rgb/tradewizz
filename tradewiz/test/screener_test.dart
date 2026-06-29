@@ -780,6 +780,62 @@ void main() {
     expect(symbols.contains('AAPL1'), isFalse);
   });
 
+  testWidgets('LIVE Buy-all slider caps the run to the top N matches',
+      (tester) async {
+    final placed = <Map<String, dynamic>>[];
+    // 5 matches ranked AAPL0 (top) .. AAPL4; slider set to top 3.
+    final repo = _liveBulkRepo(5, placed: placed);
+    final secret = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await secret.load();
+
+    tester.view.physicalSize = const Size(1200, 3600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      _wrapOwner(
+        ScreenerPage(
+          market: Market.us,
+          repository: repo,
+          secretStore: secret,
+          liveBulkOrderGap: Duration.zero,
+        ),
+        repo,
+      ),
+    );
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pumpAndSettle();
+    }
+
+    await tester.tap(find.byKey(const Key('screener_buy_all_live_button')));
+    await tester.pumpAndSettle();
+
+    // Defaults to all 5; the slider lets us cap the run.
+    expect(find.byKey(const Key('live_bulk_topn_slider')), findsOneWidget);
+    expect(find.text('All 5'), findsOneWidget);
+
+    // The slider spans 1..5; tapping its horizontal centre selects the middle
+    // value (3). Tapping is far more deterministic than a pixel-based drag.
+    final slider = find.byKey(const Key('live_bulk_topn_slider'));
+    await tester.tapAt(tester.getCenter(slider));
+    await tester.pumpAndSettle();
+    expect(find.text('Top 3'), findsOneWidget);
+
+    await tester.enterText(
+        find.byKey(const Key('live_bulk_qty_field')), '1');
+    await tester.tap(find.byKey(const Key('live_bulk_ack')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('live_bulk_confirm_button')));
+    await tester.pumpAndSettle(const Duration(milliseconds: 800));
+
+    // Only the top 3 ranked names were bought.
+    final symbols = placed.map((b) => b['symbol']).toSet();
+    expect(placed.length, 3);
+    expect(symbols, {'AAPL0', 'AAPL1', 'AAPL2'});
+  });
+
   testWidgets('non-owner never sees the LIVE Buy-all button', (tester) async {
     final repo = _liveBulkRepo(2);
     final secret = MoomooSecretStore(persistence: _MemSecret('topsecret'));

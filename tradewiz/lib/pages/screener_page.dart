@@ -531,7 +531,12 @@ class _ScreenerPageState extends State<ScreenerPage> {
       ),
     );
     if (!mounted || config == null) return;
-    await _runLiveBulkBuy(buyable, config, token, secret);
+    // Cap the run to the top-N the owner selected on the slider (the list is
+    // already ranked, so take() keeps the highest-ranked names).
+    final selected = config.topN >= buyable.length
+        ? buyable
+        : buyable.take(config.topN).toList();
+    await _runLiveBulkBuy(selected, config, token, secret);
   }
 
   /// Place a REAL Moomoo LIVE MARKET BUY for each match sequentially. Backend
@@ -1177,9 +1182,13 @@ enum _LiveBulkSizing { shares, dollars }
 class _LiveBulkBuyConfig {
   const _LiveBulkBuyConfig({
     required this.sizing,
+    required this.topN,
     this.quantity = 0,
     this.dollarAmount = 0,
   });
+
+  /// How many of the top-ranked buyable matches to actually buy (1..count).
+  final int topN;
 
   /// Fixed share quantity per stock (used when [sizing] is shares).
   final double quantity;
@@ -1227,6 +1236,9 @@ class _LiveBulkBuySheetState extends State<_LiveBulkBuySheet> {
   final _formKey = GlobalKey<FormState>();
   bool _acknowledged = false;
   _LiveBulkSizing _sizing = _LiveBulkSizing.shares;
+  // How many of the top-ranked matches to buy. Defaults to all of them; the
+  // slider lets the owner cap the run to the top 1..count.
+  late int _topN = widget.count;
 
   @override
   void dispose() {
@@ -1240,12 +1252,14 @@ class _LiveBulkBuySheetState extends State<_LiveBulkBuySheet> {
     if (_sizing == _LiveBulkSizing.dollars) {
       return _LiveBulkBuyConfig(
         sizing: _LiveBulkSizing.dollars,
+        topN: _topN,
         dollarAmount: double.parse(
             _dollarController.text.trim().replaceAll(',', '.')),
       );
     }
     return _LiveBulkBuyConfig(
       sizing: _LiveBulkSizing.shares,
+      topN: _topN,
       quantity:
           double.parse(_qtyController.text.trim().replaceAll(',', '.')),
     );
@@ -1273,7 +1287,10 @@ class _LiveBulkBuySheetState extends State<_LiveBulkBuySheet> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Buy all ${widget.count} · LIVE',
+                      _topN >= widget.count
+                          ? 'Buy all ${widget.count} · LIVE'
+                          : 'Buy top $_topN · LIVE',
+                      key: const Key('live_bulk_title'),
                       style: const TextStyle(
                           fontWeight: FontWeight.w800, fontSize: 20),
                     ),
@@ -1303,6 +1320,44 @@ class _LiveBulkBuySheetState extends State<_LiveBulkBuySheet> {
                       color: TWColors.warn,
                       fontSize: 12,
                       fontWeight: FontWeight.w600),
+                ),
+              ],
+              if (widget.count > 1) ...[
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'How many to buy',
+                        style: TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    Text(
+                      _topN >= widget.count ? 'All ${widget.count}' : 'Top $_topN',
+                      key: const Key('live_bulk_topn_label'),
+                      style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: TWColors.accentBright),
+                    ),
+                  ],
+                ),
+                Slider(
+                  key: const Key('live_bulk_topn_slider'),
+                  min: 1,
+                  max: widget.count.toDouble(),
+                  divisions: widget.count - 1,
+                  value: _topN.toDouble(),
+                  label: '$_topN',
+                  activeColor: TWColors.accent,
+                  onChanged: (v) => setState(() => _topN = v.round()),
+                ),
+                Text(
+                  'Slide right for more. Buys the top $_topN highest-ranked '
+                  '${_topN == 1 ? 'match' : 'matches'} from the current list.',
+                  style: const TextStyle(
+                      color: TWColors.textTertiary, fontSize: 12),
                 ),
               ],
               const SizedBox(height: 16),
@@ -1402,7 +1457,9 @@ class _LiveBulkBuySheetState extends State<_LiveBulkBuySheet> {
                           Navigator.of(context).pop(cfg);
                         }
                       : null,
-                  child: Text('Buy all ${widget.count} · LIVE'),
+                  child: Text(_topN >= widget.count
+                      ? 'Buy all ${widget.count} · LIVE'
+                      : 'Buy top $_topN · LIVE'),
                 ),
               ),
             ],
