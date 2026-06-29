@@ -753,6 +753,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('moomoo_trim_slider')), findsOneWidget);
 
+    // Total profit captured = INTC +35.0 + MSFT +2.0 = +$37.00.
+    expect(
+        find.byKey(const Key('moomoo_trim_total_gain')), findsOneWidget);
+    expect(find.textContaining('Total profit +\$37.00'), findsOneWidget);
+
     // Execute -> LIVE confirm -> Sell now.
     await tester.tap(find.byKey(const Key('moomoo_trim_execute')));
     await tester.pumpAndSettle();

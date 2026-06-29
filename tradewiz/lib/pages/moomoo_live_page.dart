@@ -491,11 +491,29 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                           .copyWith(color: TWColors.textTertiary),
                     )
                   else ...[
-                    Text(
-                      'Will sell ${candidates.length}:',
-                      style: TWType.caption
-                          .copyWith(color: TWColors.textSecondary),
-                    ),
+                    // Total unrealized profit captured if every qualifying
+                    // position is sold now (sum of each winner's P/L value).
+                    Builder(builder: (_) {
+                      final totalGain = candidates.fold<double>(
+                          0, (s, p) => s + p.plVal);
+                      return Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Will sell ${candidates.length}:',
+                              style: TWType.caption.copyWith(
+                                  color: TWColors.textSecondary),
+                            ),
+                          ),
+                          Text(
+                            'Total profit +${_money(totalGain, currency)}',
+                            key: const Key('moomoo_trim_total_gain'),
+                            style: TWType.caption.copyWith(
+                                color: TWColors.up),
+                          ),
+                        ],
+                      );
+                    }),
                     const SizedBox(height: TWSpace.xs),
                     ConstrainedBox(
                       constraints: const BoxConstraints(maxHeight: 180),
