@@ -28,6 +28,8 @@ from .models import (
     MoomooEquityPoint,
     MoomooManagerReport,
     MoomooOrderPreview,
+    MoomooOpenOrderList,
+    MoomooOpenOrderModel,
     MoomooOrderRequest,
     MoomooOrderResultModel,
     MoomooPositionList,
@@ -152,6 +154,33 @@ def moomoo_positions(
                 last_price=p.last_price, pl_val=p.pl_val, pl_ratio=p.pl_ratio,
             )
             for p in ps
+        ]
+    )
+
+
+@router.get("/orders", response_model=MoomooOpenOrderList)
+def moomoo_open_orders(
+    authorization: Optional[str] = Header(default=None),
+    x_moomoo_secret: Optional[str] = Header(default=None),
+) -> MoomooOpenOrderList:
+    """Still-working (pending / partially filled) orders for the live account.
+
+    Surfaced so the app can flag Rebalancing AI rows that already have an
+    order in flight (e.g. submitted while the market is closed).
+    """
+    _require_owner(authorization, x_moomoo_secret)
+    try:
+        orders = get_service().open_orders()
+    except MoomooError as exc:
+        raise _handle(exc)
+    return MoomooOpenOrderList(
+        orders=[
+            MoomooOpenOrderModel(
+                order_id=o.order_id, code=o.code, symbol=o.symbol,
+                side=o.side, quantity=o.qty, filled_quantity=o.filled_qty,
+                price=o.price, status=o.status,
+            )
+            for o in orders
         ]
     )
 

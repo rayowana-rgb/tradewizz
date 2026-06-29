@@ -45,6 +45,22 @@ class MoomooPositionList(BaseModel):
     live: bool = True
 
 
+class MoomooOpenOrderModel(BaseModel):
+    order_id: str
+    code: str
+    symbol: str
+    side: str  # BUY | SELL
+    quantity: float
+    filled_quantity: float = 0.0
+    price: float = 0.0
+    status: str = ""
+
+
+class MoomooOpenOrderList(BaseModel):
+    orders: List[MoomooOpenOrderModel]
+    live: bool = True
+
+
 class MoomooOrderRequest(BaseModel):
     symbol: str
     side: str  # BUY | SELL

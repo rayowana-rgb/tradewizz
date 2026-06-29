@@ -60,6 +60,15 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
   PortfolioHealth? _health;
   RebalanceReport? _rebalance;
   List<MoomooLiveEquityPoint> _equity = const [];
+  // Still-working (pending / partially filled) orders, keyed for quick lookup
+  // by symbol so Rebalancing AI rows can flag a position that already has an
+  // order in flight (e.g. submitted while the market was closed).
+  List<MoomooLiveOpenOrder> _openOrders = const [];
+  // When true, Rebalancing AI rows that already have a pending order in flight
+  // are hidden so they don't keep nagging after execution. Persisted.
+  static const String _kHidePendingRebPref =
+      'tradewizz.moomoo.hidePendingReb';
+  bool _hidePendingReb = false;
 
   /// Whether the positions list is collapsed. Persisted across launches via
   /// SharedPreferences (key [_kHidePositionsPref]).
@@ -138,6 +147,7 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
       _hideManager = prefs.getBool(_kHideManagerPref) ?? false;
       _hideHealth = prefs.getBool(_kHideHealthPref) ?? false;
       _hideRebalance = prefs.getBool(_kHideRebalancePref) ?? false;
+      _hidePendingReb = prefs.getBool(_kHidePendingRebPref) ?? false;
       _posSort = prefs.getString(_kPosSortPref) ?? 'default';
       _trimThreshold = prefs.getDouble(_kTrimThresholdPref) ?? 0.0;
       _trimDollar = prefs.getDouble(_kTrimDollarPref) ?? 0.0;
@@ -227,6 +237,15 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
         /* keep account + positions */
       }
       try {
+        final orders = await widget.repository.moomooOpenOrders(
+          token: token,
+          secret: secret,
+        );
+        if (mounted) setState(() => _openOrders = orders);
+      } catch (_) {
+        /* keep account + positions; pending flags simply won't show */
+      }
+      try {
         final eq = await widget.repository.moomooAccountHistory(
           token: token,
           secret: secret,
@@ -311,6 +330,7 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
         setState(() {
           _account = null;
           _positions = const [];
+          _openOrders = const [];
           _error = null;
         });
       }
@@ -1021,7 +1041,16 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
     // Only show actions for symbols still held (client-side safety net).
     final held = _positions.map((p) => '${p.symbol}@US').toSet();
     final report = r.reconciledWith(held);
-    final acted = report.actions.where((a) => a.action != 'HOLD').toList();
+    final allActed = report.actions.where((a) => a.action != 'HOLD').toList();
+    // Rows whose implied side already has a pending order in flight.
+    bool isPending(RebalanceAction a) =>
+        _pendingOrderFor(a.symbol, _rebSide(a)) != null;
+    final pendingCount = allActed.where(isPending).length;
+    // Optionally filter out rows the user has already executed (pending), so
+    // they stop nagging after the order is queued.
+    final acted = _hidePendingReb
+        ? allActed.where((a) => !isPending(a)).toList()
+        : allActed;
     return Column(
       key: const Key('moomoo_rebalance_card'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1061,10 +1090,44 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
           const SizedBox(height: TWSpace.sm),
           Text(report.summary, style: TWType.caption),
         ],
+        // Pending-order filter: when any action already has an order in
+        // flight, offer to hide those rows so they stop nagging.
+        if (pendingCount > 0 && !_hideRebalance) ...[
+          const SizedBox(height: TWSpace.sm),
+          Row(
+            children: [
+              const Icon(Icons.hourglass_top,
+                  size: 14, color: TWColors.warn),
+              const SizedBox(width: TWSpace.xs),
+              Expanded(
+                child: Text(
+                  '$pendingCount action(s) already have a pending order '
+                  '(waiting to fill).',
+                  style: TWType.caption
+                      .copyWith(color: TWColors.textSecondary),
+                ),
+              ),
+              GestureDetector(
+                key: const Key('moomoo_reb_hide_pending'),
+                onTap: () => _toggleHide(
+                  _kHidePendingRebPref,
+                  _hidePendingReb,
+                  (v) => _hidePendingReb = v,
+                ),
+                child: Text(
+                  _hidePendingReb ? 'Show pending' : 'Hide pending',
+                  style: TWType.caption.copyWith(color: TWColors.accentBright),
+                ),
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: TWSpace.md),
         if (acted.isEmpty)
           Text(
-            'No rebalancing actions — portfolio looks balanced.',
+            pendingCount > 0 && _hidePendingReb
+                ? 'All actions have pending orders — waiting to fill.'
+                : 'No rebalancing actions — portfolio looks balanced.',
             style: TWType.caption,
           )
         else if (_hideRebalance)
@@ -1095,6 +1158,11 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
     final rebBuyOpen = _rebBuyExpanded == a.symbol;
     // Tap target side: ADD -> BUY, REDUCE/EXIT -> SELL, else default BUY.
     final tapSide = a.action.toUpperCase() == 'ADD' ? 'BUY' : 'SELL';
+    // A still-working order for this row's implied side (e.g. an ADD/EXIT the
+    // user already submitted while the market was closed). When present we
+    // flag the row and disable that side's button to prevent double-submits.
+    final pending = _pendingOrderFor(a.symbol, tapSide);
+    final isPending = pending != null;
     return Padding(
       key: Key('moomoo_reb_${a.symbol}'),
       padding: const EdgeInsets.symmetric(vertical: TWSpace.sm),
@@ -1154,6 +1222,23 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                       ],
                     ),
                   ),
+                  if (isPending)
+                    Container(
+                      key: Key('moomoo_reb_pending_${a.symbol}'),
+                      margin: const EdgeInsets.only(right: TWSpace.xs),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: TWSpace.sm,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: TWColors.warn.withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(TWRadius.chip),
+                      ),
+                      child: Text(
+                        'Pending',
+                        style: TWType.overline.copyWith(color: TWColors.warn),
+                      ),
+                    ),
                   const Icon(
                     Icons.chevron_right,
                     size: 18,
@@ -1179,11 +1264,16 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                     ),
                     padding: const EdgeInsets.symmetric(vertical: TWSpace.sm),
                   ),
-                  onPressed: () => setState(() {
-                    _rebBuyExpanded = rebBuyOpen ? null : a.symbol;
-                    _rebSellExpanded = null;
-                  }),
-                  child: const Text('Buy', style: TWType.label),
+                  onPressed: (isPending && tapSide == 'BUY')
+                      ? null
+                      : () => setState(() {
+                          _rebBuyExpanded = rebBuyOpen ? null : a.symbol;
+                          _rebSellExpanded = null;
+                        }),
+                  child: Text(
+                    (isPending && tapSide == 'BUY') ? 'Buy · Pending' : 'Buy',
+                    style: TWType.label,
+                  ),
                 ),
               ),
               const SizedBox(width: TWSpace.sm),
@@ -1198,13 +1288,20 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                     ),
                     padding: const EdgeInsets.symmetric(vertical: TWSpace.sm),
                   ),
-                  onPressed: canSell > 0
-                      ? () => setState(() {
-                          _rebSellExpanded = rebSellOpen ? null : a.symbol;
-                          _rebBuyExpanded = null;
-                        })
-                      : () => _openTicket(a.symbol, 'SELL'),
-                  child: const Text('Sell', style: TWType.label),
+                  onPressed: (isPending && tapSide == 'SELL')
+                      ? null
+                      : canSell > 0
+                          ? () => setState(() {
+                              _rebSellExpanded = rebSellOpen ? null : a.symbol;
+                              _rebBuyExpanded = null;
+                            })
+                          : () => _openTicket(a.symbol, 'SELL'),
+                  child: Text(
+                    (isPending && tapSide == 'SELL')
+                        ? 'Sell · Pending'
+                        : 'Sell',
+                    style: TWType.label,
+                  ),
                 ),
               ),
             ],
@@ -1245,6 +1342,22 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
     }
     return null;
   }
+
+  /// A still-working order for [symbol] on the side this rebalance action
+  /// implies (ADD -> BUY, REDUCE/EXIT -> SELL), or null if none is in flight.
+  /// Used to flag rows the user has already executed but that are pending
+  /// (e.g. submitted while the market was closed).
+  MoomooLiveOpenOrder? _pendingOrderFor(String symbol, String side) {
+    final want = side.toUpperCase();
+    for (final o in _openOrders) {
+      if (o.symbol == symbol && o.side == want) return o;
+    }
+    return null;
+  }
+
+  // The side a rebalance action implies: ADD -> BUY, REDUCE/EXIT -> SELL.
+  String _rebSide(RebalanceAction a) =>
+      a.action.toUpperCase() == 'ADD' ? 'BUY' : 'SELL';
 
   // Flat section (no card box): Stockbits-style header + hairline rows,
   // matching Home. Replaces the boxed Portfolio Manager card.

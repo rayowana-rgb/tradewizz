@@ -83,6 +83,43 @@ class MoomooLivePosition {
       );
 }
 
+/// A still-working (pending / partially filled) live order. Used to flag
+/// Rebalancing AI rows that already have an order in flight so the user is not
+/// told to ADD/EXIT/REDUCE something they have already executed.
+class MoomooLiveOpenOrder {
+  const MoomooLiveOpenOrder({
+    this.orderId = '',
+    this.code = '',
+    this.symbol = '',
+    this.side = 'BUY',
+    this.quantity = 0,
+    this.filledQuantity = 0,
+    this.price = 0,
+    this.status = '',
+  });
+
+  final String orderId;
+  final String code;
+  final String symbol;
+  final String side; // BUY | SELL
+  final double quantity;
+  final double filledQuantity;
+  final double price;
+  final String status;
+
+  factory MoomooLiveOpenOrder.fromJson(Map<String, dynamic> j) =>
+      MoomooLiveOpenOrder(
+        orderId: j['order_id'] as String? ?? '',
+        code: j['code'] as String? ?? '',
+        symbol: j['symbol'] as String? ?? '',
+        side: (j['side'] as String? ?? 'BUY').toUpperCase(),
+        quantity: (j['quantity'] as num?)?.toDouble() ?? 0,
+        filledQuantity: (j['filled_quantity'] as num?)?.toDouble() ?? 0,
+        price: (j['price'] as num?)?.toDouble() ?? 0,
+        status: j['status'] as String? ?? '',
+      );
+}
+
 class MoomooLivePreview {
   const MoomooLivePreview({
     this.code = '',

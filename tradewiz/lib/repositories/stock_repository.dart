@@ -352,6 +352,19 @@ class StockRepository {
         .toList();
   }
 
+  /// Live still-working (pending / partially filled) orders.
+  /// Backs `GET /v1/broker/moomoo/orders`.
+  Future<List<MoomooLiveOpenOrder>> moomooOpenOrders({
+    required String token,
+    required String secret,
+  }) async {
+    final j = await _client.moomooGet('/broker/moomoo/orders',
+        bearer: token, secret: secret);
+    return (j['orders'] as List<dynamic>? ?? [])
+        .map((e) => MoomooLiveOpenOrder.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   /// Preview a live order (validates + notional cap; does NOT place).
   /// Backs `POST /v1/broker/moomoo/order/preview`.
   Future<MoomooLivePreview> moomooPreview({

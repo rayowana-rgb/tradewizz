@@ -96,6 +96,16 @@ class FakeMoomooService:
     def cancel(self, order_id):
         return {"order_id": order_id, "status": "CANCELLED", "live": True}
 
+    def open_orders(self):
+        from app.moomoo.service import MoomooOpenOrder
+        return [
+            MoomooOpenOrder(
+                order_id="OID-1", code="US.INTC", symbol="INTC",
+                side="BUY", qty=1.0, filled_qty=0.0, price=0.0,
+                status="SUBMITTED",
+            ),
+        ]
+
     def manager_report(self):
         return {
             "risk_level": "MODERATE",
@@ -190,6 +200,24 @@ def test_account_and_positions(client):
     assert p.status_code == 200
     syms = {x["symbol"] for x in p.json()["positions"]}
     assert {"INTC", "ARM"} <= syms
+
+
+def test_open_orders_returns_pending(client):
+    r = client.get("/v1/broker/moomoo/orders", headers=client._owner)
+    assert r.status_code == 200, r.text
+    orders = r.json()["orders"]
+    assert len(orders) == 1
+    o = orders[0]
+    assert o["symbol"] == "INTC"
+    assert o["side"] == "BUY"
+    assert o["status"] == "SUBMITTED"
+    assert r.json()["live"] is True
+
+
+def test_open_orders_requires_owner(client, monkeypatch):
+    monkeypatch.setenv("TRADEWIZZ_MOOMOO_OWNER_UIDS", "999999")
+    r = client.get("/v1/broker/moomoo/orders", headers=client._owner)
+    assert r.status_code in (401, 403)
 
 
 def test_preview_does_not_place(client, fake_svc):

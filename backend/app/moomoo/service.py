@@ -102,6 +102,25 @@ class MoomooOrderResult:
     live: bool
 
 
+@dataclass
+class MoomooOpenOrder:
+    """A still-working (not yet fully filled / terminal) order.
+
+    Used to flag Rebalancing AI rows that already have a pending order so the
+    user is not told to ADD/EXIT/REDUCE something they have already executed
+    (e.g. an order submitted while the market is closed, waiting to fill).
+    """
+
+    order_id: str
+    code: str
+    symbol: str
+    side: str  # 'BUY' or 'SELL'
+    qty: float
+    filled_qty: float
+    price: float
+    status: str
+
+
 class MoomooService:
     """Thin, thread-safe wrapper around a single OpenSecTradeContext."""
 
@@ -266,6 +285,61 @@ class MoomooService:
                     last_price=_f("nominal_price"),
                     pl_val=_f("pl_val"),
                     pl_ratio=pl_ratio,
+                )
+            )
+        return out
+
+    def open_orders(self) -> List[MoomooOpenOrder]:
+        """Return still-working orders (submitted / partially filled, etc.).
+
+        These are orders that have NOT reached a terminal state — most
+        importantly orders placed while the market is closed that are queued to
+        fill at the next session. They are surfaced so Rebalancing AI can mark
+        rows that already have a pending order in flight.
+        """
+        from moomoo import TrdEnv, OrderStatus  # type: ignore
+
+        # "Working" = not yet terminal. Anything filled/cancelled/failed is
+        # excluded so we only flag orders that still affect the position once
+        # the market reopens.
+        working = [
+            OrderStatus.SUBMITTING,
+            OrderStatus.SUBMITTED,
+            OrderStatus.WAITING_SUBMIT,
+            OrderStatus.FILLED_PART,
+        ]
+        with self._lock:
+            ctx = self._ctx_obj()
+            ret, data = ctx.order_list_query(
+                status_filter_list=working,
+                trd_env=TrdEnv.REAL,
+                acc_id=_env_acc_id(),
+            )
+            data = self._check_ok(ret, data)
+        out: List[MoomooOpenOrder] = []
+        for _, r in data.iterrows():
+            code = str(r.get("code", ""))
+            sym = code.split(".", 1)[1] if "." in code else code
+
+            def _f(col: str) -> float:
+                try:
+                    v = r.get(col)
+                    return float(v) if v not in (None, "N/A") else 0.0
+                except Exception:
+                    return 0.0
+
+            raw_dir = str(r.get("trd_side", "") or "").upper()
+            side = "SELL" if "SELL" in raw_dir else "BUY"
+            out.append(
+                MoomooOpenOrder(
+                    order_id=str(r.get("order_id", "") or ""),
+                    code=code,
+                    symbol=sym,
+                    side=side,
+                    qty=_f("qty"),
+                    filled_qty=_f("dealt_qty"),
+                    price=_f("price"),
+                    status=str(r.get("order_status", "") or ""),
                 )
             )
         return out

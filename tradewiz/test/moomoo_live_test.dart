@@ -417,6 +417,111 @@ void main() {
     expect(find.text('SELL'), findsWidgets);
   });
 
+  testWidgets('rebalance row with a pending order shows a Pending badge and '
+      'can be filtered out', (tester) async {
+    tester.view.physicalSize = const Size(1200, 3200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final auth = await _auth(kMoomooOwnerUid);
+    final repo = _repoWith(MockClient((req) async {
+      final path = req.url.path;
+      if (path.endsWith('/broker/moomoo/account')) {
+        return http.Response(
+          jsonEncode({
+            'total_assets': 5000.0,
+            'cash': 4000.0,
+            'buying_power': 4800.0,
+            'market_value': 1000.0,
+            'currency': 'USD',
+          }),
+          200,
+        );
+      }
+      if (path.endsWith('/broker/moomoo/positions')) {
+        return http.Response(
+          jsonEncode({
+            'positions': [
+              {
+                'code': 'US.INTC',
+                'symbol': 'INTC',
+                'quantity': 10.0,
+                'can_sell_qty': 10.0,
+                'cost_price': 30.0,
+                'last_price': 33.5,
+                'pl_val': 35.0,
+                'pl_ratio': 0.1167,
+              },
+            ],
+          }),
+          200,
+        );
+      }
+      // A still-working SELL order for INTC (e.g. submitted while closed).
+      if (path.endsWith('/broker/moomoo/orders')) {
+        return http.Response(
+          jsonEncode({
+            'orders': [
+              {
+                'order_id': 'OID-1',
+                'code': 'US.INTC',
+                'symbol': 'INTC',
+                'side': 'SELL',
+                'quantity': 10.0,
+                'filled_quantity': 0.0,
+                'price': 0.0,
+                'status': 'SUBMITTED',
+              },
+            ],
+          }),
+          200,
+        );
+      }
+      if (path.contains('/broker/moomoo/rebalance')) {
+        return http.Response(
+          jsonEncode({
+            'profile': 'Balanced',
+            'portfolio_score': 80.0,
+            'summary': 'Trim the overweight name.',
+            'actions': [
+              {
+                'symbol': 'INTC',
+                'market': 'US',
+                'action': 'REDUCE',
+                'reason': 'Overweight vs target.',
+                'current_weight': 20.0,
+                'target_weight': 10.0,
+              },
+            ],
+          }),
+          200,
+        );
+      }
+      if (path.contains('/broker/moomoo/manager') ||
+          path.contains('/broker/moomoo/health')) {
+        return http.Response('{"detail":"nope"}', 404);
+      }
+      return http.Response('{}', 200);
+    }));
+    final store = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await tester.pumpWidget(_wrap(
+        MoomooLivePage(repository: repo, secretStore: store), auth, repo));
+    await tester.pumpAndSettle();
+
+    // The REDUCE row shows a Pending badge; the matching (Sell) button is
+    // disabled to prevent a double-submit.
+    expect(find.byKey(const Key('moomoo_reb_pending_INTC')), findsOneWidget);
+    final sellBtn = tester.widget<OutlinedButton>(
+        find.byKey(const Key('moomoo_reb_sell_INTC')));
+    expect(sellBtn.onPressed, isNull);
+
+    // The filter hides the pending row entirely.
+    expect(find.byKey(const Key('moomoo_reb_INTC')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('moomoo_reb_hide_pending')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('moomoo_reb_INTC')), findsNothing);
+  });
+
   testWidgets('hide positions toggle hides tiles and persists',
       (tester) async {
     final auth = await _auth(kMoomooOwnerUid);
