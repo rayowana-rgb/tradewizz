@@ -481,17 +481,57 @@ class _ScreenerPageState extends State<ScreenerPage> {
       );
       return;
     }
+
+    // Skip stocks already held: fetch live positions and drop any match whose
+    // symbol is currently held (quantity > 0) so a "Buy all" never doubles up
+    // on a name the user already owns. A fetch failure must not block the run
+    // (we just proceed without skipping rather than spending nothing).
+    final repo = widget.repository ?? RepositoryScope.of(context);
+    var heldSymbols = <String>{};
+    try {
+      final positions = await repo.moomooPositions(
+        token: token,
+        secret: secret,
+      );
+      heldSymbols = positions
+          .where((p) => p.quantity > 0)
+          .map((p) => p.symbol.toUpperCase())
+          .toSet();
+    } catch (_) {
+      /* proceed without held-skip on a positions fetch failure */
+    }
+    if (!mounted) return;
+
+    final buyable = heldSymbols.isEmpty
+        ? matches
+        : matches
+            .where((m) => !heldSymbols.contains(m.symbol.toUpperCase()))
+            .toList();
+    final alreadyHeld = matches.length - buyable.length;
+
+    if (buyable.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(alreadyHeld == 1
+              ? 'Nothing to buy: the only match is already held.'
+              : 'Nothing to buy: all $alreadyHeld matches are already held.'),
+        ),
+      );
+      return;
+    }
+
     final config = await showModalBottomSheet<_LiveBulkBuyConfig>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
       builder: (_) => _LiveBulkBuySheet(
         market: _market,
-        count: matches.length,
+        count: buyable.length,
+        alreadyHeld: alreadyHeld,
       ),
     );
     if (!mounted || config == null) return;
-    await _runLiveBulkBuy(matches, config, token, secret);
+    await _runLiveBulkBuy(buyable, config, token, secret);
   }
 
   /// Place a REAL Moomoo LIVE MARKET BUY for each match sequentially. Backend
@@ -1167,9 +1207,15 @@ class _LiveBulkBuyConfig {
 /// order spends real money. MARKET orders only; the backend enforces the
 /// per-order notional cap and kill-switch.
 class _LiveBulkBuySheet extends StatefulWidget {
-  const _LiveBulkBuySheet({required this.market, required this.count});
+  const _LiveBulkBuySheet({
+    required this.market,
+    required this.count,
+    this.alreadyHeld = 0,
+  });
   final Market market;
   final int count;
+  // Number of matches dropped from this run because they are already held.
+  final int alreadyHeld;
 
   @override
   State<_LiveBulkBuySheet> createState() => _LiveBulkBuySheetState();
@@ -1245,6 +1291,20 @@ class _LiveBulkBuySheetState extends State<_LiveBulkBuySheet> {
                 style: const TextStyle(
                     color: TWColors.textTertiary, fontSize: 12),
               ),
+              if (widget.alreadyHeld > 0) ...[
+                const SizedBox(height: 8),
+                Text(
+                  widget.alreadyHeld == 1
+                      ? '1 match is already held and was skipped.'
+                      : '${widget.alreadyHeld} matches are already held and '
+                          'were skipped.',
+                  key: const Key('live_bulk_already_held'),
+                  style: const TextStyle(
+                      color: TWColors.warn,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600),
+                ),
+              ],
               const SizedBox(height: 16),
               SegmentedButton<_LiveBulkSizing>(
                 key: const Key('live_bulk_sizing_toggle'),
