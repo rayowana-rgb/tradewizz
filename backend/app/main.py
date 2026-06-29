@@ -351,10 +351,14 @@ def _snapshot_regime(market):
     if index:
         from .radar.service import _regime_from_breadth
         return _regime_from_breadth(list(index.values()))
-    try:
-        return _radar_service.market_regime(market)
-    except Exception:  # noqa: BLE001
-        return "neutral"
+    # No snapshot yet (e.g. cold start, or right after a backend restart while
+    # the market is closed and the warmer hasn't rebuilt the screener snapshot).
+    # NEVER fall back to the radar here: its market_regime() runs a full
+    # universe screen which, on a cold US universe, scans ~12k symbols and
+    # blocks the Rebalance request past the app timeout -- making the
+    # Rebalancing AI card silently disappear. A neutral regime is the safe,
+    # non-blocking default; breadth refines it once the snapshot exists.
+    return "neutral"
 
 
 def _symbol_score(symbol, market):
