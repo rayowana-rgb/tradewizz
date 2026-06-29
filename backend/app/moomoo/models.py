@@ -103,6 +103,41 @@ class MoomooCancelResult(BaseModel):
     live: bool = True
 
 
+class MoomooBracketRequest(BaseModel):
+    """Attach a server-managed stop-loss / take-profit to a position."""
+
+    symbol: str
+    quantity: float
+    # Price the levels are derived from (typically the fill / cost price).
+    reference_price: float
+    # Negative for the stop (below entry), positive for the target. Defaults
+    # implement the tight-stop swing plan: -1% stop / +3% target (R:R 1:3).
+    stop_pct: float = -1.0
+    target_pct: float = 3.0
+
+
+class MoomooBracketModel(BaseModel):
+    symbol: str
+    quantity: float
+    reference_price: float
+    stop_pct: float
+    target_pct: float
+    stop_price: float
+    target_price: float
+    status: str
+    created_ts: int = 0
+    updated_ts: int = 0
+    triggered_ts: Optional[int] = None
+    triggered_price: Optional[float] = None
+    order_id: Optional[str] = None
+    note: str = ""
+
+
+class MoomooBracketList(BaseModel):
+    brackets: List[MoomooBracketModel] = []
+    live: bool = True
+
+
 class MoomooManagerRec(BaseModel):
     kind: str
     severity: str

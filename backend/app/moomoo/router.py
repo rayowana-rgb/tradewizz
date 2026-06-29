@@ -23,6 +23,9 @@ from ..auth.router import get_service as get_auth_service
 from ..auth.service import AuthError
 from .models import (
     MoomooAccountModel,
+    MoomooBracketList,
+    MoomooBracketModel,
+    MoomooBracketRequest,
     MoomooCancelResult,
     MoomooEquityHistory,
     MoomooEquityPoint,
@@ -38,6 +41,7 @@ from .models import (
 from ..portfolio_health.models import PortfolioHealth
 from ..rebalance.models import RebalanceResponse
 from .service import MoomooError, MoomooService
+from .sltp import Bracket, SLTPMonitor, SLTPStore
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +49,7 @@ router = APIRouter(prefix="/v1/broker/moomoo", tags=["moomoo-private"])
 
 _service: Optional[MoomooService] = None
 _analytics = None  # MoomooAnalytics; injected from main once health/score ready.
+_sltp_monitor: Optional[SLTPMonitor] = None  # server-managed SL/TP brackets.
 
 
 def set_service(service: MoomooService) -> None:
@@ -70,6 +75,26 @@ def _get_analytics():
             status_code=503, detail="Moomoo analytics not ready."
         )
     return _analytics
+
+
+def get_sltp_monitor() -> SLTPMonitor:
+    """Lazily build the server-managed SL/TP monitor over the live service."""
+    global _sltp_monitor
+    if _sltp_monitor is None:
+        _sltp_monitor = SLTPMonitor(get_service(), SLTPStore())
+    return _sltp_monitor
+
+
+def _bracket_model(b: Bracket) -> MoomooBracketModel:
+    return MoomooBracketModel(
+        symbol=b.symbol, quantity=b.qty,
+        reference_price=b.reference_price,
+        stop_pct=b.stop_pct, target_pct=b.target_pct,
+        stop_price=b.stop_price, target_price=b.target_price,
+        status=b.status, created_ts=b.created_ts, updated_ts=b.updated_ts,
+        triggered_ts=b.triggered_ts, triggered_price=b.triggered_price,
+        order_id=b.order_id, note=b.note,
+    )
 
 
 def _owner_uids() -> set[int]:
@@ -268,6 +293,83 @@ def moomoo_place(
     return MoomooOrderResultModel(
         order_id=r.order_id, code=r.code, side=r.side, order_type=r.order_type,
         quantity=r.qty, price=r.price, status=r.status, live=True,
+    )
+
+
+# -- server-managed stop-loss / take-profit ("bracket") -------------------- #
+@router.get("/brackets", response_model=MoomooBracketList)
+def moomoo_brackets(
+    authorization: Optional[str] = Header(default=None),
+    x_moomoo_secret: Optional[str] = Header(default=None),
+) -> MoomooBracketList:
+    """All server-managed SL/TP brackets (active first, then history)."""
+    _require_owner(authorization, x_moomoo_secret)
+    items = get_sltp_monitor().store.list()
+    return MoomooBracketList(
+        brackets=[_bracket_model(b) for b in items]
+    )
+
+
+@router.post("/brackets", response_model=MoomooBracketModel)
+def moomoo_attach_bracket(
+    req: MoomooBracketRequest,
+    authorization: Optional[str] = Header(default=None),
+    x_moomoo_secret: Optional[str] = Header(default=None),
+) -> MoomooBracketModel:
+    """Attach (or replace) a -stop% / +target% bracket on a position.
+
+    The monitor polls live prices and submits a MARKET sell when a level is
+    touched (OCO is implicit: firing one leg retires the bracket).
+    """
+    uid = _require_owner(authorization, x_moomoo_secret)
+    try:
+        b = get_sltp_monitor().store.attach(
+            req.symbol, req.quantity, req.reference_price,
+            stop_pct=req.stop_pct, target_pct=req.target_pct,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    logger.warning(
+        "MOOMOO SLTP bracket attached by uid=%s: %s qty=%s ref=%s "
+        "stop=%s%% target=%s%%",
+        uid, b.symbol, b.qty, b.reference_price, b.stop_pct, b.target_pct,
+    )
+    return _bracket_model(b)
+
+
+@router.delete("/brackets/{symbol}", response_model=MoomooBracketModel)
+def moomoo_cancel_bracket(
+    symbol: str,
+    authorization: Optional[str] = Header(default=None),
+    x_moomoo_secret: Optional[str] = Header(default=None),
+) -> MoomooBracketModel:
+    _require_owner(authorization, x_moomoo_secret)
+    b = get_sltp_monitor().store.cancel(symbol)
+    if b is None:
+        raise HTTPException(
+            status_code=404, detail="No active bracket for that symbol."
+        )
+    return _bracket_model(b)
+
+
+@router.post("/brackets/check", response_model=MoomooBracketList)
+def moomoo_check_brackets(
+    authorization: Optional[str] = Header(default=None),
+    x_moomoo_secret: Optional[str] = Header(default=None),
+) -> MoomooBracketList:
+    """Run one monitor tick on demand and return the current brackets.
+
+    The monitor also runs automatically from the background warmer loop; this
+    endpoint lets the app force an immediate evaluation (e.g. on app open).
+    """
+    _require_owner(authorization, x_moomoo_secret)
+    mon = get_sltp_monitor()
+    try:
+        mon.tick()
+    except Exception:  # noqa: BLE001 - tick is already defensive
+        pass
+    return MoomooBracketList(
+        brackets=[_bracket_model(b) for b in mon.store.list()]
     )
 
 

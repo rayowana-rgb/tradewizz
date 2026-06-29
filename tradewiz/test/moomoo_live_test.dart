@@ -1228,6 +1228,140 @@ void main() {
     expect(find.textContaining('+\$200.00'), findsOneWidget);
     expect(find.textContaining('4.00%'), findsOneWidget);
   });
+
+  testWidgets('position tile attaches a -1% / +3% SL-TP bracket',
+      (tester) async {
+    final auth = await _auth(kMoomooOwnerUid);
+    final posted = <Map<String, dynamic>>[];
+    // Positions fixture (INTC, cost 30) + record the bracket POST body.
+    final repo = _repoWith(MockClient((req) async {
+      final p = req.url.path;
+      if (p.endsWith('/broker/moomoo/account')) {
+        return http.Response(jsonEncode({
+          'total_assets': 5000.0, 'cash': 4000.0, 'buying_power': 4800.0,
+          'market_value': 1000.0, 'currency': 'USD',
+        }), 200);
+      }
+      if (p.endsWith('/broker/moomoo/positions')) {
+        return http.Response(jsonEncode({
+          'positions': [
+            {
+              'code': 'US.INTC', 'symbol': 'INTC', 'quantity': 10.0,
+              'can_sell_qty': 10.0, 'cost_price': 30.0, 'last_price': 33.5,
+              'pl_val': 35.0, 'pl_ratio': 0.1167,
+            },
+          ],
+        }), 200);
+      }
+      if (p.contains('/broker/moomoo/manager') ||
+          p.contains('/broker/moomoo/health') ||
+          p.contains('/broker/moomoo/rebalance')) {
+        return http.Response('{"detail":"nope"}', 404);
+      }
+      // No active brackets on load.
+      if (p.endsWith('/broker/moomoo/brackets/check')) {
+        return http.Response(jsonEncode({'brackets': []}), 200);
+      }
+      // Attach: echo a computed bracket back (cost 30 -> 29.7 / 30.9).
+      if (p.endsWith('/broker/moomoo/brackets') && req.method == 'POST') {
+        posted.add(jsonDecode(req.body) as Map<String, dynamic>);
+        return http.Response(jsonEncode({
+          'symbol': 'INTC', 'quantity': 10.0, 'reference_price': 30.0,
+          'stop_pct': -1.0, 'target_pct': 3.0,
+          'stop_price': 29.7, 'target_price': 30.9, 'status': 'ACTIVE',
+        }), 200);
+      }
+      return http.Response('{}', 200);
+    }));
+    final store = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await tester.pumpWidget(_wrap(
+        MoomooLivePage(repository: repo, secretStore: store), auth, repo));
+    await tester.pumpAndSettle();
+
+    // No bracket yet -> the Protect action is offered.
+    final addKey = const Key('moomoo_sltp_add_INTC');
+    expect(find.byKey(addKey), findsOneWidget);
+    await tester.tap(find.byKey(addKey));
+    await tester.pumpAndSettle();
+
+    // Confirm the dialog -> POST /brackets fires with the cost as reference.
+    await tester.tap(find.byKey(const Key('moomoo_sltp_confirm')));
+    await tester.pumpAndSettle();
+    expect(posted, hasLength(1));
+    expect(posted.first['symbol'], 'INTC');
+    expect(posted.first['reference_price'], 30.0);
+    expect(posted.first['stop_pct'], -1.0);
+    expect(posted.first['target_pct'], 3.0);
+
+    // The tile now shows the active bracket (and a Remove action).
+    expect(find.byKey(const Key('moomoo_sltp_active_INTC')), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_sltp_cancel_INTC')), findsOneWidget);
+  });
+
+  testWidgets('an active bracket shows on load and can be removed',
+      (tester) async {
+    final auth = await _auth(kMoomooOwnerUid);
+    var cancelled = false;
+    final repo = _repoWith(MockClient((req) async {
+      final p = req.url.path;
+      if (p.endsWith('/broker/moomoo/account')) {
+        return http.Response(jsonEncode({
+          'total_assets': 5000.0, 'cash': 4000.0, 'buying_power': 4800.0,
+          'market_value': 1000.0, 'currency': 'USD',
+        }), 200);
+      }
+      if (p.endsWith('/broker/moomoo/positions')) {
+        return http.Response(jsonEncode({
+          'positions': [
+            {
+              'code': 'US.INTC', 'symbol': 'INTC', 'quantity': 10.0,
+              'can_sell_qty': 10.0, 'cost_price': 30.0, 'last_price': 33.5,
+              'pl_val': 35.0, 'pl_ratio': 0.1167,
+            },
+          ],
+        }), 200);
+      }
+      if (p.contains('/broker/moomoo/manager') ||
+          p.contains('/broker/moomoo/health') ||
+          p.contains('/broker/moomoo/rebalance')) {
+        return http.Response('{"detail":"nope"}', 404);
+      }
+      // An ACTIVE bracket is returned on the load-time check.
+      if (p.endsWith('/broker/moomoo/brackets/check')) {
+        return http.Response(jsonEncode({'brackets': [
+          {
+            'symbol': 'INTC', 'quantity': 10.0, 'reference_price': 30.0,
+            'stop_pct': -1.0, 'target_pct': 3.0,
+            'stop_price': 29.7, 'target_price': 30.9, 'status': 'ACTIVE',
+          },
+        ]}), 200);
+      }
+      if (p.endsWith('/broker/moomoo/brackets/INTC') &&
+          req.method == 'DELETE') {
+        cancelled = true;
+        return http.Response(jsonEncode({
+          'symbol': 'INTC', 'quantity': 10.0, 'reference_price': 30.0,
+          'stop_pct': -1.0, 'target_pct': 3.0,
+          'stop_price': 29.7, 'target_price': 30.9, 'status': 'CANCELLED',
+        }), 200);
+      }
+      return http.Response('{}', 200);
+    }));
+    final store = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await tester.pumpWidget(_wrap(
+        MoomooLivePage(repository: repo, secretStore: store), auth, repo));
+    await tester.pumpAndSettle();
+
+    // The active bracket is shown (not the Protect action).
+    expect(find.byKey(const Key('moomoo_sltp_active_INTC')), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_sltp_add_INTC')), findsNothing);
+
+    // Remove it.
+    await tester.tap(find.byKey(const Key('moomoo_sltp_cancel_INTC')));
+    await tester.pumpAndSettle();
+    expect(cancelled, isTrue);
+    expect(find.byKey(const Key('moomoo_sltp_add_INTC')), findsOneWidget);
+  });
 }
 
 /// Mock client that serves account + positions + all three analytics endpoints

@@ -422,6 +422,69 @@ class StockRepository {
         const {}, bearer: token, secret: secret);
   }
 
+  /// All server-managed SL/TP brackets (active first, then history).
+  /// Backs `GET /v1/broker/moomoo/brackets`.
+  Future<List<MoomooLiveBracket>> moomooBrackets({
+    required String token,
+    required String secret,
+  }) async {
+    final j = await _client.moomooGet('/broker/moomoo/brackets',
+        bearer: token, secret: secret);
+    return (j['brackets'] as List<dynamic>? ?? [])
+        .map((e) => MoomooLiveBracket.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Attach (or replace) a -stop% / +target% bracket on a position.
+  /// Backs `POST /v1/broker/moomoo/brackets`.
+  Future<MoomooLiveBracket> moomooAttachBracket({
+    required String token,
+    required String secret,
+    required String symbol,
+    required double quantity,
+    required double referencePrice,
+    double stopPct = -1,
+    double targetPct = 3,
+  }) async {
+    final j = await _client.moomooPost(
+      '/broker/moomoo/brackets',
+      {
+        'symbol': symbol,
+        'quantity': quantity,
+        'reference_price': referencePrice,
+        'stop_pct': stopPct,
+        'target_pct': targetPct,
+      },
+      bearer: token,
+      secret: secret,
+    );
+    return MoomooLiveBracket.fromJson(j);
+  }
+
+  /// Cancel the active bracket for a symbol.
+  /// Backs `DELETE /v1/broker/moomoo/brackets/{symbol}`.
+  Future<void> moomooCancelBracket({
+    required String token,
+    required String secret,
+    required String symbol,
+  }) async {
+    await _client.moomooDelete('/broker/moomoo/brackets/$symbol',
+        bearer: token, secret: secret);
+  }
+
+  /// Force an immediate monitor evaluation and return current brackets.
+  /// Backs `POST /v1/broker/moomoo/brackets/check`.
+  Future<List<MoomooLiveBracket>> moomooCheckBrackets({
+    required String token,
+    required String secret,
+  }) async {
+    final j = await _client.moomooPost('/broker/moomoo/brackets/check',
+        const {}, bearer: token, secret: secret);
+    return (j['brackets'] as List<dynamic>? ?? [])
+        .map((e) => MoomooLiveBracket.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   // --- Simulated paper-trading portfolio (/v1/sim/*) ------------------------
   // Broker-free. Buy/Sell are simulated only; no real order is ever placed.
 

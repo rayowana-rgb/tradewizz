@@ -120,6 +120,59 @@ class MoomooLiveOpenOrder {
       );
 }
 
+/// A server-managed stop-loss / take-profit ("bracket") attached to a live
+/// position. Moomoo's OpenD SDK has no native bracket / OCO for stocks (and
+/// native STOP/LIMIT need whole shares, while $500/name plans are often
+/// fractional), so the backend monitors the live price and submits a MARKET
+/// sell when a level is touched. Firing either leg retires the bracket (OCO
+/// is implicit). This is a real, broker-price-driven safety net, not advice.
+class MoomooLiveBracket {
+  const MoomooLiveBracket({
+    this.symbol = '',
+    this.quantity = 0,
+    this.referencePrice = 0,
+    this.stopPct = -1,
+    this.targetPct = 3,
+    this.stopPrice = 0,
+    this.targetPrice = 0,
+    this.status = 'ACTIVE',
+    this.triggeredPrice,
+    this.orderId,
+    this.note = '',
+  });
+
+  final String symbol;
+  final double quantity;
+  final double referencePrice;
+  final double stopPct; // negative (below entry)
+  final double targetPct; // positive (above entry)
+  final double stopPrice;
+  final double targetPrice;
+  final String status; // ACTIVE | TRIGGERED_STOP | TRIGGERED_TARGET | ...
+  final double? triggeredPrice;
+  final String? orderId;
+  final String note;
+
+  bool get isActive => status == 'ACTIVE';
+  bool get hitStop => status == 'TRIGGERED_STOP';
+  bool get hitTarget => status == 'TRIGGERED_TARGET';
+
+  factory MoomooLiveBracket.fromJson(Map<String, dynamic> j) =>
+      MoomooLiveBracket(
+        symbol: j['symbol'] as String? ?? '',
+        quantity: (j['quantity'] as num?)?.toDouble() ?? 0,
+        referencePrice: (j['reference_price'] as num?)?.toDouble() ?? 0,
+        stopPct: (j['stop_pct'] as num?)?.toDouble() ?? -1,
+        targetPct: (j['target_pct'] as num?)?.toDouble() ?? 3,
+        stopPrice: (j['stop_price'] as num?)?.toDouble() ?? 0,
+        targetPrice: (j['target_price'] as num?)?.toDouble() ?? 0,
+        status: j['status'] as String? ?? 'ACTIVE',
+        triggeredPrice: (j['triggered_price'] as num?)?.toDouble(),
+        orderId: j['order_id'] as String?,
+        note: j['note'] as String? ?? '',
+      );
+}
+
 class MoomooLivePreview {
   const MoomooLivePreview({
     this.code = '',

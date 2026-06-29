@@ -218,6 +218,13 @@ class ApiClient {
       _brokerCall('POST', path, body: body, bearer: bearer,
           moomooSecret: secret);
 
+  Future<Map<String, dynamic>> moomooDelete(
+    String path, {
+    required String bearer,
+    required String secret,
+  }) =>
+      _brokerCall('DELETE', path, bearer: bearer, moomooSecret: secret);
+
   Future<Map<String, dynamic>> _brokerCall(
     String method,
     String path, {

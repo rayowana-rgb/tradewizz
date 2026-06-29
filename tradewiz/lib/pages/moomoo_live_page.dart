@@ -64,6 +64,9 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
   // by symbol so Rebalancing AI rows can flag a position that already has an
   // order in flight (e.g. submitted while the market was closed).
   List<MoomooLiveOpenOrder> _openOrders = const [];
+  // Server-managed stop-loss / take-profit brackets, keyed by symbol so each
+  // position tile can show its active bracket (or offer to attach one).
+  List<MoomooLiveBracket> _brackets = const [];
   // When true, Rebalancing AI rows that already have a pending order in flight
   // are hidden so they don't keep nagging after execution. Persisted.
   static const String _kHidePendingRebPref =
@@ -246,6 +249,17 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
         /* keep account + positions; pending flags simply won't show */
       }
       try {
+        // Force an immediate monitor evaluation on load so any level touched
+        // while the app was closed is acted on now, then show the result.
+        final br = await widget.repository.moomooCheckBrackets(
+          token: token,
+          secret: secret,
+        );
+        if (mounted) setState(() => _brackets = br);
+      } catch (_) {
+        /* SL/TP overlay is best-effort */
+      }
+      try {
         final eq = await widget.repository.moomooAccountHistory(
           token: token,
           secret: secret,
@@ -331,6 +345,7 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
           _account = null;
           _positions = const [];
           _openOrders = const [];
+          _brackets = const [];
           _error = null;
         });
       }
@@ -1359,6 +1374,21 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
   String _rebSide(RebalanceAction a) =>
       a.action.toUpperCase() == 'ADD' ? 'BUY' : 'SELL';
 
+  void _toast(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg)),
+    );
+  }
+
+  /// The ACTIVE server-managed SL/TP bracket for [symbol], or null.
+  MoomooLiveBracket? _bracketFor(String symbol) {
+    for (final b in _brackets) {
+      if (b.symbol == symbol && b.isActive) return b;
+    }
+    return null;
+  }
+
   // Flat section (no card box): Stockbits-style header + hairline rows,
   // matching Home. Replaces the boxed Portfolio Manager card.
   Widget _managerSection(MoomooLiveManagerReport m) {
@@ -1781,6 +1811,11 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                 ),
               ],
             ),
+            // Server-managed stop-loss / take-profit ("bracket"). Shows the
+            // active bracket if one is attached, else a one-tap action to
+            // protect the position with a -1% stop / +3% target.
+            const SizedBox(height: TWSpace.sm),
+            _bracketRow(p),
             // Buy / Sell buttons. Each one toggles its OWN inline quantity
             // slider; the slider only appears AFTER the side is tapped, and
             // opening one side collapses the other.
@@ -1858,6 +1893,143 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
         ),
       ),
     );
+  }
+
+  /// The SL/TP bracket row for a position tile: shows the active bracket's
+  /// stop / target prices (and which leg fires next), or a one-tap action to
+  /// protect the position with the default -1% / +3% plan.
+  Widget _bracketRow(MoomooLivePosition p) {
+    final b = _bracketFor(p.symbol);
+    if (b != null) {
+      return Container(
+        key: Key('moomoo_sltp_active_${p.symbol}'),
+        padding: const EdgeInsets.symmetric(
+            horizontal: TWSpace.md, vertical: TWSpace.sm),
+        decoration: BoxDecoration(
+          color: TWColors.accent.withValues(alpha: 0.10),
+          borderRadius: TWRadius.rSm,
+          border: Border.all(color: TWColors.accent.withValues(alpha: 0.30)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.shield_outlined,
+                size: 16, color: TWColors.accentBright),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                'Protected · SL ${_money(b.stopPrice, "USD")}'
+                ' (${b.stopPct.toStringAsFixed(0)}%)'
+                ' · TP ${_money(b.targetPrice, "USD")}'
+                ' (+${b.targetPct.toStringAsFixed(0)}%)',
+                style: TWType.caption.copyWith(color: TWColors.textSecondary),
+              ),
+            ),
+            const SizedBox(width: 6),
+            GestureDetector(
+              key: Key('moomoo_sltp_cancel_${p.symbol}'),
+              onTap: () => _cancelBracket(p.symbol),
+              child: Text(
+                'Remove',
+                style: TWType.caption.copyWith(color: TWColors.down),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    // Use the average cost as the reference when known (so the plan brackets
+    // the entry); fall back to the last price for a fresh ad-hoc protect.
+    final ref = p.costPrice > 0 ? p.costPrice : p.lastPrice;
+    return OutlinedButton.icon(
+      key: Key('moomoo_sltp_add_${p.symbol}'),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: TWColors.accentBright,
+        side: const BorderSide(color: TWColors.hairlineTop),
+        padding: const EdgeInsets.symmetric(vertical: TWSpace.sm),
+      ),
+      onPressed: ref > 0 ? () => _attachBracketSheet(p, ref) : null,
+      icon: const Icon(Icons.shield_outlined, size: 16),
+      label: const Text('Protect · -1% / +3%', style: TWType.label),
+    );
+  }
+
+  /// Confirm + attach a server-managed -1% / +3% bracket on [p].
+  Future<void> _attachBracketSheet(
+      MoomooLivePosition p, double ref) async {
+    final stop = ref * 0.99;
+    final target = ref * 1.03;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: TWColors.surfaceCard,
+        title: Text('Protect ${p.symbol}', style: TWType.label),
+        content: Text(
+          'TradeWizz will watch the live price and place a MARKET SELL of '
+          '${_qty(p.canSellQty > 0 ? p.canSellQty : p.quantity)} '
+          '${p.symbol} when either level is hit:\n\n'
+          '· Stop-loss at ${_money(stop, "USD")} (-1%)\n'
+          '· Take-profit at ${_money(target, "USD")} (+3%)\n\n'
+          'Whichever fires first cancels the other. This sells real shares.',
+          style: TWType.caption.copyWith(color: TWColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            key: const Key('moomoo_sltp_confirm'),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Protect'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final token = _token;
+    final secret = widget.secretStore.secret;
+    if (token == null || secret == null) return;
+    try {
+      final qty = p.canSellQty > 0 ? p.canSellQty : p.quantity;
+      final b = await widget.repository.moomooAttachBracket(
+        token: token,
+        secret: secret,
+        symbol: p.symbol,
+        quantity: qty,
+        referencePrice: ref,
+      );
+      if (!mounted) return;
+      setState(() {
+        _brackets = [
+          ..._brackets.where((x) => x.symbol != p.symbol),
+          b,
+        ];
+      });
+      _toast('Protecting ${p.symbol}: SL ${_money(b.stopPrice, "USD")}'
+          ' / TP ${_money(b.targetPrice, "USD")}');
+    } on ApiException catch (e) {
+      if (mounted) _toast(e.message);
+    }
+  }
+
+  Future<void> _cancelBracket(String symbol) async {
+    final token = _token;
+    final secret = widget.secretStore.secret;
+    if (token == null || secret == null) return;
+    try {
+      await widget.repository.moomooCancelBracket(
+        token: token,
+        secret: secret,
+        symbol: symbol,
+      );
+      if (!mounted) return;
+      setState(() {
+        _brackets = _brackets.where((x) => x.symbol != symbol).toList();
+      });
+      _toast('Removed protection for $symbol');
+    } on ApiException catch (e) {
+      if (mounted) _toast(e.message);
+    }
   }
 
   /// Positions in the user-selected order. 'default' preserves the broker's

@@ -79,9 +79,15 @@ class FakeMoomooService:
 
     def place(self, symbol, side, qty, order_type, price, confirm,
               trade_pin=None):
+        import os as _os
         if not confirm:
             raise MoomooError("Live order requires confirm=true after preview.", 428)
-        if not (trade_pin or "").strip():
+        # SKIP_UNLOCK mirrors the prod GUI-OpenD path (operator unlocks once);
+        # the server-managed SL/TP monitor relies on it to sell without a PIN.
+        skip = _os.environ.get("TRADEWIZZ_MOOMOO_SKIP_UNLOCK", "") in (
+            "1", "true", "True"
+        )
+        if not skip and not (trade_pin or "").strip():
             raise MoomooError("Trade PIN is required to place a live order.", 428)
         pv = self.preview(symbol, side, qty, order_type, price)
         if not pv["within_cap"] and pv["est_notional"] > 0:
@@ -123,11 +129,18 @@ class FakeMoomooService:
 
 
 @pytest.fixture()
-def fake_svc():
+def fake_svc(tmp_path, monkeypatch):
     svc = FakeMoomooService()
     moomoo_router.set_service(svc)
+    # Isolate the server-managed SL/TP store on disk and reset the cached
+    # monitor so each test gets a fresh, fake-backed bracket monitor.
+    monkeypatch.setenv(
+        "TRADEWIZZ_MOOMOO_SLTP_PATH", str(tmp_path / "sltp.json")
+    )
+    moomoo_router._sltp_monitor = None
     yield svc
     moomoo_router.set_service(None)
+    moomoo_router._sltp_monitor = None
 
 
 @pytest.fixture()
@@ -394,3 +407,101 @@ def test_rebalance_over_live_holdings(client, fake_svc):
     assert "actions" in j
     assert isinstance(j["actions"], list)
     moomoo_router.set_analytics(None)
+
+
+# --- server-managed stop-loss / take-profit (bracket) -------------------- #
+def test_brackets_require_owner(client):
+    assert client.get("/v1/broker/moomoo/brackets").status_code in (401, 403)
+    r = client.post(
+        "/v1/broker/moomoo/brackets",
+        json={"symbol": "INTC", "quantity": 1, "reference_price": 100},
+    )
+    assert r.status_code in (401, 403)
+
+
+def test_attach_bracket_derives_levels(client, fake_svc):
+    r = client.post(
+        "/v1/broker/moomoo/brackets",
+        json={"symbol": "INTC", "quantity": 0.3, "reference_price": 100.0},
+        headers=client._owner,
+    )
+    assert r.status_code == 200, r.text
+    b = r.json()
+    # Default tight-stop swing plan: -1% / +3%.
+    assert b["stop_pct"] == -1.0 and b["target_pct"] == 3.0
+    assert b["stop_price"] == 99.0 and b["target_price"] == 103.0
+    assert b["status"] == "ACTIVE"
+    # It shows up in the list.
+    lst = client.get("/v1/broker/moomoo/brackets", headers=client._owner)
+    syms = [x["symbol"] for x in lst.json()["brackets"]]
+    assert "INTC" in syms
+
+
+def test_attach_bracket_validates_direction(client, fake_svc):
+    # Positive stop_pct (above entry) is rejected.
+    r = client.post(
+        "/v1/broker/moomoo/brackets",
+        json={"symbol": "INTC", "quantity": 1, "reference_price": 100,
+              "stop_pct": 1.0, "target_pct": 3.0},
+        headers=client._owner,
+    )
+    assert r.status_code == 422
+
+
+def test_cancel_bracket(client, fake_svc):
+    client.post(
+        "/v1/broker/moomoo/brackets",
+        json={"symbol": "INTC", "quantity": 1, "reference_price": 100},
+        headers=client._owner,
+    )
+    r = client.delete(
+        "/v1/broker/moomoo/brackets/INTC", headers=client._owner
+    )
+    assert r.status_code == 200
+    assert r.json()["status"] == "CANCELLED"
+    # No active bracket -> 404 on a second cancel.
+    r2 = client.delete(
+        "/v1/broker/moomoo/brackets/INTC", headers=client._owner
+    )
+    assert r2.status_code == 404
+
+
+def test_check_triggers_stop_loss(client, fake_svc, monkeypatch):
+    # The monitor sells on the SKIP_UNLOCK prod path (operator-unlocked OpenD).
+    monkeypatch.setenv("TRADEWIZZ_MOOMOO_SKIP_UNLOCK", "1")
+    # INTC fake position has last_price 134. A stop just above it must fire a
+    # MARKET sell on the monitor tick, and the bracket leaves ACTIVE (OCO).
+    client.post(
+        "/v1/broker/moomoo/brackets",
+        json={"symbol": "INTC", "quantity": 0.3, "reference_price": 140.0,
+              "stop_pct": -3.0, "target_pct": 10.0},
+        headers=client._owner,
+    )
+    # stop_price = 140 * 0.97 = 135.8 > last 134 -> stop is touched.
+    before = len(fake_svc.placed)
+    r = client.post(
+        "/v1/broker/moomoo/brackets/check", headers=client._owner
+    )
+    assert r.status_code == 200, r.text
+    assert len(fake_svc.placed) == before + 1
+    sold = fake_svc.placed[-1]
+    assert sold["side"] == "SELL" and sold["order_type"] == "MARKET"
+    # Bracket is now terminal (TRIGGERED_STOP), not ACTIVE.
+    states = {x["symbol"]: x["status"] for x in r.json()["brackets"]}
+    assert states.get("INTC") == "TRIGGERED_STOP"
+
+
+def test_check_closes_bracket_when_position_gone(client, fake_svc):
+    client.post(
+        "/v1/broker/moomoo/brackets",
+        json={"symbol": "NVDA", "quantity": 1, "reference_price": 100.0},
+        headers=client._owner,
+    )
+    # NVDA is not in the fake positions list -> bracket retired, no sell.
+    before = len(fake_svc.placed)
+    r = client.post(
+        "/v1/broker/moomoo/brackets/check", headers=client._owner
+    )
+    assert len(fake_svc.placed) == before
+    states = {x["symbol"]: x["status"] for x in r.json()["brackets"]}
+    assert states.get("NVDA") == "CLOSED_NO_POSITION"

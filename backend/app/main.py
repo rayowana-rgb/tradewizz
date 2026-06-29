@@ -524,6 +524,60 @@ _set_moomoo_analytics(
     )
 )
 
+# Server-managed stop-loss / take-profit monitor. Moomoo's OpenD SDK has no
+# native bracket/OCO for stocks (and native STOP/LIMIT need whole shares,
+# while $500/name US plans are often fractional), so we manage the bracket on
+# the server: poll live prices and submit a MARKET sell when a level is hit.
+# Runs ONLY when the bridge is configured (secret set) and never under pytest.
+import threading as _sltp_threading  # noqa: E402
+import time as _sltp_time  # noqa: E402
+from .moomoo.router import get_sltp_monitor as _get_sltp_monitor  # noqa: E402
+
+_sltp_stop = _sltp_threading.Event()
+_sltp_thread = None  # type: ignore
+
+
+def _sltp_loop() -> None:  # pragma: no cover - background thread
+    interval = float(os.environ.get("TRADEWIZZ_MOOMOO_SLTP_INTERVAL", "20"))
+    while not _sltp_stop.is_set():
+        try:
+            mon = _get_sltp_monitor()
+            # Only do live work when there is something to watch, so an idle
+            # bridge never touches OpenD on a timer.
+            if mon.store.active():
+                acted = mon.tick()
+                if acted:
+                    logger.warning("MOOMOO SLTP monitor fired: %s", acted)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("MOOMOO SLTP monitor tick error: %s", exc)
+        _sltp_stop.wait(interval)
+
+
+def _sltp_monitor_enabled() -> bool:
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return False
+    if not os.environ.get("TRADEWIZZ_MOOMOO_SECRET", ""):
+        return False
+    return os.environ.get("TRADEWIZZ_MOOMOO_SLTP_MONITOR", "1") in (
+        "1", "true", "True"
+    )
+
+
+if _sltp_monitor_enabled():  # pragma: no cover
+    @app.on_event("startup")
+    def _start_sltp_monitor() -> None:
+        global _sltp_thread
+        _sltp_stop.clear()
+        _sltp_thread = _sltp_threading.Thread(
+            target=_sltp_loop, name="moomoo-sltp", daemon=True
+        )
+        _sltp_thread.start()
+        logger.info("MOOMOO SLTP monitor started")
+
+    @app.on_event("shutdown")
+    def _stop_sltp_monitor() -> None:
+        _sltp_stop.set()
+
 # Global Rotation Engine: rank all markets by opportunity environment.
 from .rotation.router import (  # noqa: E402
     router as rotation_router,
