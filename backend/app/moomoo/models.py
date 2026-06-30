@@ -61,6 +61,12 @@ class MoomooOpenOrderList(BaseModel):
     live: bool = True
 
 
+class MoomooBoughtTodayList(BaseModel):
+    # Bare symbols with a BUY order placed today (held or not).
+    symbols: List[str]
+    live: bool = True
+
+
 class MoomooOrderRequest(BaseModel):
     symbol: str
     side: str  # BUY | SELL

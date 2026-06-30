@@ -482,30 +482,39 @@ class _ScreenerPageState extends State<ScreenerPage> {
       return;
     }
 
-    // Skip stocks already held: fetch live positions and drop any match whose
-    // symbol is currently held (quantity > 0) so a "Buy all" never doubles up
-    // on a name the user already owns. A fetch failure must not block the run
-    // (we just proceed without skipping rather than spending nothing).
+    // Skip names we shouldn't re-buy: (a) currently held positions, and
+    // (b) anything already bought today even if no longer held (e.g. bought
+    // then sold the same day) so a "Buy all" never doubles up within a day.
+    // Each fetch is best-effort: a failure must not block the run (we just
+    // skip less rather than spending nothing).
     final repo = widget.repository ?? RepositoryScope.of(context);
-    var heldSymbols = <String>{};
+    final skipSymbols = <String>{};
     try {
       final positions = await repo.moomooPositions(
         token: token,
         secret: secret,
       );
-      heldSymbols = positions
+      skipSymbols.addAll(positions
           .where((p) => p.quantity > 0)
-          .map((p) => p.symbol.toUpperCase())
-          .toSet();
+          .map((p) => p.symbol.toUpperCase()));
     } catch (_) {
       /* proceed without held-skip on a positions fetch failure */
     }
+    try {
+      final boughtToday = await repo.moomooBoughtToday(
+        token: token,
+        secret: secret,
+      );
+      skipSymbols.addAll(boughtToday);
+    } catch (_) {
+      /* proceed without bought-today-skip on a fetch failure */
+    }
     if (!mounted) return;
 
-    final buyable = heldSymbols.isEmpty
+    final buyable = skipSymbols.isEmpty
         ? matches
         : matches
-            .where((m) => !heldSymbols.contains(m.symbol.toUpperCase()))
+            .where((m) => !skipSymbols.contains(m.symbol.toUpperCase()))
             .toList();
     final alreadyHeld = matches.length - buyable.length;
 
@@ -513,8 +522,10 @@ class _ScreenerPageState extends State<ScreenerPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(alreadyHeld == 1
-              ? 'Nothing to buy: the only match is already held.'
-              : 'Nothing to buy: all $alreadyHeld matches are already held.'),
+              ? 'Nothing to buy: the only match is already held or '
+                  'bought today.'
+              : 'Nothing to buy: all $alreadyHeld matches are already held '
+                  'or bought today.'),
         ),
       );
       return;
@@ -1315,9 +1326,10 @@ class _LiveBulkBuySheetState extends State<_LiveBulkBuySheet> {
                 const SizedBox(height: 8),
                 Text(
                   widget.alreadyHeld == 1
-                      ? '1 match is already held and was skipped.'
-                      : '${widget.alreadyHeld} matches are already held and '
-                          'were skipped.',
+                      ? '1 match is already held or bought today and was '
+                          'skipped.'
+                      : '${widget.alreadyHeld} matches are already held or '
+                          'bought today and were skipped.',
                   key: const Key('live_bulk_already_held'),
                   style: const TextStyle(
                       color: TWColors.warn,

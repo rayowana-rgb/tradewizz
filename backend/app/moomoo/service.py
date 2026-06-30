@@ -344,6 +344,49 @@ class MoomooService:
             )
         return out
 
+    def bought_today_symbols(self) -> List[str]:
+        """Bare symbols that have a BUY order placed TODAY.
+
+        Used so a LIVE "Buy all" can skip names already bought today even if
+        the position is no longer held (e.g. bought then sold the same day).
+        ``order_list_query`` with no date range returns the current trading
+        day's orders. A symbol counts as bought-today if a BUY order either
+        actually filled some quantity (``dealt_qty`` > 0) or is still working
+        (submitted / waiting / partially filled). Failed / cancelled-with-no-
+        fill BUYs do not count.
+        """
+        from moomoo import TrdEnv, OrderStatus  # type: ignore
+
+        working = {
+            str(OrderStatus.SUBMITTING), str(OrderStatus.SUBMITTED),
+            str(OrderStatus.WAITING_SUBMIT), str(OrderStatus.FILLED_PART),
+        }
+        with self._lock:
+            ctx = self._ctx_obj()
+            # No start/end -> today's orders for the real account.
+            ret, data = ctx.order_list_query(
+                trd_env=TrdEnv.REAL,
+                acc_id=_env_acc_id(),
+            )
+            data = self._check_ok(ret, data)
+        out: set = set()
+        for _, r in data.iterrows():
+            raw_dir = str(r.get("trd_side", "") or "").upper()
+            if "BUY" not in raw_dir:
+                continue
+            try:
+                dealt = float(r.get("dealt_qty") or 0)
+            except Exception:  # noqa: BLE001
+                dealt = 0.0
+            status = str(r.get("order_status", "") or "")
+            if dealt <= 0 and status not in working:
+                continue
+            code = str(r.get("code", ""))
+            sym = code.split(".", 1)[1] if "." in code else code
+            if sym:
+                out.add(sym.upper())
+        return sorted(out)
+
     def manager_report(self) -> dict:
         """Rule-based portfolio analysis over the LIVE Moomoo holdings.
 

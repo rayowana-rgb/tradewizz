@@ -352,6 +352,20 @@ class StockRepository {
         .toList();
   }
 
+  /// Bare symbols with a BUY order placed today (held or already sold).
+  /// Backs `GET /v1/broker/moomoo/bought-today`. Used so a LIVE "Buy all"
+  /// can skip names already bought today even if no longer held.
+  Future<Set<String>> moomooBoughtToday({
+    required String token,
+    required String secret,
+  }) async {
+    final j = await _client.moomooGet('/broker/moomoo/bought-today',
+        bearer: token, secret: secret);
+    return (j['symbols'] as List<dynamic>? ?? [])
+        .map((e) => (e as String).toUpperCase())
+        .toSet();
+  }
+
   /// Live still-working (pending / partially filled) orders.
   /// Backs `GET /v1/broker/moomoo/orders`.
   Future<List<MoomooLiveOpenOrder>> moomooOpenOrders({

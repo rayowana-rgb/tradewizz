@@ -105,6 +105,10 @@ class FakeMoomooService:
     def cancel(self, order_id):
         return {"order_id": order_id, "status": "CANCELLED", "live": True}
 
+    def bought_today_symbols(self):
+        # INTC bought today (held), MSFT bought-then-sold today (flat now).
+        return ["INTC", "MSFT"]
+
     def open_orders(self):
         from app.moomoo.service import MoomooOpenOrder
         return [
@@ -576,6 +580,24 @@ def test_closed_market_fractional_defers_to_regular_session(
     states = {b.symbol: b.status for b in mon.store.list()}
     assert states.get("WHL") == "ACTIVE"
     assert actions and actions[0]["action"] == "deferred"
+
+
+def test_bought_today_requires_owner(client, monkeypatch):
+    monkeypatch.setenv("TRADEWIZZ_MOOMOO_OWNER_UIDS", "999999")
+    r = client.get(
+        "/v1/broker/moomoo/bought-today", headers=client._owner
+    )
+    assert r.status_code in (401, 403)
+
+
+def test_bought_today_lists_buy_symbols(client, fake_svc):
+    r = client.get(
+        "/v1/broker/moomoo/bought-today", headers=client._owner
+    )
+    assert r.status_code == 200, r.text
+    j = r.json()
+    # Includes a name bought-then-sold today (MSFT), not just held ones.
+    assert set(j["symbols"]) == {"INTC", "MSFT"}
 
 
 def test_check_closes_bracket_when_position_gone(client, fake_svc):

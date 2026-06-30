@@ -29,6 +29,7 @@ from .models import (
     MoomooCancelResult,
     MoomooEquityHistory,
     MoomooEquityPoint,
+    MoomooBoughtTodayList,
     MoomooManagerReport,
     MoomooOrderPreview,
     MoomooOpenOrderList,
@@ -208,6 +209,24 @@ def moomoo_open_orders(
             for o in orders
         ]
     )
+
+
+@router.get("/bought-today", response_model=MoomooBoughtTodayList)
+def moomoo_bought_today(
+    authorization: Optional[str] = Header(default=None),
+    x_moomoo_secret: Optional[str] = Header(default=None),
+) -> MoomooBoughtTodayList:
+    """Bare symbols with a BUY order placed today (held or already sold).
+
+    Lets a LIVE "Buy all" skip names already bought today even when the
+    position is no longer held.
+    """
+    _require_owner(authorization, x_moomoo_secret)
+    try:
+        symbols = get_service().bought_today_symbols()
+    except MoomooError as exc:
+        raise _handle(exc)
+    return MoomooBoughtTodayList(symbols=symbols)
 
 
 @router.get("/manager", response_model=MoomooManagerReport)

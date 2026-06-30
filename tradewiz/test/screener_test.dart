@@ -837,6 +837,57 @@ void main() {
     expect(symbols.contains('AAPL1'), isFalse);
   });
 
+  testWidgets('LIVE Buy-all skips stocks bought today even if not held',
+      (tester) async {
+    final placed = <Map<String, dynamic>>[];
+    // 3 matches (AAPL0/1/2); AAPL1 was bought earlier today and already sold
+    // (so it is NOT in positions) -> must still be skipped for today.
+    final repo = _liveBulkRepo(3, placed: placed, boughtToday: {'AAPL1'});
+    final secret = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await secret.load();
+
+    tester.view.physicalSize = const Size(1200, 3200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      _wrapOwner(
+        ScreenerPage(
+          market: Market.us,
+          repository: repo,
+          secretStore: secret,
+          liveBulkOrderGap: Duration.zero,
+        ),
+        repo,
+      ),
+    );
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pumpAndSettle();
+    }
+
+    await tester.tap(find.byKey(const Key('screener_buy_all_live_button')));
+    await tester.pumpAndSettle();
+
+    // Skip is announced and the run is sized to 2 (not 3).
+    expect(find.byKey(const Key('live_bulk_already_held')), findsOneWidget);
+    expect(find.text('Buy all 2 · LIVE'), findsWidgets);
+
+    await tester.enterText(
+        find.byKey(const Key('live_bulk_qty_field')), '1');
+    await tester.tap(find.byKey(const Key('live_bulk_ack')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('live_bulk_confirm_button')));
+    await tester.pumpAndSettle(const Duration(milliseconds: 800));
+
+    // AAPL1 (bought today, now flat) was never re-bought.
+    final symbols = placed.map((b) => b['symbol']).toSet();
+    expect(placed.length, 2);
+    expect(symbols, {'AAPL0', 'AAPL2'});
+    expect(symbols.contains('AAPL1'), isFalse);
+  });
+
   testWidgets('LIVE Buy-all slider caps the run to the top N matches',
       (tester) async {
     final placed = <Map<String, dynamic>>[];
@@ -1097,11 +1148,20 @@ StockRepository _liveBulkRepo(
   Map<String, String>? rejectWith,
   Set<String>? rateLimitOnce,
   Set<String>? held,
+  Set<String>? boughtToday,
 }) {
   var n = 0;
   final attempts = <String, int>{};
   final live = MockClient((req) async {
     final path = req.url.path;
+    // Symbols bought today (held or already sold) so Buy-all skips them too.
+    if (path.endsWith('/broker/moomoo/bought-today')) {
+      return http.Response(
+        jsonEncode({'symbols': (boughtToday ?? const <String>{}).toList()}),
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    }
     // Live positions the account already holds (so Buy-all skips them).
     if (path.endsWith('/broker/moomoo/positions')) {
       return http.Response(
