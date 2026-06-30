@@ -34,6 +34,11 @@ from typing import Dict, List, Optional
 ACTIVE = "ACTIVE"
 TRIGGERED_STOP = "TRIGGERED_STOP"
 TRIGGERED_TARGET = "TRIGGERED_TARGET"
+# A level was hit while the regular session was closed, so instead of failing a
+# MARKET sell we placed a resting LIMIT sell that will fill in the extended /
+# overnight session. The bracket leaves ACTIVE (it has done its job) but is not
+# a clean RTH fill, so it carries its own terminal-ish status.
+PENDING_EXT = "PENDING_EXT"
 CANCELLED = "CANCELLED"
 CLOSED_NO_POSITION = "CLOSED_NO_POSITION"
 ERROR = "ERROR"
@@ -41,6 +46,7 @@ ERROR = "ERROR"
 _TERMINAL = {
     TRIGGERED_STOP,
     TRIGGERED_TARGET,
+    PENDING_EXT,
     CANCELLED,
     CLOSED_NO_POSITION,
 }
@@ -238,14 +244,36 @@ def _bare(symbol: str) -> str:
     return s.split(".", 1)[1] if "." in s else s
 
 
+def _us_session_open() -> bool:
+    """True when the US regular session is open right now.
+
+    Isolated in a tiny helper so tests can monkeypatch it. Never raises; on any
+    unexpected error it returns True so the monitor falls back to the previous
+    MARKET-sell behaviour (fail-safe: act now rather than rest a stale order).
+    """
+    try:
+        from app.market_session import is_session_open
+
+        return bool(is_session_open("US"))
+    except Exception:  # noqa: BLE001
+        return True
+
+
 class SLTPMonitor:
     """Polls LIVE positions and fires MARKET sells when a level is touched.
 
     The monitor is intentionally conservative:
       * It only ever SELLS, and only quantity still held (``can_sell_qty``).
       * If the position is gone (sold elsewhere) the bracket is closed quietly.
-      * If a sell fails the bracket is marked ERROR so it is retried next tick
-        (status stays sellable) rather than silently abandoned.
+      * During regular US hours a level hit fires a MARKET sell (fills now).
+      * When the regular session is CLOSED, a MARKET sell would be rejected by
+        the broker. Instead, for whole-share lots we place a marketable LIMIT
+        sell flagged for the extended / overnight session so the order rests
+        as *pending* and fills when that session trades (PENDING_EXT), rather
+        than failing. Fractional lots cannot trade outside RTH on Moomoo, so
+        they simply stay ACTIVE and fire at the next regular open.
+      * If a sell still fails the bracket stays ACTIVE so it is retried next
+        tick rather than silently abandoned.
     """
 
     def __init__(self, moomoo_service, store: Optional[SLTPStore] = None):
@@ -296,31 +324,81 @@ class SLTPMonitor:
             sell_qty = min(sell_qty, b.qty) if b.qty > 0 else sell_qty
             if sell_qty <= 0:
                 continue
-            try:
-                res = self._moomoo.place(
-                    symbol=b.symbol,
-                    side="SELL",
-                    qty=sell_qty,
-                    order_type="MARKET",
-                    price=None,
-                    confirm=True,
-                    trade_pin=None,  # SKIP_UNLOCK path (operator-unlocked)
-                )
-                oid = getattr(res, "order_id", "") or ""
+
+            # Pick the order style based on whether the regular US session is
+            # open. When closed, a MARKET order can't fill, so rest a LIMIT in
+            # the extended/overnight session instead of failing it.
+            session_open = _us_session_open()
+            is_fractional = float(sell_qty) != int(sell_qty)
+            use_ext = (not session_open) and (not is_fractional)
+
+            if (not session_open) and is_fractional:
+                # Fractional can only trade MARKET, which won't fill outside
+                # RTH. Stay ACTIVE and fire at the next regular open.
                 self.store._mark(
-                    b, hit, price=last, order_id=oid,
-                    note=(
-                        "stop-loss" if hit == TRIGGERED_STOP
-                        else "take-profit"
-                    ),
+                    b, ACTIVE,
+                    note="level hit while closed; fractional waits for "
+                         "regular session",
                 )
                 actions.append({
                     "symbol": b.symbol,
-                    "action": hit,
+                    "action": "deferred",
+                    "reason": "fractional_closed",
                     "price": last,
-                    "qty": sell_qty,
-                    "order_id": oid,
                 })
+                continue
+
+            try:
+                if use_ext:
+                    # Marketable LIMIT at the touched price so it fills as soon
+                    # as the extended/overnight session trades, but never sells
+                    # below the stop level (or above target) we acted on.
+                    res = self._moomoo.place(
+                        symbol=b.symbol,
+                        side="SELL",
+                        qty=sell_qty,
+                        order_type="LIMIT",
+                        price=round(last, 2),
+                        confirm=True,
+                        trade_pin=None,
+                        extended_hours=True,
+                    )
+                else:
+                    res = self._moomoo.place(
+                        symbol=b.symbol,
+                        side="SELL",
+                        qty=sell_qty,
+                        order_type="MARKET",
+                        price=None,
+                        confirm=True,
+                        trade_pin=None,  # SKIP_UNLOCK (operator-unlocked)
+                    )
+                oid = getattr(res, "order_id", "") or ""
+                leg = "stop-loss" if hit == TRIGGERED_STOP else "take-profit"
+                if use_ext:
+                    self.store._mark(
+                        b, PENDING_EXT, price=last, order_id=oid,
+                        note=f"{leg}: pending extended/overnight LIMIT sell",
+                    )
+                    actions.append({
+                        "symbol": b.symbol,
+                        "action": "pending_ext",
+                        "trigger": hit,
+                        "price": last,
+                        "qty": sell_qty,
+                        "order_id": oid,
+                    })
+                else:
+                    self.store._mark(
+                        b, hit, price=last, order_id=oid, note=leg,
+                    )
+                    actions.append({
+                        "symbol": b.symbol,
+                        "action": hit,
+                        "price": last,
+                        "qty": sell_qty,
+                        "order_id": oid,
+                    })
             except Exception as exc:  # noqa: BLE001
                 # Leave the bracket ACTIVE so the next tick retries; record why.
                 self.store._mark(

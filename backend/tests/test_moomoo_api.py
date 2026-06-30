@@ -78,8 +78,11 @@ class FakeMoomooService:
         }
 
     def place(self, symbol, side, qty, order_type, price, confirm,
-              trade_pin=None):
+              trade_pin=None, *, extended_hours=False):
         import os as _os
+        # Record whether the caller asked for an extended/overnight order so
+        # tests can assert the closed-market path used a resting LIMIT.
+        self.last_extended = bool(extended_hours)
         if not confirm:
             raise MoomooError("Live order requires confirm=true after preview.", 428)
         # SKIP_UNLOCK mirrors the prod GUI-OpenD path (operator unlocks once);
@@ -469,6 +472,10 @@ def test_cancel_bracket(client, fake_svc):
 def test_check_triggers_stop_loss(client, fake_svc, monkeypatch):
     # The monitor sells on the SKIP_UNLOCK prod path (operator-unlocked OpenD).
     monkeypatch.setenv("TRADEWIZZ_MOOMOO_SKIP_UNLOCK", "1")
+    # Force the regular US session open so a touched level fires a live MARKET
+    # sell (the closed-market path is covered by the tests below).
+    from app.moomoo import sltp as _sltp
+    monkeypatch.setattr(_sltp, "_us_session_open", lambda: True)
     # INTC fake position has last_price 134. A stop just above it must fire a
     # MARKET sell on the monitor tick, and the bracket leaves ACTIVE (OCO).
     client.post(
@@ -489,6 +496,86 @@ def test_check_triggers_stop_loss(client, fake_svc, monkeypatch):
     # Bracket is now terminal (TRIGGERED_STOP), not ACTIVE.
     states = {x["symbol"]: x["status"] for x in r.json()["brackets"]}
     assert states.get("INTC") == "TRIGGERED_STOP"
+
+
+class _ClosedMarketFake:
+    """Minimal moomoo service for the monitor's closed-market path.
+
+    Holds one position and records every place() call so the test can assert
+    the order style (LIMIT + extended) chosen when the regular session is
+    closed. Quantity is parameterised so we can cover whole vs fractional lots.
+    """
+
+    def __init__(self, qty):
+        self._qty = float(qty)
+        self.placed = []
+        self.last_extended = False
+
+    def positions(self):
+        # Touched stop: last 134 < stop_price 135.8 (ref 140, -3%).
+        return [
+            MoomooPosition(
+                "US.WHL", "WHL", self._qty, self._qty, 140.0, 134.0, 0.0, 0.0
+            )
+        ]
+
+    def place(self, symbol, side, qty, order_type, price, confirm,
+              trade_pin=None, *, extended_hours=False):
+        self.last_extended = bool(extended_hours)
+        self.placed.append({
+            "symbol": symbol, "side": side, "qty": qty,
+            "order_type": order_type, "price": price,
+            "extended": bool(extended_hours),
+        })
+        return MoomooOrderResult(
+            order_id="SIM-OID-EXT", code=f"US.{symbol}", side=side,
+            order_type=order_type, qty=qty, price=price or 0.0,
+            status="SUBMITTING", live=True,
+        )
+
+
+def _closed_monitor(tmp_path, qty):
+    from app.moomoo.sltp import SLTPMonitor, SLTPStore
+    svc = _ClosedMarketFake(qty)
+    mon = SLTPMonitor(svc, store=SLTPStore(str(tmp_path / "ext_sltp.json")))
+    return svc, mon
+
+
+def test_closed_market_whole_share_rests_pending_limit(tmp_path, monkeypatch):
+    # Market closed + a whole-share lot: instead of failing a MARKET sell, the
+    # monitor rests a LIMIT order for the extended/overnight session and the
+    # bracket goes PENDING_EXT (not ERROR / ACTIVE-retry-forever).
+    from app.moomoo import sltp as _sltp
+    monkeypatch.setattr(_sltp, "_us_session_open", lambda: False)
+    svc, mon = _closed_monitor(tmp_path, qty=3.0)
+    mon.store.attach("WHL", 3.0, 140.0, stop_pct=-3.0, target_pct=10.0)
+
+    actions = mon.tick()
+    assert len(svc.placed) == 1
+    sold = svc.placed[-1]
+    assert sold["side"] == "SELL" and sold["order_type"] == "LIMIT"
+    assert svc.last_extended is True
+    states = {b.symbol: b.status for b in mon.store.list()}
+    assert states.get("WHL") == "PENDING_EXT"
+    assert actions and actions[0]["action"] == "pending_ext"
+
+
+def test_closed_market_fractional_defers_to_regular_session(
+    tmp_path, monkeypatch
+):
+    # Market closed + a fractional lot: Moomoo can't trade fractional outside
+    # RTH, so the monitor places NO order and the bracket stays ACTIVE to fire
+    # at the next regular open (no failed order).
+    from app.moomoo import sltp as _sltp
+    monkeypatch.setattr(_sltp, "_us_session_open", lambda: False)
+    svc, mon = _closed_monitor(tmp_path, qty=0.3)
+    mon.store.attach("WHL", 0.3, 140.0, stop_pct=-3.0, target_pct=10.0)
+
+    actions = mon.tick()
+    assert svc.placed == []  # nothing placed
+    states = {b.symbol: b.status for b in mon.store.list()}
+    assert states.get("WHL") == "ACTIVE"
+    assert actions and actions[0]["action"] == "deferred"
 
 
 def test_check_closes_bracket_when_position_gone(client, fake_svc):

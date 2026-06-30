@@ -523,7 +523,13 @@ class MoomooService:
         self, symbol: str, side: str, qty: float, order_type: str,
         price: Optional[float], confirm: bool,
         trade_pin: Optional[str] = None,
+        *,
+        extended_hours: bool = False,
     ) -> MoomooOrderResult:
+        # ``extended_hours`` lets a LIMIT order rest and fill in the pre/post/
+        # overnight sessions instead of being rejected outside regular hours.
+        # Only meaningful for LIMIT (MARKET cannot fill outside RTH).
+
         if _live_disabled():
             raise MoomooError(
                 "Live trading is currently disabled (kill-switch on).", 403
@@ -554,6 +560,22 @@ class MoomooService:
             otype_enum = OrderType.NORMAL
             order_price = float(price)
 
+        # Optional extended-hours kwargs (pre/post/overnight). Built lazily so
+        # the regular-hours path is byte-for-byte unchanged, and so we degrade
+        # gracefully on SDK builds that lack Session / fill_outside_rth.
+        extra: dict = {}
+        if extended_hours and pv["order_type"] == "LIMIT":
+            try:
+                from moomoo import Session, TimeInForce  # type: ignore
+
+                extra["session"] = Session.ALL
+                extra["fill_outside_rth"] = True
+                # GTC so a pending overnight/extended order survives until it
+                # fills or the owner cancels it, rather than expiring at close.
+                extra["time_in_force"] = TimeInForce.GTC
+            except Exception:  # noqa: BLE001
+                extra = {}
+
         with self._lock:
             ctx = self._ctx_obj()
             # REAL trading requires an unlocked context. Unlock with the
@@ -568,6 +590,7 @@ class MoomooService:
                 trd_env=TrdEnv.REAL,
                 acc_id=_env_acc_id(),
                 remark="tradewizz",
+                **extra,
             )
             data = self._check_ok(ret, data)
         row = data.iloc[0]

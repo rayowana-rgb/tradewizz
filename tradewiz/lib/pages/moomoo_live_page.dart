@@ -2184,7 +2184,10 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
           ' (${_stopPct.toStringAsFixed(_stopPct % 1 == 0 ? 0 : 2)}%)\n'
           '· Take-profit at ${_money(target, "USD")}'
           ' (+${_targetPct.toStringAsFixed(_targetPct % 1 == 0 ? 0 : 2)}%)\n\n'
-          'Whichever fires first cancels the other. This sells real shares.',
+          'Whichever fires first cancels the other. This sells real shares. '
+          'If a level is hit while the US market is closed, a pending '
+          'extended/overnight order is placed instead of failing (fractional '
+          'lots wait for the regular session).',
           style: TWType.caption.copyWith(color: TWColors.textSecondary),
         ),
         actions: [
