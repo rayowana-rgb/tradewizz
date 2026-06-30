@@ -1448,6 +1448,96 @@ void main() {
     expect(find.byKey(const Key('moomoo_sltp_active_INTC')), findsOneWidget);
     expect(find.byKey(const Key('moomoo_sltp_active_AMD')), findsOneWidget);
   });
+
+  testWidgets('a custom SL/TP plan is used and persisted when protecting',
+      (tester) async {
+    final auth = await _auth(kMoomooOwnerUid);
+    final posted = <Map<String, dynamic>>[];
+    final repo = _repoWith(MockClient((req) async {
+      final p = req.url.path;
+      if (p.endsWith('/broker/moomoo/account')) {
+        return http.Response(jsonEncode({
+          'total_assets': 5000.0, 'cash': 4000.0, 'buying_power': 4800.0,
+          'market_value': 1000.0, 'currency': 'USD',
+        }), 200);
+      }
+      if (p.endsWith('/broker/moomoo/positions')) {
+        return http.Response(jsonEncode({
+          'positions': [
+            {
+              'code': 'US.INTC', 'symbol': 'INTC', 'quantity': 10.0,
+              'can_sell_qty': 10.0, 'cost_price': 30.0, 'last_price': 33.5,
+              'pl_val': 35.0, 'pl_ratio': 0.1167,
+            },
+          ],
+        }), 200);
+      }
+      if (p.contains('/broker/moomoo/manager') ||
+          p.contains('/broker/moomoo/health') ||
+          p.contains('/broker/moomoo/rebalance')) {
+        return http.Response('{"detail":"nope"}', 404);
+      }
+      if (p.endsWith('/broker/moomoo/brackets/check')) {
+        return http.Response(jsonEncode({'brackets': []}), 200);
+      }
+      if (p.endsWith('/broker/moomoo/brackets') && req.method == 'POST') {
+        final body = jsonDecode(req.body) as Map<String, dynamic>;
+        posted.add(body);
+        final ref = (body['reference_price'] as num).toDouble();
+        final sp = (body['stop_pct'] as num).toDouble();
+        final tp = (body['target_pct'] as num).toDouble();
+        return http.Response(jsonEncode({
+          'symbol': body['symbol'], 'quantity': body['quantity'],
+          'reference_price': ref, 'stop_pct': sp, 'target_pct': tp,
+          'stop_price': ref * (1 + sp / 100),
+          'target_price': ref * (1 + tp / 100), 'status': 'ACTIVE',
+        }), 200);
+      }
+      return http.Response('{}', 200);
+    }));
+    final store = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+
+    tester.view.physicalSize = const Size(1200, 3600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_wrap(
+        MoomooLivePage(repository: repo, secretStore: store), auth, repo));
+    await tester.pumpAndSettle();
+
+    // Default plan label is shown.
+    expect(find.byKey(const Key('moomoo_sltp_plan_label')), findsOneWidget);
+
+    // Open the plan editor and set SL 2 / TP 3.2.
+    await tester.tap(find.byKey(const Key('moomoo_sltp_settings_open')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const Key('moomoo_sltp_stop_field')), '2');
+    await tester.enterText(
+        find.byKey(const Key('moomoo_sltp_target_field')), '3.2');
+    await tester.tap(find.byKey(const Key('moomoo_sltp_settings_save')));
+    await tester.pumpAndSettle();
+
+    // Attach a bracket -> the POST carries the custom percentages.
+    await tester.tap(find.byKey(const Key('moomoo_sltp_add_INTC')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('moomoo_sltp_confirm')));
+    await tester.pumpAndSettle();
+
+    expect(posted, hasLength(1));
+    expect(posted.first['stop_pct'], -2.0);
+    expect(posted.first['target_pct'], 3.2);
+
+    // The plan pill reflects the saved plan, and the value was written to
+    // SharedPreferences so it survives relaunch.
+    final label = tester.widget<Text>(
+        find.byKey(const Key('moomoo_sltp_plan_label')));
+    expect(label.data, '-2% / +3.20%');
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getDouble('tradewizz.moomoo.sltpStopPct'), -2.0);
+    expect(prefs.getDouble('tradewizz.moomoo.sltpTargetPct'), 3.2);
+  });
 }
 
 /// Mock client that serves account + positions + all three analytics endpoints

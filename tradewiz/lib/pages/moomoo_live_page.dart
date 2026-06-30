@@ -120,6 +120,16 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
   // 'pct' | 'usd'.
   String _trimMode = 'pct';
 
+  // User-configurable SL/TP percentages used by both the per-position Protect
+  // action and the Protect-all toggle. Persisted so the trader's plan survives
+  // relaunches. _stopPct is stored as a NEGATIVE percent (e.g. -1.0 = -1%),
+  // _targetPct as a POSITIVE percent (e.g. 3.0 = +3%). Defaults keep the
+  // original -1% / +3% behaviour.
+  static const String _kStopPctPref = 'tradewizz.moomoo.sltpStopPct';
+  static const String _kTargetPctPref = 'tradewizz.moomoo.sltpTargetPct';
+  double _stopPct = -1.0;
+  double _targetPct = 3.0;
+
   Duration get _trimOrderGap => widget.liveBulkOrderGap ?? _kTrimOrderGap;
 
   String? get _token => AuthScope.read(context).token;
@@ -157,7 +167,130 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
       _trimThreshold = prefs.getDouble(_kTrimThresholdPref) ?? 0.0;
       _trimDollar = prefs.getDouble(_kTrimDollarPref) ?? 0.0;
       _trimMode = prefs.getString(_kTrimModePref) ?? 'pct';
+      _stopPct = prefs.getDouble(_kStopPctPref) ?? -1.0;
+      _targetPct = prefs.getDouble(_kTargetPctPref) ?? 3.0;
     });
+  }
+
+  // Short "-1% / +3%" style label for the current plan, reused in UI/dialogs.
+  String get _sltpLabel =>
+      '${_stopPct.toStringAsFixed(_stopPct % 1 == 0 ? 0 : 2)}%'
+      ' / +${_targetPct.toStringAsFixed(_targetPct % 1 == 0 ? 0 : 2)}%';
+
+  /// Edit + persist the SL/TP percentages used for all Protect actions.
+  Future<void> _editSltpSettings() async {
+    final stopCtl = TextEditingController(
+        text: _stopPct.abs().toStringAsFixed(_stopPct % 1 == 0 ? 0 : 2));
+    final targetCtl = TextEditingController(
+        text: _targetPct.toStringAsFixed(_targetPct % 1 == 0 ? 0 : 2));
+    final formKey = GlobalKey<FormState>();
+
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: TWColors.surfaceCard,
+      shape: const RoundedRectangleBorder(
+        borderRadius:
+            BorderRadius.vertical(top: Radius.circular(TWRadius.cardLg)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: TWSpace.lg,
+          right: TWSpace.lg,
+          top: TWSpace.lg,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + TWSpace.lg,
+        ),
+        child: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Protect settings', style: TWType.label),
+              const SizedBox(height: TWSpace.xs),
+              Text(
+                'Used for both Protect and Protect all. Stop-loss sells below '
+                'entry; take-profit sells above. Tip: with a flat ~\$0.99/order '
+                'fee, TP +3.2% on SL -1% gives roughly a 2:1 reward:risk.',
+                style:
+                    TWType.caption.copyWith(color: TWColors.textTertiary),
+              ),
+              const SizedBox(height: TWSpace.md),
+              TextFormField(
+                key: const Key('moomoo_sltp_stop_field'),
+                controller: stopCtl,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                style: TWType.body,
+                decoration: const InputDecoration(
+                  labelText: 'Stop-loss below entry (%)',
+                  prefixText: '- ',
+                  helperText: 'How far price can drop before selling.',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (v) {
+                  final d = double.tryParse(
+                      (v ?? '').trim().replaceAll(',', '.'));
+                  if (d == null || d <= 0) return 'Enter a positive %';
+                  if (d >= 100) return 'Too large';
+                  return null;
+                },
+              ),
+              const SizedBox(height: TWSpace.md),
+              TextFormField(
+                key: const Key('moomoo_sltp_target_field'),
+                controller: targetCtl,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                style: TWType.body,
+                decoration: const InputDecoration(
+                  labelText: 'Take-profit above entry (%)',
+                  prefixText: '+ ',
+                  helperText: 'How far price rises before taking profit.',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (v) {
+                  final d = double.tryParse(
+                      (v ?? '').trim().replaceAll(',', '.'));
+                  if (d == null || d <= 0) return 'Enter a positive %';
+                  if (d >= 1000) return 'Too large';
+                  return null;
+                },
+              ),
+              const SizedBox(height: TWSpace.lg),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  key: const Key('moomoo_sltp_settings_save'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: TWColors.accent,
+                    padding:
+                        const EdgeInsets.symmetric(vertical: TWSpace.md),
+                  ),
+                  onPressed: () {
+                    if (!formKey.currentState!.validate()) return;
+                    Navigator.pop(ctx, true);
+                  },
+                  child: const Text('Save plan', style: TWType.label),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (saved != true || !mounted) return;
+    final stop = -double.parse(stopCtl.text.trim().replaceAll(',', '.'));
+    final target = double.parse(targetCtl.text.trim().replaceAll(',', '.'));
+    setState(() {
+      _stopPct = stop;
+      _targetPct = target;
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_kStopPctPref, stop);
+    await prefs.setDouble(_kTargetPctPref, target);
+    _toast('Protect plan saved: $_sltpLabel');
   }
 
   /// Cycle / set the positions sort. Tapping an active chip toggles it back to
@@ -1616,8 +1749,40 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                   style: TWType.overline,
                 ),
               ),
-              // Protect-all: batch on/off for the -1% / +3% brackets across
-              // every position. Only the owner (secret present) sees it.
+              // SL/TP plan settings: lets the owner change the stop/target %
+              // used by both Protect and Protect-all.
+              if (widget.secretStore.hasSecret && _positions.isNotEmpty)
+                InkWell(
+                  key: const Key('moomoo_sltp_settings_open'),
+                  onTap: _editSltpSettings,
+                  borderRadius: BorderRadius.circular(TWRadius.chip),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: TWSpace.sm,
+                      vertical: TWSpace.xs,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.tune,
+                          size: 16,
+                          color: TWColors.textTertiary,
+                        ),
+                        const SizedBox(width: TWSpace.xs),
+                        Text(
+                          _sltpLabel,
+                          key: const Key('moomoo_sltp_plan_label'),
+                          style: TWType.overline.copyWith(
+                            color: TWColors.textTertiary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              // Protect-all: batch on/off for the configured SL/TP brackets
+              // across every position. Only the owner (secret present) sees it.
               if (widget.secretStore.hasSecret && _positions.isNotEmpty)
                 InkWell(
                   key: const Key('moomoo_sltp_protect_all'),
@@ -1959,9 +2124,9 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
             Expanded(
               child: Text(
                 'Protected · SL ${_money(b.stopPrice, "USD")}'
-                ' (${b.stopPct.toStringAsFixed(0)}%)'
+                ' (${b.stopPct.toStringAsFixed(b.stopPct % 1 == 0 ? 0 : 2)}%)'
                 ' · TP ${_money(b.targetPrice, "USD")}'
-                ' (+${b.targetPct.toStringAsFixed(0)}%)',
+                ' (+${b.targetPct.toStringAsFixed(b.targetPct % 1 == 0 ? 0 : 2)}%)',
                 style: TWType.caption.copyWith(color: TWColors.textSecondary),
               ),
             ),
@@ -1990,15 +2155,16 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
       ),
       onPressed: ref > 0 ? () => _attachBracketSheet(p, ref) : null,
       icon: const Icon(Icons.shield_outlined, size: 16),
-      label: const Text('Protect · -1% / +3%', style: TWType.label),
+      label: Text('Protect · $_sltpLabel', style: TWType.label),
     );
   }
 
-  /// Confirm + attach a server-managed -1% / +3% bracket on [p].
+  /// Confirm + attach a server-managed SL/TP bracket on [p] using the trader's
+  /// configured stop/target percentages.
   Future<void> _attachBracketSheet(
       MoomooLivePosition p, double ref) async {
-    final stop = ref * 0.99;
-    final target = ref * 1.03;
+    final stop = ref * (1.0 + _stopPct / 100.0);
+    final target = ref * (1.0 + _targetPct / 100.0);
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -2008,8 +2174,10 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
           'TradeWizz will watch the live price and place a MARKET SELL of '
           '${_qty(p.canSellQty > 0 ? p.canSellQty : p.quantity)} '
           '${p.symbol} when either level is hit:\n\n'
-          '· Stop-loss at ${_money(stop, "USD")} (-1%)\n'
-          '· Take-profit at ${_money(target, "USD")} (+3%)\n\n'
+          '· Stop-loss at ${_money(stop, "USD")}'
+          ' (${_stopPct.toStringAsFixed(_stopPct % 1 == 0 ? 0 : 2)}%)\n'
+          '· Take-profit at ${_money(target, "USD")}'
+          ' (+${_targetPct.toStringAsFixed(_targetPct % 1 == 0 ? 0 : 2)}%)\n\n'
           'Whichever fires first cancels the other. This sells real shares.',
           style: TWType.caption.copyWith(color: TWColors.textSecondary),
         ),
@@ -2038,6 +2206,8 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
         symbol: p.symbol,
         quantity: qty,
         referencePrice: ref,
+        stopPct: _stopPct,
+        targetPct: _targetPct,
       );
       if (!mounted) return;
       setState(() {
@@ -2107,8 +2277,11 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
           content: Text(
             'TradeWizz will watch the live price for ${targets.length} '
             '${targets.length == 1 ? 'position' : 'positions'} and place a '
-            'MARKET SELL when each hits its stop-loss (-1%) or take-profit '
-            '(+3%). This sells real shares.',
+            'MARKET SELL when each hits its stop-loss '
+            '(${_stopPct.toStringAsFixed(_stopPct % 1 == 0 ? 0 : 2)}%) or '
+            'take-profit '
+            '(+${_targetPct.toStringAsFixed(_targetPct % 1 == 0 ? 0 : 2)}%). '
+            'This sells real shares.',
             style: TWType.caption.copyWith(color: TWColors.textSecondary),
           ),
           actions: [
@@ -2139,6 +2312,8 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
             symbol: p.symbol,
             quantity: qty,
             referencePrice: ref,
+            stopPct: _stopPct,
+            targetPct: _targetPct,
           );
           if (!mounted) return;
           setState(() {
@@ -2156,7 +2331,7 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
       setState(() => _protectAllBusy = false);
       _toast(failed == 0
           ? 'Protected $done '
-              '${done == 1 ? 'position' : 'positions'} (-1% / +3%)'
+              '${done == 1 ? 'position' : 'positions'} ($_sltpLabel)'
           : 'Protected $done, $failed could not be protected');
     } else {
       final protectedSyms = _positions
