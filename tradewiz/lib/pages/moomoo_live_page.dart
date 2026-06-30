@@ -67,6 +67,8 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
   // Server-managed stop-loss / take-profit brackets, keyed by symbol so each
   // position tile can show its active bracket (or offer to attach one).
   List<MoomooLiveBracket> _brackets = const [];
+  // Guards the "Protect all" batch toggle so it can't run twice concurrently.
+  bool _protectAllBusy = false;
   // When true, Rebalancing AI rows that already have a pending order in flight
   // are hidden so they don't keep nagging after execution. Persisted.
   static const String _kHidePendingRebPref =
@@ -1614,6 +1616,45 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                   style: TWType.overline,
                 ),
               ),
+              // Protect-all: batch on/off for the -1% / +3% brackets across
+              // every position. Only the owner (secret present) sees it.
+              if (widget.secretStore.hasSecret && _positions.isNotEmpty)
+                InkWell(
+                  key: const Key('moomoo_sltp_protect_all'),
+                  onTap: _protectAllBusy
+                      ? null
+                      : () => _toggleProtectAll(!_allProtected),
+                  borderRadius: BorderRadius.circular(TWRadius.chip),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: TWSpace.sm,
+                      vertical: TWSpace.xs,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _allProtected
+                              ? Icons.shield
+                              : Icons.shield_outlined,
+                          size: 16,
+                          color: _allProtected
+                              ? TWColors.accentBright
+                              : TWColors.textTertiary,
+                        ),
+                        const SizedBox(width: TWSpace.xs),
+                        Text(
+                          _allProtected ? 'Protected' : 'Protect all',
+                          style: TWType.overline.copyWith(
+                            color: _allProtected
+                                ? TWColors.accentBright
+                                : TWColors.textTertiary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               // Take-profit-all: only meaningful when there's something to sell.
               if (widget.secretStore.hasSecret && _positions.isNotEmpty)
                 InkWell(
@@ -2029,6 +2070,123 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
       _toast('Removed protection for $symbol');
     } on ApiException catch (e) {
       if (mounted) _toast(e.message);
+    }
+  }
+
+  /// True when every open position currently has an active -1% / +3% bracket.
+  /// Used to drive the "Protect all" toggle's on/off state.
+  bool get _allProtected =>
+      _positions.isNotEmpty &&
+      _positions.every((p) => _bracketFor(p.symbol) != null);
+
+  /// Toggle server-managed protection across ALL positions at once. Turning it
+  /// on attaches a -1% / +3% bracket to every still-unprotected position;
+  /// turning it off removes protection from every protected position. Real
+  /// money, so a single confirmation covers the whole batch.
+  Future<void> _toggleProtectAll(bool on) async {
+    if (_protectAllBusy) return;
+    final token = _token;
+    final secret = widget.secretStore.secret;
+    if (token == null || secret == null) return;
+
+    if (on) {
+      final targets = _positions
+          .where((p) =>
+              _bracketFor(p.symbol) == null &&
+              (p.costPrice > 0 ? p.costPrice : p.lastPrice) > 0)
+          .toList();
+      if (targets.isEmpty) {
+        _toast('Nothing to protect.');
+        return;
+      }
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: TWColors.surfaceCard,
+          title: const Text('Protect all positions', style: TWType.label),
+          content: Text(
+            'TradeWizz will watch the live price for ${targets.length} '
+            '${targets.length == 1 ? 'position' : 'positions'} and place a '
+            'MARKET SELL when each hits its stop-loss (-1%) or take-profit '
+            '(+3%). This sells real shares.',
+            style: TWType.caption.copyWith(color: TWColors.textSecondary),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              key: const Key('moomoo_sltp_protect_all_confirm'),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Protect all'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return;
+
+      setState(() => _protectAllBusy = true);
+      var done = 0;
+      var failed = 0;
+      for (final p in targets) {
+        final ref = p.costPrice > 0 ? p.costPrice : p.lastPrice;
+        final qty = p.canSellQty > 0 ? p.canSellQty : p.quantity;
+        try {
+          final b = await widget.repository.moomooAttachBracket(
+            token: token,
+            secret: secret,
+            symbol: p.symbol,
+            quantity: qty,
+            referencePrice: ref,
+          );
+          if (!mounted) return;
+          setState(() {
+            _brackets = [
+              ..._brackets.where((x) => x.symbol != p.symbol),
+              b,
+            ];
+          });
+          done++;
+        } on ApiException {
+          failed++;
+        }
+      }
+      if (!mounted) return;
+      setState(() => _protectAllBusy = false);
+      _toast(failed == 0
+          ? 'Protected $done '
+              '${done == 1 ? 'position' : 'positions'} (-1% / +3%)'
+          : 'Protected $done, $failed could not be protected');
+    } else {
+      final protectedSyms = _positions
+          .map((p) => p.symbol)
+          .where((s) => _bracketFor(s) != null)
+          .toList();
+      if (protectedSyms.isEmpty) return;
+
+      setState(() => _protectAllBusy = true);
+      var removed = 0;
+      for (final sym in protectedSyms) {
+        try {
+          await widget.repository.moomooCancelBracket(
+            token: token,
+            secret: secret,
+            symbol: sym,
+          );
+          if (!mounted) return;
+          setState(() {
+            _brackets = _brackets.where((x) => x.symbol != sym).toList();
+          });
+          removed++;
+        } on ApiException {
+          /* leave that bracket in place; user can retry */
+        }
+      }
+      if (!mounted) return;
+      setState(() => _protectAllBusy = false);
+      _toast('Removed protection from $removed '
+          '${removed == 1 ? 'position' : 'positions'}');
     }
   }
 

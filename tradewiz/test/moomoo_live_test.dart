@@ -1362,6 +1362,92 @@ void main() {
     expect(cancelled, isTrue);
     expect(find.byKey(const Key('moomoo_sltp_add_INTC')), findsOneWidget);
   });
+
+  testWidgets('Protect all attaches a bracket to every unprotected position',
+      (tester) async {
+    final auth = await _auth(kMoomooOwnerUid);
+    final posted = <Map<String, dynamic>>[];
+    final repo = _repoWith(MockClient((req) async {
+      final p = req.url.path;
+      if (p.endsWith('/broker/moomoo/account')) {
+        return http.Response(jsonEncode({
+          'total_assets': 5000.0, 'cash': 4000.0, 'buying_power': 4800.0,
+          'market_value': 1000.0, 'currency': 'USD',
+        }), 200);
+      }
+      if (p.endsWith('/broker/moomoo/positions')) {
+        return http.Response(jsonEncode({
+          'positions': [
+            {
+              'code': 'US.INTC', 'symbol': 'INTC', 'quantity': 10.0,
+              'can_sell_qty': 10.0, 'cost_price': 30.0, 'last_price': 33.5,
+              'pl_val': 35.0, 'pl_ratio': 0.1167,
+            },
+            {
+              'code': 'US.AMD', 'symbol': 'AMD', 'quantity': 5.0,
+              'can_sell_qty': 5.0, 'cost_price': 100.0, 'last_price': 96.0,
+              'pl_val': -20.0, 'pl_ratio': -0.04,
+            },
+          ],
+        }), 200);
+      }
+      if (p.contains('/broker/moomoo/manager') ||
+          p.contains('/broker/moomoo/health') ||
+          p.contains('/broker/moomoo/rebalance')) {
+        return http.Response('{"detail":"nope"}', 404);
+      }
+      // Nothing protected at load time.
+      if (p.endsWith('/broker/moomoo/brackets/check')) {
+        return http.Response(jsonEncode({'brackets': []}), 200);
+      }
+      // Attach: echo back a bracket computed from the posted reference.
+      if (p.endsWith('/broker/moomoo/brackets') && req.method == 'POST') {
+        final body = jsonDecode(req.body) as Map<String, dynamic>;
+        posted.add(body);
+        final ref = (body['reference_price'] as num).toDouble();
+        return http.Response(jsonEncode({
+          'symbol': body['symbol'], 'quantity': body['quantity'],
+          'reference_price': ref, 'stop_pct': -1.0, 'target_pct': 3.0,
+          'stop_price': ref * 0.99, 'target_price': ref * 1.03,
+          'status': 'ACTIVE',
+        }), 200);
+      }
+      return http.Response('{}', 200);
+    }));
+    final store = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+
+    tester.view.physicalSize = const Size(1200, 3600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(_wrap(
+        MoomooLivePage(repository: repo, secretStore: store), auth, repo));
+    await tester.pumpAndSettle();
+
+    // The Protect-all toggle is offered (off, since nothing is protected).
+    expect(find.byKey(const Key('moomoo_sltp_protect_all')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('moomoo_sltp_protect_all')));
+    await tester.pumpAndSettle();
+
+    // Confirm the batch -> a POST fires for each position.
+    await tester
+        .tap(find.byKey(const Key('moomoo_sltp_protect_all_confirm')));
+    await tester.pumpAndSettle();
+
+    final symbols = posted.map((b) => b['symbol']).toSet();
+    expect(posted, hasLength(2));
+    expect(symbols, {'INTC', 'AMD'});
+    // Each used its own cost as the reference price.
+    final intc = posted.firstWhere((b) => b['symbol'] == 'INTC');
+    final amd = posted.firstWhere((b) => b['symbol'] == 'AMD');
+    expect(intc['reference_price'], 30.0);
+    expect(amd['reference_price'], 100.0);
+
+    // Both positions now show an active bracket.
+    expect(find.byKey(const Key('moomoo_sltp_active_INTC')), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_sltp_active_AMD')), findsOneWidget);
+  });
 }
 
 /// Mock client that serves account + positions + all three analytics endpoints
