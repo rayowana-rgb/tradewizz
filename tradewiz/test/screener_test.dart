@@ -729,6 +729,63 @@ void main() {
     expect(find.text('LIVE buy complete'), findsOneWidget);
   });
 
+  testWidgets('LIVE Buy-all numeric keypad dismisses on tap outside',
+      (tester) async {
+    final repo = _liveBulkRepo(2, placed: <Map<String, dynamic>>[]);
+    final secret = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await secret.load();
+
+    tester.view.physicalSize = const Size(1200, 3200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      _wrapOwner(
+        ScreenerPage(
+          market: Market.us,
+          repository: repo,
+          secretStore: secret,
+          liveBulkOrderGap: Duration.zero,
+        ),
+        repo,
+      ),
+    );
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pumpAndSettle();
+    }
+
+    await tester.tap(find.byKey(const Key('screener_buy_all_live_button')));
+    await tester.pumpAndSettle();
+
+    // Focus the quantity field (this is what brings up the numeric keypad).
+    final qtyField = find.byKey(const Key('live_bulk_qty_field'));
+    await tester.tap(qtyField);
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<EditableText>(
+          find.descendant(of: qtyField, matching: find.byType(EditableText)))
+          .focusNode
+          .hasFocus,
+      isTrue,
+    );
+
+    // Tapping outside the field (on the sheet title) dismisses the keypad.
+    await tester.tap(find.byKey(const Key('live_bulk_title')));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<EditableText>(
+          find.descendant(of: qtyField, matching: find.byType(EditableText)))
+          .focusNode
+          .hasFocus,
+      isFalse,
+    );
+
+    // And the Confirm button is reachable/visible.
+    expect(find.byKey(const Key('live_bulk_confirm_button')), findsOneWidget);
+  });
+
   testWidgets('LIVE Buy-all skips stocks already held', (tester) async {
     final placed = <Map<String, dynamic>>[];
     // 3 matches (AAPL0/1/2); AAPL1 is already held -> must be skipped, so

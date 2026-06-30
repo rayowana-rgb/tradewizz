@@ -1277,7 +1277,10 @@ class _LiveBulkBuySheetState extends State<_LiveBulkBuySheet> {
         ),
         child: Form(
           key: _formKey,
-          child: Column(
+          // Scrollable so the numeric keypad can never hide the Confirm button;
+          // the user can always scroll down to it (or tap outside to dismiss).
+          child: SingleChildScrollView(
+            child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1388,6 +1391,10 @@ class _LiveBulkBuySheetState extends State<_LiveBulkBuySheet> {
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
                   inputFormatters: [_DecimalQtyFormatter()],
+                  // The numeric keypad has no return key on iOS; let a tap
+                  // anywhere outside the field dismiss it so it stops covering
+                  // the Confirm button.
+                  onTapOutside: (_) => FocusScope.of(context).unfocus(),
                   decoration: const InputDecoration(
                     labelText: 'Quantity per stock (fractional allowed)',
                     border: OutlineInputBorder(),
@@ -1408,6 +1415,7 @@ class _LiveBulkBuySheetState extends State<_LiveBulkBuySheet> {
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
                   inputFormatters: [_DecimalQtyFormatter()],
+                  onTapOutside: (_) => FocusScope.of(context).unfocus(),
                   decoration: const InputDecoration(
                     labelText: 'Amount per stock (USD)',
                     prefixText: '\$ ',
@@ -1463,6 +1471,7 @@ class _LiveBulkBuySheetState extends State<_LiveBulkBuySheet> {
                 ),
               ),
             ],
+          ),
           ),
         ),
       ),
@@ -1565,7 +1574,9 @@ class _BulkBuySheetState extends State<_BulkBuySheet> {
         ),
         child: Form(
           key: _formKey,
-          child: Column(
+          // Scrollable so the numeric keypad never hides the Confirm button.
+          child: SingleChildScrollView(
+            child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1596,6 +1607,8 @@ class _BulkBuySheetState extends State<_BulkBuySheet> {
                 key: const Key('bulk_qty_field'),
                 controller: _qtyController,
                 keyboardType: TextInputType.number,
+                // Tap outside dismisses the numeric keypad (no return key).
+                onTapOutside: (_) => FocusScope.of(context).unfocus(),
                 decoration: const InputDecoration(
                   labelText: 'Quantity per stock',
                   border: OutlineInputBorder(),
@@ -1661,6 +1674,7 @@ class _BulkBuySheetState extends State<_BulkBuySheet> {
                 ),
               ),
             ],
+          ),
           ),
         ),
       ),
