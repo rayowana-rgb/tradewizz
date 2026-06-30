@@ -1356,7 +1356,10 @@ void main() {
     expect(find.byKey(const Key('moomoo_sltp_active_INTC')), findsOneWidget);
     expect(find.byKey(const Key('moomoo_sltp_add_INTC')), findsNothing);
 
-    // Remove it.
+    // Remove it (ensure the row is on-screen first).
+    await tester.ensureVisible(
+        find.byKey(const Key('moomoo_sltp_cancel_INTC')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('moomoo_sltp_cancel_INTC')));
     await tester.pumpAndSettle();
     expect(cancelled, isTrue);

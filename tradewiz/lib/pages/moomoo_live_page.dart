@@ -1739,16 +1739,22 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // The title sits on its own line so it never gets squeezed by the
+        // action pills; the pills wrap onto the line(s) below it.
         Padding(
           padding: const EdgeInsets.only(left: TWSpace.xs, bottom: TWSpace.xs),
-          child: Row(
+          child: Text(
+            'Positions (${_positions.length})',
+            style: TWType.overline,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: TWSpace.xs, bottom: TWSpace.xs),
+          child: Wrap(
+            spacing: TWSpace.xs,
+            runSpacing: TWSpace.xs,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              Expanded(
-                child: Text(
-                  'Positions (${_positions.length})',
-                  style: TWType.overline,
-                ),
-              ),
               // SL/TP plan settings: lets the owner change the stop/target %
               // used by both Protect and Protect-all.
               if (widget.secretStore.hasSecret && _positions.isNotEmpty)
