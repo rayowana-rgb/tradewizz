@@ -26,7 +26,7 @@ class ApiException implements Exception {
 /// unreachable (and [AppConfig.mockFallback] is on), it falls back to mocked
 /// JSON so the app stays usable offline / before the backend is deployed.
 class ApiClient {
-  ApiClient({AppConfig? config, http.Client? httpClient})
+  ApiClient({AppConfig? config, http.Client? httpClient, this.onUnauthorized})
       : _config = config ?? AppConfig.fromEnvironment(),
         _http = httpClient ?? http.Client() {
     // One-time diagnostic: which backend is this build actually talking to?
@@ -43,7 +43,18 @@ class ApiClient {
   final AppConfig _config;
   final http.Client _http;
 
+  /// Called once whenever the server rejects a request with HTTP 401 (e.g. an
+  /// expired/invalid JWT). The app wires this to clear the auth session so the
+  /// user is sent back to login instead of silently hitting dead endpoints.
+  final void Function()? onUnauthorized;
+
   static bool _loggedConfig = false;
+
+  /// Fire [onUnauthorized] for 401 responses. Kept tiny so every throw site
+  /// that carries a real server status code can funnel through it.
+  void _noteStatus(int code) {
+    if (code == 401) onUnauthorized?.call();
+  }
 
   String get baseUrl => _config.baseUrl;
 
@@ -264,6 +275,7 @@ class ApiClient {
       final detail = decoded is Map<String, dynamic>
           ? (decoded['detail']?.toString() ?? _friendlyStatus(response.statusCode))
           : _friendlyStatus(response.statusCode);
+      _noteStatus(response.statusCode);
       throw ApiException(detail, statusCode: response.statusCode);
     } on ApiException {
       rethrow;
@@ -308,6 +320,7 @@ class ApiClient {
       }
 
       // Non-2xx: these are real server answers, so surface them (no fallback).
+      _noteStatus(response.statusCode);
       throw ApiException(
         _friendlyStatus(response.statusCode),
         statusCode: response.statusCode,

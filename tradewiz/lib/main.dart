@@ -15,6 +15,7 @@ import 'pages/screener_page.dart';
 import 'pages/watchlist_page.dart';
 import 'repositories/stock_repository.dart';
 import 'snapshot/snapshot_repository.dart';
+import 'services/api_client.dart';
 import 'services/auth_scope.dart';
 import 'services/auth_store.dart';
 import 'services/entitlements_scope.dart';
@@ -49,7 +50,11 @@ class _TradeWizAppState extends State<TradeWizApp> {
       WatchlistStore(persistence: SharedPrefsWatchlistPersistence());
   final AuthStore _auth =
       AuthStore(persistence: SharedPrefsAuthPersistence());
-  final StockRepository _repository = StockRepository();
+  // The API client clears the session on any 401 (expired/invalid JWT) so the
+  // user is bounced back to login instead of silently hitting dead endpoints.
+  late final StockRepository _repository = StockRepository(
+    client: ApiClient(onUnauthorized: _handleUnauthorized),
+  );
   late final EntitlementsStore _entitlements =
       EntitlementsStore(repository: _repository);
   // Phase A: personalization profile (local + best-effort backend sync).
@@ -68,6 +73,33 @@ class _TradeWizAppState extends State<TradeWizApp> {
 
   void _syncEntitlements() => _entitlements.syncToken(_auth.token);
 
+  // Global messenger so a session-expired notice can surface from anywhere.
+  final GlobalKey<ScaffoldMessengerState> _messengerKey =
+      GlobalKey<ScaffoldMessengerState>();
+
+  // Fired by [ApiClient] on a 401 (expired/invalid JWT). Clear the session
+  // once (no-op if already logged out) and tell the user to sign in again,
+  // instead of silently hitting dead endpoints. Re-armed on next login.
+  bool _expiredHandled = false;
+  void _handleUnauthorized() {
+    if (!_auth.isLoggedIn || _expiredHandled) return;
+    _expiredHandled = true;
+    // Defer so we never mutate auth state mid-build/mid-notify.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _auth.clear();
+      _messengerKey.currentState
+        ?..clearSnackBars()
+        ..showSnackBar(const SnackBar(
+          content: Text('Your session expired. Please sign in again.'),
+        ));
+    });
+  }
+
+  // Re-arm the 401 handler whenever a fresh session is established.
+  void _onAuthChanged() {
+    if (_auth.isLoggedIn) _expiredHandled = false;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -75,12 +107,14 @@ class _TradeWizAppState extends State<TradeWizApp> {
     _prefs.load();
     // Reload entitlements whenever the session token changes (login/logout).
     _auth.addListener(_syncEntitlements);
+    _auth.addListener(_onAuthChanged);
     _auth.load();
   }
 
   @override
   void dispose() {
     _auth.removeListener(_syncEntitlements);
+    _auth.removeListener(_onAuthChanged);
     _watchlist.dispose();
     _auth.dispose();
     _entitlements.dispose();
@@ -121,6 +155,7 @@ class _TradeWizAppState extends State<TradeWizApp> {
                   theme: buildTradeWizzTheme(),
                   darkTheme: buildTradeWizzTheme(),
                   themeMode: ThemeMode.dark,
+                  scaffoldMessengerKey: _messengerKey,
                   home: const RootGate(),
                 ),
               ),

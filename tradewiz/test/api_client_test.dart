@@ -171,4 +171,55 @@ void main() {
       ),
     );
   });
+
+  test('a 401 on an authenticated call fires onUnauthorized', () async {
+    var fired = 0;
+    final mock = MockClient((req) async =>
+        http.Response(jsonEncode({'detail': 'Token expired.'}), 401));
+    final client = ApiClient(
+      config: _config(mockFallback: false),
+      httpClient: mock,
+      onUnauthorized: () => fired++,
+    );
+
+    await expectLater(
+      () => client.authGet('/auth/me', bearer: 'stale'),
+      throwsA(isA<ApiException>()
+          .having((e) => e.statusCode, 'statusCode', 401)),
+    );
+    expect(fired, 1);
+  });
+
+  test('a 401 on a public read also fires onUnauthorized', () async {
+    var fired = 0;
+    final mock = MockClient((req) async => http.Response('nope', 401));
+    final client = ApiClient(
+      config: _config(mockFallback: false),
+      httpClient: mock,
+      onUnauthorized: () => fired++,
+    );
+
+    await expectLater(
+      () => client.analyze('bbca', Market.idx),
+      throwsA(isA<ApiException>()
+          .having((e) => e.statusCode, 'statusCode', 401)),
+    );
+    expect(fired, 1);
+  });
+
+  test('a non-401 error does not fire onUnauthorized', () async {
+    var fired = 0;
+    final mock = MockClient((req) async => http.Response('nope', 500));
+    final client = ApiClient(
+      config: _config(mockFallback: false),
+      httpClient: mock,
+      onUnauthorized: () => fired++,
+    );
+
+    await expectLater(
+      () => client.analyze('bbca', Market.idx),
+      throwsA(isA<ApiException>()),
+    );
+    expect(fired, 0);
+  });
 }
