@@ -698,11 +698,13 @@ class _AccountPageState extends State<AccountPage> {
                     color: TWColors.textPrimary)),
           ),
           PortfolioManagerCard(
-              repository: widget.repository, refreshToken: _portfolioRev),
+              repository: widget.repository,
+              refreshToken: _portfolioRev,
+              flat: true),
           const SizedBox(height: 16),
 
           // --- Portfolio Rebalancing AI ---------------------------------
-          RebalanceCard(repository: widget.repository),
+          RebalanceCard(repository: widget.repository, flat: true),
           const SizedBox(height: 16),
 
           // ============================================================
@@ -1140,12 +1142,10 @@ class _SummaryCard extends StatelessWidget {
           ),
         );
 
-    return TWFloatingCard(
+    return TWFlatSection(
       key: const Key('account_portfolio_card'),
-      padding: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
+      child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (loading && a == null)
@@ -1209,7 +1209,6 @@ class _SummaryCard extends StatelessWidget {
             ],
           ],
         ),
-      ),
     );
   }
 }
@@ -1232,30 +1231,23 @@ class _HoldingsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (positions.isEmpty) {
-      return const TWFloatingCard(
+      return const TWFlatSection(
         key: Key('account_holdings_empty'),
-        padding: EdgeInsets.all(16),
-        child: Padding(
-          padding: EdgeInsets.zero,
-          child: Text('No simulated holdings yet. Buy a stock to get started.',
-              style: TextStyle(color: TWColors.textTertiary, fontSize: 12)),
-        ),
+        child: Text('No simulated holdings yet. Buy a stock to get started.',
+            style: TextStyle(color: TWColors.textTertiary, fontSize: 12)),
       );
     }
-    return TWFloatingCard(
+    return Material(
       key: const Key('account_holdings_card'),
-      padding: EdgeInsets.zero,
-      child: Material(
-        type: MaterialType.transparency,
-        child: Column(
-          children: [
-            for (var i = 0; i < positions.length; i++) ...[
-              if (i > 0)
-                const Divider(height: 1, color: TWColors.hairline),
-              _holdingTile(positions[i], readOnly),
-            ],
+      type: MaterialType.transparency,
+      child: Column(
+        children: [
+          for (var i = 0; i < positions.length; i++) ...[
+            if (i > 0)
+              const Divider(height: 1, color: TWColors.hairlineTop),
+            _holdingTile(positions[i], readOnly),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -1484,22 +1476,18 @@ class _PortfolioHealthCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final h = health;
     if (h == null) {
-      return TWFloatingCard(
+      return TWFlatSection(
         key: const Key('account_health_card'),
-        padding: EdgeInsets.zero,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: loading
-              ? const Center(
-                  child: SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2)))
-              : const Text(
-                  'No portfolio health yet. Buy a stock to see your '
-                  'health score, strengths and warnings.',
-                  style: TextStyle(color: TWColors.textTertiary, fontSize: 12)),
-        ),
+        child: loading
+            ? const Center(
+                child: SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2)))
+            : const Text(
+                'No portfolio health yet. Buy a stock to see your '
+                'health score, strengths and warnings.',
+                style: TextStyle(color: TWColors.textTertiary, fontSize: 12)),
       );
     }
     final score = h.healthScore;
@@ -1508,12 +1496,9 @@ class _PortfolioHealthCard extends StatelessWidget {
         : score >= 40
             ? Colors.orange
             : TWColors.down;
-    return TWFloatingCard(
+    return TWFlatSection(
       key: const Key('account_health_card'),
-      padding: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+      child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
@@ -1558,7 +1543,6 @@ class _PortfolioHealthCard extends StatelessWidget {
             ],
           ],
         ),
-      ),
     );
   }
 }

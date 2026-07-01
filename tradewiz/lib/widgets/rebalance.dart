@@ -34,9 +34,13 @@ IconData actionIcon(String action) => {
 /// HIGH-priority count, and an estimated portfolio-score improvement, with a
 /// tap-through to the detail page.
 class RebalanceCard extends StatefulWidget {
-  const RebalanceCard({super.key, this.repository, this.cache});
+  const RebalanceCard({super.key, this.repository, this.cache, this.flat = false});
 
   final StockRepository? repository;
+
+  /// When true, renders as a flat "garis-garis" section (no elevated card
+  /// frame) so it matches the Home-style flat list. Defaults to the card look.
+  final bool flat;
 
   /// Injectable local cache so reopening the page renders the last known
   /// report immediately (no spinner) while it revalidates in the background.
@@ -165,11 +169,18 @@ class _RebalanceCardState extends State<RebalanceCard> {
           ],
         ),
         const SizedBox(height: 8),
-        TWFloatingCard(
-          key: const Key('rebalance_card'),
-          onTap: _data == null ? null : _openDetail,
-          child: _buildBody(),
-        ),
+        if (widget.flat)
+          TWFlatSection(
+            key: const Key('rebalance_card'),
+            onTap: _data == null ? null : _openDetail,
+            child: _buildBody(),
+          )
+        else
+          TWFloatingCard(
+            key: const Key('rebalance_card'),
+            onTap: _data == null ? null : _openDetail,
+            child: _buildBody(),
+          ),
       ],
     );
   }

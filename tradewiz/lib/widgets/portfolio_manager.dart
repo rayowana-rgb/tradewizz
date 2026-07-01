@@ -22,9 +22,14 @@ class PortfolioManagerCard extends StatefulWidget {
     this.repository,
     this.refreshToken = 0,
     this.cache,
+    this.flat = false,
   });
 
   final StockRepository? repository;
+
+  /// When true, renders as a flat "garis-garis" section (no elevated card
+  /// frame) so it matches the Home-style flat list. Defaults to the card look.
+  final bool flat;
 
   /// Bump this from the parent whenever the underlying portfolio changes
   /// (buy / sell / reset) so the manager re-fetches and reflects the CURRENT
@@ -159,27 +164,41 @@ class _PortfolioManagerCardState extends State<PortfolioManagerCard> {
             ),
           )
         else if (_token == null)
-          const TWFloatingCard(
-            child: Text('Sign in to get AI portfolio guidance.',
-                style: TextStyle(color: TWColors.textTertiary)),
-          )
+          (widget.flat
+              ? const TWFlatSection(
+                  child: Text('Sign in to get AI portfolio guidance.',
+                      style: TextStyle(color: TWColors.textTertiary)),
+                )
+              : const TWFloatingCard(
+                  child: Text('Sign in to get AI portfolio guidance.',
+                      style: TextStyle(color: TWColors.textTertiary)),
+                ))
         else if (_error || _report == null)
-          const TWFloatingCard(
-            key: Key('portfolio_manager_unavailable'),
-            child: Text('Portfolio manager unavailable.',
-                style: TextStyle(color: TWColors.down)),
-          )
+          (widget.flat
+              ? const TWFlatSection(
+                  key: Key('portfolio_manager_unavailable'),
+                  child: Text('Portfolio manager unavailable.',
+                      style: TextStyle(color: TWColors.down)),
+                )
+              : const TWFloatingCard(
+                  key: Key('portfolio_manager_unavailable'),
+                  child: Text('Portfolio manager unavailable.',
+                      style: TextStyle(color: TWColors.down)),
+                ))
         else
-          _ReportCard(report: _report!, riskColor: _riskColor),
+          _ReportCard(
+              report: _report!, riskColor: _riskColor, flat: widget.flat),
       ],
     );
   }
 }
 
 class _ReportCard extends StatefulWidget {
-  const _ReportCard({required this.report, required this.riskColor});
+  const _ReportCard(
+      {required this.report, required this.riskColor, this.flat = false});
   final PortfolioManagerReport report;
   final Color Function(String) riskColor;
+  final bool flat;
 
   @override
   State<_ReportCard> createState() => _ReportCardState();
@@ -215,9 +234,7 @@ class _ReportCardState extends State<_ReportCard> {
     final report = widget.report;
     final riskColor = widget.riskColor;
     final recCount = report.recommendations.length;
-    return TWFloatingCard(
-      key: const Key('portfolio_manager_report'),
-      child: Column(
+    final inner = Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
@@ -311,7 +328,16 @@ class _ReportCardState extends State<_ReportCard> {
                   _RecTile(rec: rec),
             ],
           ],
-      ),
+      );
+    if (widget.flat) {
+      return TWFlatSection(
+        key: const Key('portfolio_manager_report'),
+        child: inner,
+      );
+    }
+    return TWFloatingCard(
+      key: const Key('portfolio_manager_report'),
+      child: inner,
     );
   }
 }

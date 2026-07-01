@@ -251,3 +251,46 @@ class TWGlassCard extends StatelessWidget {
     );
   }
 }
+
+/// Flat "garis-garis" section — no card frame, no shadow, no gradient. Just a
+/// bottom hairline so a stack of them reads as one continuous list (matching
+/// the Home ideas/list style). Use in place of [TWFloatingCard] where the
+/// design calls for flat rows instead of elevated cards.
+class TWFlatSection extends StatelessWidget {
+  const TWFlatSection({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.symmetric(
+        horizontal: TWSpace.sm, vertical: TWSpace.md),
+    this.divider = true,
+    this.onTap,
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+
+  /// Draws the bottom hairline that separates this section from the next.
+  final bool divider;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final content = Container(
+      width: double.infinity,
+      decoration: divider
+          ? const BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: TWColors.hairlineTop, width: 1),
+              ),
+            )
+          : null,
+      padding: padding,
+      child: child,
+    );
+    if (onTap == null) return content;
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(onTap: onTap, child: content),
+    );
+  }
+}
