@@ -161,35 +161,33 @@ class _WatchlistPageState extends State<WatchlistPage> {
         // --- YOUR WATCHLIST ------------------------------------------------
         // Balance the heading: equal breathing room above and below it.
         const SizedBox(height: TWSpace.md),
-        const _SectionHeader(
-          icon: Icons.star_rounded,
-          title: 'Your Watchlist',
-          color: TWColors.accentBright,
-        ),
+        const TWBandedSectionHeader(title: 'Your Watchlist'),
         const SizedBox(height: TWSpace.md),
         if (items.isEmpty)
           _EmptyYourWatchlist(market: widget.market)
         else
+          // Flat, Stockbit-style rows separated by hairlines (matches Home's
+          // Today's Ideas), instead of a stack of floating cards.
           Column(
             children: [
               for (var i = 0; i < items.length; i++) ...[
+                if (i > 0)
+                  const Divider(
+                      height: 1, thickness: 1, color: TWColors.hairlineTop),
                 Dismissible(
                   key: ValueKey('${items[i].market.code}:${items[i].symbol}'),
                   direction: DismissDirection.endToStart,
                   background: Container(
                     alignment: Alignment.centerRight,
                     padding: const EdgeInsets.only(right: TWSpace.xxl),
-                    decoration: BoxDecoration(
-                      color: TWColors.downSoft,
-                      borderRadius: TWRadius.rCard,
-                    ),
+                    color: TWColors.downSoft,
                     child: const Icon(Icons.delete_outline_rounded,
                         color: TWColors.down),
                   ),
                   onDismissed: (_) =>
                       store.remove(items[i].symbol, items[i].market),
-                  child: TWFloatingCard(
-                    padding: EdgeInsets.zero,
+                  child: InkWell(
+                    borderRadius: TWRadius.rSm,
                     onTap: () => _open(items[i]),
                     child: _WatchRow(
                       item: items[i],
@@ -197,8 +195,6 @@ class _WatchlistPageState extends State<WatchlistPage> {
                     ),
                   ),
                 ),
-                if (i != items.length - 1)
-                  const SizedBox(height: TWSpace.md),
               ],
             ],
           ),
@@ -217,16 +213,15 @@ class _WatchlistPageState extends State<WatchlistPage> {
         // the current tab is a different market) so they aren't lost.
         if (otherMarketItems.isNotEmpty) ...[
           const SizedBox(height: TWSpace.xl),
-          const _SectionHeader(
-            icon: Icons.public_rounded,
-            title: 'Other Markets',
-            color: TWColors.accentBright,
-          ),
+          const TWBandedSectionHeader(title: 'Other Markets'),
           const SizedBox(height: TWSpace.md),
           Column(
             key: const Key('watchlist_other_markets'),
             children: [
               for (var i = 0; i < otherMarketItems.length; i++) ...[
+                if (i > 0)
+                  const Divider(
+                      height: 1, thickness: 1, color: TWColors.hairlineTop),
                 Dismissible(
                   key: ValueKey(
                       'other:${otherMarketItems[i].market.code}:${otherMarketItems[i].symbol}'),
@@ -234,17 +229,14 @@ class _WatchlistPageState extends State<WatchlistPage> {
                   background: Container(
                     alignment: Alignment.centerRight,
                     padding: const EdgeInsets.only(right: TWSpace.xxl),
-                    decoration: BoxDecoration(
-                      color: TWColors.downSoft,
-                      borderRadius: TWRadius.rCard,
-                    ),
+                    color: TWColors.downSoft,
                     child: const Icon(Icons.delete_outline_rounded,
                         color: TWColors.down),
                   ),
                   onDismissed: (_) => store.remove(
                       otherMarketItems[i].symbol, otherMarketItems[i].market),
-                  child: TWFloatingCard(
-                    padding: EdgeInsets.zero,
+                  child: InkWell(
+                    borderRadius: TWRadius.rSm,
                     onTap: () => _open(otherMarketItems[i]),
                     child: _WatchRow(
                       item: otherMarketItems[i],
@@ -252,8 +244,6 @@ class _WatchlistPageState extends State<WatchlistPage> {
                     ),
                   ),
                 ),
-                if (i != otherMarketItems.length - 1)
-                  const SizedBox(height: TWSpace.md),
               ],
             ],
           ),
@@ -268,11 +258,19 @@ class _WatchlistPageState extends State<WatchlistPage> {
         const SizedBox(height: TWSpace.xxl),
 
         // --- AI WATCHLIST --------------------------------------------------
-        const _SectionHeader(
-          icon: Icons.auto_awesome,
+        TWBandedSectionHeader(
           title: 'AI Watchlist',
-          color: TWColors.accentBright,
-          trailing: 'AI PICK',
+          trailing: Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: TWSpace.sm, vertical: 2),
+            decoration: BoxDecoration(
+              color: TWColors.accentBright.withValues(alpha: 0.16),
+              borderRadius: TWRadius.rChip,
+            ),
+            child: Text('AI PICK',
+                style: TWType.overline
+                    .copyWith(color: TWColors.accentBright)),
+          ),
         ),
         const SizedBox(height: TWSpace.md),
         AutoWatchlistCard(repository: widget.repository),
@@ -405,46 +403,6 @@ class _SearchResults extends StatelessWidget {
 }
 
 // =========================================================================
-// Section header
-// =========================================================================
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({
-    required this.icon,
-    required this.title,
-    required this.color,
-    this.trailing,
-  });
-  final IconData icon;
-  final String title;
-  final Color color;
-  final String? trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, color: color, size: 20),
-        const SizedBox(width: TWSpace.sm),
-        Text(title, style: TWType.title3),
-        if (trailing != null) ...[
-          const SizedBox(width: TWSpace.sm),
-          Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: TWSpace.sm, vertical: 2),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.16),
-              borderRadius: TWRadius.rChip,
-            ),
-            child: Text(trailing!,
-                style: TWType.overline.copyWith(color: color)),
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-// =========================================================================
 // Watchlist row (enriched)
 // =========================================================================
 class _WatchRow extends StatelessWidget {
@@ -474,8 +432,9 @@ class _WatchRow extends StatelessWidget {
     final alert = m == null ? null : _aiAlert(m);
 
     return Padding(
+      // Flat-row rhythm aligned with Home's Today's Ideas rows (gutter sm).
       padding: const EdgeInsets.symmetric(
-          horizontal: TWSpace.lg, vertical: TWSpace.lg),
+          horizontal: TWSpace.sm, vertical: TWSpace.md),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
