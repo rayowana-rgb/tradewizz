@@ -576,6 +576,7 @@ class _AccountPageState extends State<AccountPage> {
             failed: _failed,
             account: acct,
             onRetry: _load,
+            highlight: _liveOverlay,
           ),
           const SizedBox(height: 16),
 
@@ -1106,12 +1107,18 @@ class _SummaryCard extends StatelessWidget {
     required this.failed,
     required this.account,
     required this.onRetry,
+    this.highlight = false,
   });
 
   final bool loading;
   final bool failed;
   final SimAccount? account;
   final VoidCallback onRetry;
+
+  /// When true (owner LIVE portfolio) the section gets a soft top-down accent
+  /// glow that melts into the page background — highlights the real-money
+  /// portfolio without turning it back into a hard card frame.
+  final bool highlight;
 
   @override
   Widget build(BuildContext context) {
@@ -1142,9 +1149,30 @@ class _SummaryCard extends StatelessWidget {
           ),
         );
 
-    return TWFlatSection(
+    return DecoratedBox(
+      decoration: highlight
+          ? const BoxDecoration(
+              // Radial accent glow anchored at the top-left, fading to fully
+              // transparent in every direction so it melts into the scaffold
+              // background with no visible box, edge or cutoff.
+              gradient: RadialGradient(
+                center: Alignment(-0.6, -1.0),
+                radius: 1.6,
+                colors: [
+                  Color(0x4D3ED598), // TWColors.up @ ~0.30
+                  Color(0x1F3ED598), // TWColors.up @ ~0.12
+                  Color(0x003ED598), // transparent
+                ],
+                stops: [0.0, 0.5, 1.0],
+              ),
+            )
+          : const BoxDecoration(),
+      child: TWFlatSection(
       key: const Key('account_portfolio_card'),
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
+      divider: !highlight,
+      padding: highlight
+          ? const EdgeInsets.fromLTRB(TWSpace.md, TWSpace.md, TWSpace.md, 16)
+          : const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
       child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1209,6 +1237,7 @@ class _SummaryCard extends StatelessWidget {
             ],
           ],
         ),
+    ),
     );
   }
 }
