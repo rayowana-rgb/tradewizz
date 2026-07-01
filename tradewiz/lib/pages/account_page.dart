@@ -628,7 +628,6 @@ class _AccountPageState extends State<AccountPage> {
               ),
             ),
           ),
-          const SizedBox(height: 16),
 
           // --- Moomoo LIVE trading (owner-only, real money) -------------
           if (_isOwner(context)) ...[
@@ -646,8 +645,8 @@ class _AccountPageState extends State<AccountPage> {
                 ),
               ),
             ),
-            const SizedBox(height: 16),
           ],
+          const SizedBox(height: 16),
 
           // ============================================================
           // SECTION: Account (subscription, advanced tools, reset/logout)
@@ -657,7 +656,6 @@ class _AccountPageState extends State<AccountPage> {
 
           // --- Preferred Broker -----------------------------------------
           const _PreferredBrokerCard(),
-          const SizedBox(height: 16),
 
           // --- Advanced Tools: low-frequency / developer features -------
           _LinkCard(
@@ -880,17 +878,12 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Banded section header (Stockbit-style) matching the Home page, instead of
+    // a small uppercase eyebrow. Title stays uppercase to keep the section
+    // rhythm consistent across the account hub.
     return Padding(
-      padding: const EdgeInsets.only(left: 2, bottom: 10),
-      child: Text(
-        title.toUpperCase(),
-        style: TextStyle(
-          fontWeight: FontWeight.w800,
-          fontSize: 12,
-          letterSpacing: 1.1,
-          color: TWColors.accent.withValues(alpha: 0.85),
-        ),
-      ),
+      padding: const EdgeInsets.only(bottom: TWSpace.md),
+      child: TWBandedSectionHeader(title: title.toUpperCase()),
     );
   }
 }
@@ -907,12 +900,19 @@ class _PreferredBrokerCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final prefs = UserPrefsScope.maybeOf(context)?.prefs;
     final broker = BrokerApp.fromId(prefs?.preferredBrokerId);
-    return TWFloatingCard(
+    // Flat, hairline-separated list row (matches Home's Today's Ideas), not a
+    // floating card.
+    return Container(
       key: const Key('account_preferred_broker'),
-      padding: EdgeInsets.zero,
+      decoration: const BoxDecoration(
+        border: Border(
+            bottom: BorderSide(color: TWColors.hairlineTop, width: 1)),
+      ),
       child: Material(
         type: MaterialType.transparency,
         child: ListTile(
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: TWSpace.sm),
           leading: const Icon(Icons.account_balance_wallet_outlined,
               color: TWColors.accent),
           title: Text('Preferred Broker', style: TWType.label),
@@ -947,12 +947,19 @@ class _LinkCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return TWFloatingCard(
+    // Flat, hairline-separated navigation row (matches Home's Today's Ideas),
+    // not a floating card.
+    return Container(
       key: cardKey,
-      padding: EdgeInsets.zero,
+      decoration: const BoxDecoration(
+        border: Border(
+            bottom: BorderSide(color: TWColors.hairlineTop, width: 1)),
+      ),
       child: Material(
         type: MaterialType.transparency,
         child: ListTile(
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: TWSpace.sm),
           leading: Icon(icon, color: TWColors.accent),
           title: Text(title, style: TWType.label),
           subtitle: Text(subtitle, style: TWType.caption),
