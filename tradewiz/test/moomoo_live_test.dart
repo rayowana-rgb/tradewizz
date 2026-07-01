@@ -168,7 +168,10 @@ void main() {
       (tester) async {
     final auth = await _auth(kMoomooOwnerUid);
     final repo = _repoWith(MockClient((_) async => http.Response('{}', 200)));
-    await tester.pumpWidget(_wrap(AccountPage(repository: repo), auth, repo));
+    // Empty secret -> no live overlay; stays on the simulated portfolio.
+    final secret = MoomooSecretStore(persistence: _MemSecret());
+    await tester.pumpWidget(_wrap(
+        AccountPage(repository: repo, moomooSecret: secret), auth, repo));
     await tester.pumpAndSettle();
 
     final list = find.byType(Scrollable).first;
@@ -182,9 +185,75 @@ void main() {
       (tester) async {
     final auth = await _auth(1);
     final repo = _repoWith(MockClient((_) async => http.Response('{}', 200)));
-    await tester.pumpWidget(_wrap(AccountPage(repository: repo), auth, repo));
+    final secret = MoomooSecretStore(persistence: _MemSecret());
+    await tester.pumpWidget(_wrap(
+        AccountPage(repository: repo, moomooSecret: secret), auth, repo));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('account_moomoo_live_link')), findsNothing);
+  });
+
+  testWidgets(
+      'owner with a configured secret sees the LIVE Moomoo portfolio on Account',
+      (tester) async {
+    final auth = await _auth(kMoomooOwnerUid);
+    // Account + one position from the LIVE bridge.
+    final repo = _repoWith(MockClient((req) async {
+      if (req.url.path.endsWith('/broker/moomoo/account')) {
+        expect(req.headers['X-Moomoo-Secret'], 'topsecret');
+        return http.Response(
+          jsonEncode({
+            'total_assets': 5658.0,
+            'cash': 2621.0,
+            'buying_power': 2621.0,
+            'market_value': 3037.0,
+            'currency': 'USD',
+            'realized_pl': 12.0,
+          }),
+          200,
+        );
+      }
+      if (req.url.path.endsWith('/broker/moomoo/positions')) {
+        return http.Response(
+          jsonEncode({
+            'positions': [
+              {
+                'code': 'US.NVDA',
+                'symbol': 'NVDA',
+                'quantity': 3.0,
+                'can_sell_qty': 3.0,
+                'cost_price': 100.0,
+                'last_price': 110.0,
+                'pl_val': 30.0,
+                'pl_ratio': 0.10,
+              },
+            ],
+          }),
+          200,
+        );
+      }
+      // sim endpoints (fallback) + trades
+      if (req.url.path.endsWith('/sim/trades')) {
+        return http.Response(jsonEncode({'trades': []}), 200);
+      }
+      return http.Response('{}', 200);
+    }));
+    final secret = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+
+    await tester.pumpWidget(_wrap(
+        AccountPage(repository: repo, moomooSecret: secret), auth, repo));
+    await tester.pumpAndSettle();
+
+    // The Portfolio section relabels to the LIVE Moomoo view and the position
+    // from the real account is shown.
+    expect(find.text('Live Portfolio · Moomoo'), findsOneWidget);
+    final list = find.byType(Scrollable).first;
+    await tester.scrollUntilVisible(
+        find.byKey(const Key('holding_tile_NVDA_US')), 200,
+        scrollable: list);
+    expect(find.byKey(const Key('holding_tile_NVDA_US')), findsOneWidget);
+    // Read-only: no simulated Buy/Sell buttons in the LIVE view.
+    expect(find.byKey(const Key('holding_buy_NVDA_US')), findsNothing);
+    expect(find.byKey(const Key('holding_sell_NVDA_US')), findsNothing);
   });
 
   testWidgets('no secret -> setup card; entering secret loads account',

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/broker.dart';
 import '../models/broker_app.dart';
+import '../models/market.dart';
 import '../models/simulation.dart';
 import '../models/subscription.dart';
 import '../widgets/broker_open_sheet.dart';
@@ -83,9 +84,17 @@ String formatSimMoney(double v, String currency, {bool signed = false}) {
 /// holdings, trade history, reset). No broker connection is required or shown.
 class AccountPage extends StatefulWidget {
   const AccountPage(
-      {super.key, this.repository, this.socialSignIn, this.healthCache});
+      {super.key,
+      this.repository,
+      this.socialSignIn,
+      this.healthCache,
+      this.moomooSecret});
 
   final StockRepository? repository;
+
+  /// Injectable owner-only Moomoo LIVE bridge secret store. Defaults to the
+  /// Keychain-backed implementation; tests pass an in-memory one.
+  final MoomooSecretStore? moomooSecret;
 
   /// Injectable local cache for Portfolio Health so reopening the page renders
   /// the last known health immediately (no loading spinner) while it
@@ -105,7 +114,9 @@ class _AccountPageState extends State<AccountPage> {
   bool _failed = false;
   // Owner-only Moomoo LIVE bridge secret (secure-storage backed). Created
   // lazily; only the owner ever sees the entry point that uses it.
-  late final MoomooSecretStore _moomooSecret = MoomooSecretStore();
+  late final bool _ownsMoomooSecret = widget.moomooSecret == null;
+  late final MoomooSecretStore _moomooSecret =
+      widget.moomooSecret ?? MoomooSecretStore();
 
   /// Whether the current user is the private-bridge owner. The owner-only
   /// LIVE trading entry point is gated on this.
@@ -116,6 +127,10 @@ class _AccountPageState extends State<AccountPage> {
   SimPortfolio? _portfolio;
   List<SimTrade> _trades = const [];
   String? _loadedForToken;
+  // Owner-only: when the LIVE Moomoo bridge secret is present, the Portfolio
+  // summary + holdings are backed by the owner's REAL Moomoo account instead
+  // of the simulated one. Non-owners never see this path.
+  bool _liveOverlay = false;
   bool _joiningWaitlist = false;
   // Collapsible sections (default expanded). Lets the user hide Holdings /
   // Trade History to save vertical space on the Account page.
@@ -146,7 +161,8 @@ class _AccountPageState extends State<AccountPage> {
 
   @override
   void dispose() {
-    _moomooSecret.dispose();
+    // Only dispose the store we created; an injected one is owned by the test.
+    if (_ownsMoomooSecret) _moomooSecret.dispose();
     super.dispose();
   }
 
@@ -182,12 +198,28 @@ class _AccountPageState extends State<AccountPage> {
       _loadedForToken = token;
     });
     try {
+      // Owner + configured LIVE secret => back the Portfolio section with the
+      // REAL Moomoo account. Best-effort: any failure falls back to sim below.
+      final live = await _maybeLivePortfolio(token);
+      if (live != null) {
+        final t = await _repo.simTrades(token);
+        if (!mounted) return;
+        setState(() {
+          _portfolio = live;
+          _trades = t;
+          _liveOverlay = true;
+          _portfolioRev++;
+        });
+        unawaited(_loadHealth(token));
+        return;
+      }
       final p = await _repo.simPortfolio(token);
       final t = await _repo.simTrades(token);
       if (!mounted) return;
       setState(() {
         _portfolio = p;
         _trades = t;
+        _liveOverlay = false;
         _portfolioRev++;
       });
     } on ApiException {
@@ -200,6 +232,64 @@ class _AccountPageState extends State<AccountPage> {
     // Portfolio Health is best-effort and independent: a failure here must
     // never break the portfolio hub.
     unawaited(_loadHealth(token));
+  }
+
+  /// Owner-only: if the current user is the private-bridge owner AND the LIVE
+  /// Moomoo secret is configured on-device, fetch the REAL Moomoo account +
+  /// positions and adapt them into the same [SimPortfolio] shape the Portfolio
+  /// summary / holdings cards already render.
+  ///
+  /// Returns `null` for everyone else (non-owner, no secret, or any error), so
+  /// the caller cleanly falls back to the simulated portfolio. This never
+  /// places or affects any real order — it is read-only.
+  Future<SimPortfolio?> _maybeLivePortfolio(String token) async {
+    if (!mounted || !_isOwner(context)) return null;
+    try {
+      await _moomooSecret.load();
+    } catch (_) {}
+    final secret = _moomooSecret.secret;
+    if (secret == null || secret.isEmpty) return null;
+    try {
+      final acct = await _repo.moomooAccount(token: token, secret: secret);
+      final pos = await _repo.moomooPositions(token: token, secret: secret);
+
+      final positions = pos
+          .map((p) => SimPosition(
+                symbol: p.symbol,
+                market: Market.us,
+                quantity: p.quantity,
+                averageCost: p.costPrice,
+                lastPrice: p.lastPrice,
+                marketValue: p.quantity * p.lastPrice,
+                unrealizedPnl: p.plVal,
+                realizedPnl: 0,
+              ))
+          .toList();
+      final unrealized =
+          positions.fold<double>(0, (sum, p) => sum + p.unrealizedPnl);
+
+      final account = SimAccount(
+        cash: acct.cash,
+        equity: acct.totalAssets,
+        buyingPower: acct.buyingPower,
+        marketValue: acct.marketValue,
+        unrealizedPnl: unrealized,
+        realizedPnl: acct.realizedPl,
+        currency: acct.currency,
+        simulated: false,
+        disclaimer: 'Live Moomoo account (real money). Read-only view.',
+      );
+      return SimPortfolio(
+        account: account,
+        positions: positions,
+        simulated: false,
+        disclaimer: account.disclaimer,
+      );
+    } catch (_) {
+      // Bridge unavailable (OpenD down, 503, network, etc.) — fall back to the
+      // simulated portfolio rather than showing an error in the hub.
+      return null;
+    }
   }
 
   Future<void> _loadHealth(String token) async {
@@ -460,7 +550,7 @@ class _AccountPageState extends State<AccountPage> {
           ),
           const SizedBox(height: 16),
 
-          // --- Simulation disclaimer ------------------------------------
+          // --- Disclaimer / live banner ---------------------------------
           _disclaimerBanner(port?.disclaimer),
           const SizedBox(height: 16),
 
@@ -470,12 +560,13 @@ class _AccountPageState extends State<AccountPage> {
           const _SectionHeader('Portfolio',
               key: Key('account_section_portfolio')),
 
-          // --- Simulated portfolio summary ------------------------------
-          const Padding(
-            padding: EdgeInsets.only(left: 4, bottom: 8),
-            child: Text('Simulation Portfolio',
-                key: Key('account_portfolio_section'),
-                style: TextStyle(
+          // --- Portfolio summary (simulated, or LIVE for the owner) -----
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 8),
+            child: Text(
+                _liveOverlay ? 'Live Portfolio · Moomoo' : 'Simulation Portfolio',
+                key: const Key('account_portfolio_section'),
+                style: const TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 15,
                     color: TWColors.textPrimary)),
@@ -506,6 +597,10 @@ class _AccountPageState extends State<AccountPage> {
               onOpen: _openDetail,
               onBuy: (p) => _openTicket(p, OrderSide.buy),
               onSell: (p) => _openTicket(p, OrderSide.sell),
+              // In the owner LIVE view the buy/sell buttons would place
+              // SIMULATED orders against REAL holdings — hide them; real trades
+              // go through the dedicated Moomoo · Live screen.
+              readOnly: _liveOverlay,
             ),
             const SizedBox(height: 16),
           ],
@@ -669,21 +764,23 @@ class _AccountPageState extends State<AccountPage> {
           ),
           const SizedBox(height: 16),
 
-          // --- Reset -----------------------------------------------------
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              key: const Key('reset_simulation_button'),
-              icon: const Icon(Icons.restart_alt),
-              label: const Text('Reset Simulation Portfolio'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: TWColors.accent,
-                padding: const EdgeInsets.symmetric(vertical: 14),
+          // --- Reset (simulation only; never resets a real account) -----
+          if (!_liveOverlay) ...[
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                key: const Key('reset_simulation_button'),
+                icon: const Icon(Icons.restart_alt),
+                label: const Text('Reset Simulation Portfolio'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: TWColors.accent,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                onPressed: _loading ? null : _reset,
               ),
-              onPressed: _loading ? null : _reset,
             ),
-          ),
-          const SizedBox(height: 12),
+            const SizedBox(height: 12),
+          ],
 
           // --- Logout ----------------------------------------------------
           SizedBox(
@@ -713,7 +810,35 @@ class _AccountPageState extends State<AccountPage> {
     );
   }
 
-  Widget _disclaimerBanner(String? text) => Container(
+  Widget _disclaimerBanner(String? text) {
+    // Owner LIVE view: honest "real money" banner (green), not the simulated
+    // orange one. Everyone else keeps the simulated disclaimer.
+    if (_liveOverlay) {
+      return Container(
+        key: const Key('account_sim_disclaimer'),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: TWColors.up.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: TWColors.up.withValues(alpha: 0.4)),
+        ),
+        child: Row(children: [
+          const Icon(Icons.bolt, color: TWColors.up, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text ??
+                  'Live Moomoo account (real money). Read-only view.',
+              style: const TextStyle(
+                  color: TWColors.up,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12),
+            ),
+          ),
+        ]),
+      );
+    }
+    return Container(
         key: const Key('account_sim_disclaimer'),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
@@ -736,6 +861,7 @@ class _AccountPageState extends State<AccountPage> {
           ),
         ]),
       );
+  }
 }
 
 /// Phase 10C — a prominent "Portfolio Value" header rendered at the top of the
@@ -1094,11 +1220,14 @@ class _HoldingsCard extends StatelessWidget {
     required this.onOpen,
     required this.onBuy,
     required this.onSell,
+    this.readOnly = false,
   });
   final List<SimPosition> positions;
   final ValueChanged<SimPosition> onOpen;
   final ValueChanged<SimPosition> onBuy;
   final ValueChanged<SimPosition> onSell;
+  // When true (owner LIVE view) the simulated Buy/Sell buttons are hidden.
+  final bool readOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -1123,7 +1252,7 @@ class _HoldingsCard extends StatelessWidget {
             for (var i = 0; i < positions.length; i++) ...[
               if (i > 0)
                 const Divider(height: 1, color: TWColors.hairline),
-              _holdingTile(positions[i]),
+              _holdingTile(positions[i], readOnly),
             ],
           ],
         ),
@@ -1131,7 +1260,7 @@ class _HoldingsCard extends StatelessWidget {
     );
   }
 
-  Widget _holdingTile(SimPosition p) {
+  Widget _holdingTile(SimPosition p, bool readOnly) {
     final pnlColor = p.unrealizedPnl >= 0 ? TWColors.up : TWColors.down;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1177,28 +1306,29 @@ class _HoldingsCard extends StatelessWidget {
             ],
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-          child: Row(children: [
-            Expanded(
-              child: OutlinedButton(
-                key: Key('holding_buy_${p.symbol}_${p.market.code}'),
-                onPressed: () => onBuy(p),
-                child: const Text('Buy'),
+        if (!readOnly)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+            child: Row(children: [
+              Expanded(
+                child: OutlinedButton(
+                  key: Key('holding_buy_${p.symbol}_${p.market.code}'),
+                  onPressed: () => onBuy(p),
+                  child: const Text('Buy'),
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: OutlinedButton(
-                key: Key('holding_sell_${p.symbol}_${p.market.code}'),
-                onPressed: () => onSell(p),
-                style: OutlinedButton.styleFrom(
-                    foregroundColor: TWColors.down),
-                child: const Text('Sell'),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton(
+                  key: Key('holding_sell_${p.symbol}_${p.market.code}'),
+                  onPressed: () => onSell(p),
+                  style: OutlinedButton.styleFrom(
+                      foregroundColor: TWColors.down),
+                  child: const Text('Sell'),
+                ),
               ),
-            ),
-          ]),
-        ),
+            ]),
+          ),
       ],
     );
   }
