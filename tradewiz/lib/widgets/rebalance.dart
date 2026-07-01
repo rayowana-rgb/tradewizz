@@ -172,6 +172,7 @@ class _RebalanceCardState extends State<RebalanceCard> {
         if (widget.flat)
           TWFlatSection(
             key: const Key('rebalance_card'),
+            highlight: true,
             onTap: _data == null ? null : _openDetail,
             child: _buildBody(),
           )

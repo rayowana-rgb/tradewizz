@@ -166,6 +166,7 @@ class _PortfolioManagerCardState extends State<PortfolioManagerCard> {
         else if (_token == null)
           (widget.flat
               ? const TWFlatSection(
+                  highlight: true,
                   child: Text('Sign in to get AI portfolio guidance.',
                       style: TextStyle(color: TWColors.textTertiary)),
                 )
@@ -177,6 +178,7 @@ class _PortfolioManagerCardState extends State<PortfolioManagerCard> {
           (widget.flat
               ? const TWFlatSection(
                   key: Key('portfolio_manager_unavailable'),
+                  highlight: true,
                   child: Text('Portfolio manager unavailable.',
                       style: TextStyle(color: TWColors.down)),
                 )
@@ -332,6 +334,7 @@ class _ReportCardState extends State<_ReportCard> {
     if (widget.flat) {
       return TWFlatSection(
         key: const Key('portfolio_manager_report'),
+        highlight: true,
         child: inner,
       );
     }

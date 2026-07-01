@@ -1149,18 +1149,9 @@ class _SummaryCard extends StatelessWidget {
           ),
         );
 
-    return DecoratedBox(
-      decoration: highlight
-          ? BoxDecoration(
-              // Plain translucent purple block behind the owner LIVE portfolio
-              // (flat fill, no gradient).
-              color: TWColors.surfaceCard.withValues(alpha: 0.45),
-              borderRadius: BorderRadius.circular(TWRadius.card),
-            )
-          : const BoxDecoration(),
-      child: TWFlatSection(
+    return TWFlatSection(
       key: const Key('account_portfolio_card'),
-      divider: !highlight,
+      highlight: highlight,
       padding: highlight
           ? const EdgeInsets.fromLTRB(TWSpace.md, TWSpace.md, TWSpace.md, 16)
           : const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
@@ -1228,7 +1219,6 @@ class _SummaryCard extends StatelessWidget {
             ],
           ],
         ),
-    ),
     );
   }
 }
@@ -1498,6 +1488,7 @@ class _PortfolioHealthCard extends StatelessWidget {
     if (h == null) {
       return TWFlatSection(
         key: const Key('account_health_card'),
+        highlight: true,
         child: loading
             ? const Center(
                 child: SizedBox(
@@ -1518,6 +1509,7 @@ class _PortfolioHealthCard extends StatelessWidget {
             : TWColors.down;
     return TWFlatSection(
       key: const Key('account_health_card'),
+      highlight: true,
       child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
