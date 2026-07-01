@@ -232,15 +232,6 @@ class _ScreenerPageState extends State<ScreenerPage> {
     _run();
   }
 
-  void _selectCategory(ScreenerCategory? c) {
-    setState(() {
-      _categoryFilter = c;
-      _limit = _pageSize;
-    });
-    _persistFilters();
-    _run(); // re-query server-side with the category filter
-  }
-
   bool get _canLoadMore =>
       (_result?.hasMore ?? false) && _limit < _maxLimit;
 
@@ -738,6 +729,7 @@ class _ScreenerPageState extends State<ScreenerPage> {
     if (_signalFilter != null) n++;
     if (_hideIlliquid) n++;
     if (_instrumentType != InstrumentTypeFilter.all) n++;
+    if (_swingMode) n++;
     return n;
   }
 
@@ -753,7 +745,8 @@ class _ScreenerPageState extends State<ScreenerPage> {
         signal: _signalFilter,
         hideIlliquid: _hideIlliquid,
         instrumentType: _instrumentType,
-        onApply: (m, cat, min, sig, hide, type) {
+        swingMode: _swingMode,
+        onApply: (m, cat, min, sig, hide, type, swing) {
           setState(() {
             _market = m;
             _categoryFilter = cat;
@@ -761,6 +754,7 @@ class _ScreenerPageState extends State<ScreenerPage> {
             _signalFilter = sig;
             _hideIlliquid = hide;
             _instrumentType = type;
+            _swingMode = swing;
             _limit = _pageSize;
           });
           _persistFilters();
@@ -840,52 +834,15 @@ class _ScreenerPageState extends State<ScreenerPage> {
         ),
         // Quick market + category chips remain for fast access.
         _MarketFilterBar(selected: _market, onSelected: _selectMarket),
-        _CategoryFilterBar(
-          selected: _categoryFilter,
-          onSelected: _selectCategory,
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-          child: Row(
-            children: [
-              FilterChip(
-                key: const Key('screener_swing_mode'),
-                selected: _swingMode,
-                label: Text(
-                  _swingMode
-                      ? 'Tight-Stop Swing · -1% / +3%'
-                      : 'Tight-Stop Swing',
-                  style: TWType.caption,
-                ),
-                avatar: Icon(
-                  Icons.bolt_rounded,
-                  size: 16,
-                  color: _swingMode
-                      ? TWColors.surfaceCard
-                      : TWColors.textTertiary,
-                ),
-                selectedColor: TWColors.accent,
-                checkmarkColor: TWColors.surfaceCard,
-                backgroundColor: TWColors.surfaceCard,
-                side: const BorderSide(color: TWColors.hairline),
-                onSelected: (v) {
-                  setState(() {
-                    _swingMode = v;
-                    _limit = _pageSize;
-                  });
-                },
-              ),
-              const Spacer(),
-            ],
-          ),
-        ),
+        // Sentiment (category) chips and the Tight-Stop Swing toggle now live
+        // inside the Filters sheet. When swing mode is active we keep a compact
+        // inline note so the (re-ranked) results still read clearly.
         if (_swingMode)
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
             child: Text(
-              'Ranked for a -1% stop / +3% target: moderate volatility (so -1% '
-              "isn't pure noise), an established up-trend, and healthy, "
-              'not-overbought momentum. A fit gauge, not a probability.',
+              'Ranked by Tight-Stop Swing fit (-1% stop / +3% target). '
+              'A fit gauge, not a probability.',
               style: TWType.caption.copyWith(color: TWColors.textTertiary),
             ),
           ),
@@ -1938,44 +1895,6 @@ class _MarketFilterBar extends StatelessWidget {
   }
 }
 
-class _CategoryFilterBar extends StatelessWidget {
-  const _CategoryFilterBar({required this.selected, required this.onSelected});
-  final ScreenerCategory? selected;
-  final ValueChanged<ScreenerCategory?> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      // Sits snug below the market row (was top 4 / bottom 12); still leaves a
-      // little room before the content divider.
-      padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
-      child: Row(
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: FilterChip(
-              selected: selected == null,
-              label: const Text('All'),
-              onSelected: (_) => onSelected(null),
-            ),
-          ),
-          for (final c in ScreenerCategory.values)
-            Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: FilterChip(
-                selected: c == selected,
-                avatar: Icon(c.icon, size: 16, color: c.color),
-                label: Text(c.label),
-                onSelected: (sel) => onSelected(sel ? c : null),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
 /// Quick min-score selector (chips). 0 means "no minimum".
 /// Phase 10D: a single "Filters" entry point that opens the bottom sheet.
 class _FiltersButton extends StatelessWidget {
@@ -2012,6 +1931,7 @@ class _FiltersSheet extends StatefulWidget {
     required this.signal,
     required this.hideIlliquid,
     required this.instrumentType,
+    required this.swingMode,
     required this.onApply,
   });
 
@@ -2021,6 +1941,7 @@ class _FiltersSheet extends StatefulWidget {
   final String? signal;
   final bool hideIlliquid;
   final InstrumentTypeFilter instrumentType;
+  final bool swingMode;
   final void Function(
     Market market,
     ScreenerCategory? category,
@@ -2028,6 +1949,7 @@ class _FiltersSheet extends StatefulWidget {
     String? signal,
     bool hideIlliquid,
     InstrumentTypeFilter instrumentType,
+    bool swingMode,
   ) onApply;
 
   @override
@@ -2041,6 +1963,7 @@ class _FiltersSheetState extends State<_FiltersSheet> {
   late String? _signal = widget.signal;
   late bool _hideIlliquid = widget.hideIlliquid;
   late InstrumentTypeFilter _instrumentType = widget.instrumentType;
+  late bool _swingMode = widget.swingMode;
 
   @override
   Widget build(BuildContext context) {
@@ -2088,6 +2011,45 @@ class _FiltersSheetState extends State<_FiltersSheet> {
                     ),
                 ],
               ),
+              const SizedBox(height: 14),
+              _label('Strategy'),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  FilterChip(
+                    key: const Key('screener_swing_mode'),
+                    selected: _swingMode,
+                    label: Text(
+                      _swingMode
+                          ? 'Tight-Stop Swing · -1% / +3%'
+                          : 'Tight-Stop Swing',
+                    ),
+                    avatar: Icon(
+                      Icons.bolt_rounded,
+                      size: 16,
+                      color: _swingMode
+                          ? TWColors.surfaceCard
+                          : TWColors.textTertiary,
+                    ),
+                    selectedColor: TWColors.accent,
+                    checkmarkColor: TWColors.surfaceCard,
+                    onSelected: (v) => setState(() => _swingMode = v),
+                  ),
+                ],
+              ),
+              if (_swingMode)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(
+                    'Ranked for a -1% stop / +3% target: moderate volatility '
+                    "(so -1% isn't pure noise), an established up-trend, and "
+                    'healthy, not-overbought momentum. A fit gauge, not a '
+                    'probability.',
+                    style:
+                        TWType.caption.copyWith(color: TWColors.textTertiary),
+                  ),
+                ),
               const SizedBox(height: 14),
               _label('Min Score'),
               Wrap(
@@ -2155,6 +2117,7 @@ class _FiltersSheetState extends State<_FiltersSheet> {
                         _signal = null;
                         _hideIlliquid = false;
                         _instrumentType = InstrumentTypeFilter.all;
+                        _swingMode = false;
                       }),
                       child: const Text('Reset'),
                     ),
@@ -2165,7 +2128,8 @@ class _FiltersSheetState extends State<_FiltersSheet> {
                       key: const Key('screener_filters_apply'),
                       onPressed: () {
                         widget.onApply(_market, _category, _minScore,
-                            _signal, _hideIlliquid, _instrumentType);
+                            _signal, _hideIlliquid, _instrumentType,
+                            _swingMode);
                         Navigator.of(context).pop();
                       },
                       child: const Text('Apply'),

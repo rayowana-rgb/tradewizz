@@ -249,7 +249,12 @@ void main() {
 
     final before = tester.widgetList(find.byType(CategoryBadge)).length;
 
-    await tester.tap(find.widgetWithText(FilterChip, 'Bearish'));
+    // Sentiment (category) chips now live inside the Filters sheet.
+    await tester.tap(find.byKey(const Key('screener_filters_button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ChoiceChip, 'Bearish'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('screener_filters_apply')));
     await tester.pumpAndSettle();
 
     final after = tester.widgetList(find.byType(CategoryBadge)).length;
@@ -295,7 +300,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final scrollable = find.byType(Scrollable).last;
+    // The results list is a ListView.separated; target it directly so the
+    // scroll driver is unambiguous regardless of surrounding chrome.
+    final scrollable =
+        find.descendant(of: find.byType(ListView), matching: find.byType(Scrollable));
 
     // Initial page: 50 of 120, with a Load more button.
     await tester.scrollUntilVisible(
@@ -304,6 +312,8 @@ void main() {
     );
     expect(find.text('Showing 50 of 120'), findsOneWidget);
 
+    await tester.ensureVisible(find.widgetWithText(OutlinedButton, 'Load more'));
+    await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(OutlinedButton, 'Load more'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
@@ -312,6 +322,8 @@ void main() {
     expect(find.text('Showing 100 of 120'), findsOneWidget);
 
     // One more press: limit 150 -> all 120 shown, button disappears.
+    await tester.ensureVisible(find.widgetWithText(OutlinedButton, 'Load more'));
+    await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(OutlinedButton, 'Load more'));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
