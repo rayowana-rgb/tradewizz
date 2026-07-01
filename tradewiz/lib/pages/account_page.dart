@@ -1151,20 +1151,11 @@ class _SummaryCard extends StatelessWidget {
 
     return DecoratedBox(
       decoration: highlight
-          ? const BoxDecoration(
-              // Radial accent glow anchored at the top-left, fading to fully
-              // transparent in every direction so it melts into the scaffold
-              // background with no visible box, edge or cutoff.
-              gradient: RadialGradient(
-                center: Alignment(-0.6, -1.0),
-                radius: 1.6,
-                colors: [
-                  Color(0x4D3ED598), // TWColors.up @ ~0.30
-                  Color(0x1F3ED598), // TWColors.up @ ~0.12
-                  Color(0x003ED598), // transparent
-                ],
-                stops: [0.0, 0.5, 1.0],
-              ),
+          ? BoxDecoration(
+              // Plain translucent purple block behind the owner LIVE portfolio
+              // (flat fill, no gradient).
+              color: TWColors.surfaceCard.withValues(alpha: 0.45),
+              borderRadius: BorderRadius.circular(TWRadius.card),
             )
           : const BoxDecoration(),
       child: TWFlatSection(
