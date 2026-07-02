@@ -268,22 +268,48 @@ class MoomooService:
                 except Exception:
                     return 0.0
 
-            # The Moomoo SDK returns pl_ratio already in PERCENT units
-            # (e.g. 1.86 means +1.86%). The rest of the app (Flutter UI and
-            # the manager rules below) treats pl_ratio as a FRACTION and
-            # multiplies by 100, so normalise it to a fraction here at the
-            # single ingestion point to avoid a 100x blow-up (e.g. 186%).
-            pl_ratio_raw = _f("pl_ratio")
-            pl_ratio = pl_ratio_raw / 100.0
+            # --- Cost basis / unrealized P/L selection -------------------
+            # The Moomoo SDK exposes TWO cost bases per position:
+            #   * diluted_cost / cost_price / pl_val / pl_ratio
+            #       These fold today's realized P/L back into the cost basis.
+            #       When a name has been partially sold at a profit intraday,
+            #       diluted_cost can even go NEGATIVE (e.g. OKTA cost_price
+            #       = -12.9), which makes `pl_val` a large bogus number that
+            #       does NOT match what the Moomoo app shows as "Unrealized".
+            #   * average_cost / pl_ratio_avg_cost / unrealized_pl
+            #       Pure average-cost unrealized P/L — this is what the
+            #       Moomoo app displays as the position's Unrealized P/L.
+            #
+            # So prefer the average-cost fields, falling back to the diluted
+            # ones only when the average-cost values are missing/invalid.
+            #
+            # The SDK returns pl_ratio in PERCENT units (e.g. 1.86 = +1.86%);
+            # the rest of the app treats pl_ratio as a FRACTION and multiplies
+            # by 100, so normalise to a fraction here at the single ingestion
+            # point to avoid a 100x blow-up.
+            def _has(col: str) -> bool:
+                v = r.get(col)
+                return v not in (None, "N/A") and str(v) != ""
+
+            avg_cost = _f("average_cost")
+            cost_price = avg_cost if _has("average_cost") and avg_cost > 0 \
+                else _f("cost_price")
+
+            unreal = _f("unrealized_pl")
+            pl_val = unreal if _has("unrealized_pl") else _f("pl_val")
+
+            pl_ratio_pct = _f("pl_ratio_avg_cost") if _has("pl_ratio_avg_cost") \
+                else _f("pl_ratio")
+            pl_ratio = pl_ratio_pct / 100.0
             out.append(
                 MoomooPosition(
                     code=code,
                     symbol=sym,
                     qty=_f("qty"),
                     can_sell_qty=_f("can_sell_qty"),
-                    cost_price=_f("cost_price"),
+                    cost_price=cost_price,
                     last_price=_f("nominal_price"),
-                    pl_val=_f("pl_val"),
+                    pl_val=pl_val,
                     pl_ratio=pl_ratio,
                 )
             )
