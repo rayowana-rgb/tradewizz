@@ -84,12 +84,16 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
   // Sort order for the Positions list. Persisted so the user's preferred view
   // survives relaunches. 'default' keeps the broker's order.
   static const String _kPosSortPref = 'tradewizz.moomoo.posSort';
+  static const String _kPosSortDescPref = 'tradewizz.moomoo.posSortDesc';
   bool _hidePositions = false;
   bool _hideManager = false;
   bool _hideHealth = false;
   bool _hideRebalance = false;
   // One of: 'default' | 'pl' | 'weight'. High-to-low for pl/weight.
   String _posSort = 'default';
+
+  /// Sort direction for the active sort (true = high->low / descending).
+  bool _posSortDesc = true;
   // Symbol whose inline SELL slider is currently expanded in the Positions
   // list (null = none). Tapping Sell on a tile toggles its slider open/closed.
   // Only one of [_sellExpanded] / [_buyExpanded] can be open at a time.
@@ -164,6 +168,7 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
       _hideRebalance = prefs.getBool(_kHideRebalancePref) ?? false;
       _hidePendingReb = prefs.getBool(_kHidePendingRebPref) ?? false;
       _posSort = prefs.getString(_kPosSortPref) ?? 'default';
+      _posSortDesc = prefs.getBool(_kPosSortDescPref) ?? true;
       _trimThreshold = prefs.getDouble(_kTrimThresholdPref) ?? 0.0;
       _trimDollar = prefs.getDouble(_kTrimDollarPref) ?? 0.0;
       _trimMode = prefs.getString(_kTrimModePref) ?? 'pct';
@@ -293,13 +298,34 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
     _toast('Protect plan saved: $_sltpLabel');
   }
 
-  /// Cycle / set the positions sort. Tapping an active chip toggles it back to
-  /// the broker's default order; tapping an inactive chip selects it.
+  /// Cycle / set the positions sort. Each chip cycles through three states:
+  ///   inactive -> high->low (desc) -> low->high (asc) -> back to default.
+  /// So tapping an inactive chip sorts descending, tapping the active chip
+  /// once flips to ascending, and tapping again returns to the broker's
+  /// default order.
   Future<void> _setPosSort(String mode) async {
-    final next = (_posSort == mode) ? 'default' : mode;
-    setState(() => _posSort = next);
+    String nextMode;
+    bool nextDesc;
+    if (_posSort != mode) {
+      // Select this chip, starting high->low.
+      nextMode = mode;
+      nextDesc = true;
+    } else if (_posSortDesc) {
+      // Active & descending -> flip to ascending.
+      nextMode = mode;
+      nextDesc = false;
+    } else {
+      // Active & ascending -> back to default.
+      nextMode = 'default';
+      nextDesc = true;
+    }
+    setState(() {
+      _posSort = nextMode;
+      _posSortDesc = nextDesc;
+    });
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_kPosSortPref, next);
+    await prefs.setString(_kPosSortPref, nextMode);
+    await prefs.setBool(_kPosSortDescPref, nextDesc);
   }
 
   Future<void> _toggleHidePositions() async {
@@ -1955,7 +1981,7 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
             if (active) ...[
               const SizedBox(width: 2),
               Icon(
-                Icons.arrow_downward,
+                _posSortDesc ? Icons.arrow_downward : Icons.arrow_upward,
                 size: 12,
                 color: TWColors.textPrimary,
               ),
@@ -2391,10 +2417,14 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
     if (_posSort == 'default') return _positions;
     final list = List<MoomooLivePosition>.from(_positions);
     if (_posSort == 'pl') {
-      list.sort((a, b) => b.plVal.compareTo(a.plVal));
+      list.sort((a, b) => _posSortDesc
+          ? b.plVal.compareTo(a.plVal)
+          : a.plVal.compareTo(b.plVal));
     } else if (_posSort == 'weight') {
       double mv(MoomooLivePosition p) => p.quantity * p.lastPrice;
-      list.sort((a, b) => mv(b).compareTo(mv(a)));
+      list.sort((a, b) => _posSortDesc
+          ? mv(b).compareTo(mv(a))
+          : mv(a).compareTo(mv(b)));
     }
     return list;
   }

@@ -649,24 +649,44 @@ void main() {
     expect(find.byKey(intc), findsOneWidget);
     expect(find.byKey(amd), findsOneWidget);
 
-    // Sort by P/L high->low: INTC (+35) above AMD (-20).
+    // First tap: sort by P/L high->low (desc): INTC (+35) above AMD (-20).
     await tester.tap(find.byKey(const Key('moomoo_sort_pl')));
     await tester.pumpAndSettle();
     expect(topOf(intc), lessThan(topOf(amd)));
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getString('tradewizz.moomoo.posSort'), 'pl');
+    expect(prefs.getBool('tradewizz.moomoo.posSortDesc'), true);
 
-    // Sort by weight high->low: AMD (480) above INTC (335).
+    // Second tap on the active P/L chip: flip to low->high (asc): AMD above INTC.
+    await tester.tap(find.byKey(const Key('moomoo_sort_pl')));
+    await tester.pumpAndSettle();
+    expect(topOf(amd), lessThan(topOf(intc)));
+    expect(prefs.getString('tradewizz.moomoo.posSort'), 'pl');
+    expect(prefs.getBool('tradewizz.moomoo.posSortDesc'), false);
+
+    // Third tap on the active P/L chip: back to the broker's default order.
+    await tester.tap(find.byKey(const Key('moomoo_sort_pl')));
+    await tester.pumpAndSettle();
+    expect(prefs.getString('tradewizz.moomoo.posSort'), 'default');
+    expect(topOf(intc), lessThan(topOf(amd)));
+
+    // Weight chip also cycles: high->low first (AMD 480 above INTC 335).
     await tester.tap(find.byKey(const Key('moomoo_sort_weight')));
     await tester.pumpAndSettle();
     expect(topOf(amd), lessThan(topOf(intc)));
     expect(prefs.getString('tradewizz.moomoo.posSort'), 'weight');
+    expect(prefs.getBool('tradewizz.moomoo.posSortDesc'), true);
 
-    // Tapping the active chip again toggles back to the broker's default order.
+    // Then low->high (INTC above AMD).
+    await tester.tap(find.byKey(const Key('moomoo_sort_weight')));
+    await tester.pumpAndSettle();
+    expect(topOf(intc), lessThan(topOf(amd)));
+    expect(prefs.getBool('tradewizz.moomoo.posSortDesc'), false);
+
+    // Then back to default.
     await tester.tap(find.byKey(const Key('moomoo_sort_weight')));
     await tester.pumpAndSettle();
     expect(prefs.getString('tradewizz.moomoo.posSort'), 'default');
-    // Default order = broker order: INTC was listed first.
     expect(topOf(intc), lessThan(topOf(amd)));
   });
 
