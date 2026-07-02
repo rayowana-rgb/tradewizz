@@ -1218,6 +1218,16 @@ void main() {
     expect(find.text('Position concentration too high in INTC (100%).'),
         findsOneWidget);
 
+    // Rebalance header mirrors the Account "Portfolio Rebalancing AI" template:
+    // same title (no balance icon here) + Actions / HIGH priority / Est. +score
+    // summary stats sourced from the SAME report fields.
+    expect(find.text('Portfolio Rebalancing AI'), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_reb_action_count')), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_reb_high_count')), findsOneWidget);
+    expect(find.byKey(const Key('moomoo_reb_score_improve')), findsOneWidget);
+    // The Account balance icon must NOT appear on Moomoo Live.
+    expect(find.byIcon(Icons.balance), findsNothing);
+
     // Hide the Health detail lines: the CARD stays, only the warning lines go.
     await tester.tap(find.byKey(const Key('moomoo_toggle_health')));
     await tester.pumpAndSettle();

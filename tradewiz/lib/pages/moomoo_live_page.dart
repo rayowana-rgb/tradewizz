@@ -1239,22 +1239,12 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
       children: [
         const Divider(height: 1, thickness: 1, color: TWColors.hairlineTop),
         const SizedBox(height: TWSpace.md),
+        // Header mirrors the Account "Portfolio Rebalancing AI" template
+        // (same title). Per request, NO balance icon/logo on Moomoo Live.
         Row(
           children: [
-            const Expanded(child: Text('Rebalancing AI', style: TWType.body)),
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: TWSpace.sm,
-                vertical: 3,
-              ),
-              decoration: BoxDecoration(
-                color: TWColors.accent.withValues(alpha: 0.16),
-                borderRadius: BorderRadius.circular(TWRadius.chip),
-              ),
-              child: Text(
-                report.profile,
-                style: TWType.overline.copyWith(color: TWColors.accentBright),
-              ),
+            const Expanded(
+              child: Text('Portfolio Rebalancing AI', style: TWType.body),
             ),
             if (acted.isNotEmpty)
               _toggleChip(
@@ -1268,8 +1258,26 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
               ),
           ],
         ),
+        const SizedBox(height: TWSpace.md),
+        // Summary stats — identical fields & layout to the Account card
+        // (Actions / HIGH priority / Est. +score).
+        Row(
+          children: [
+            _rebStat('Actions', '${report.actionCount}',
+                key: const Key('moomoo_reb_action_count')),
+            _rebStat('HIGH priority', '${report.highPriorityCount}',
+                color: TWColors.down,
+                key: const Key('moomoo_reb_high_count')),
+            _rebStat(
+              'Est. +score',
+              '+${report.estimatedScoreImprovement.toStringAsFixed(0)}',
+              color: TWColors.up,
+              key: const Key('moomoo_reb_score_improve'),
+            ),
+          ],
+        ),
         if (report.summary.isNotEmpty) ...[
-          const SizedBox(height: TWSpace.sm),
+          const SizedBox(height: TWSpace.md),
           Text(report.summary, style: TWType.caption),
         ],
         // Pending-order filter: when any action already has an order in
@@ -1327,6 +1335,31 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
         if (!_hideRebalance)
           for (final w in report.warnings) _healthLine(w, TWColors.warn),
       ],
+    );
+  }
+
+  // Summary stat cell mirroring the Account RebalanceCard `_stat` (flat
+  // variant: value 15, label 12). Kept local so Moomoo Live stays free of the
+  // Account balance icon while sharing the exact stat layout.
+  Widget _rebStat(String label, String value, {Color? color, Key? key}) {
+    return Expanded(
+      child: Column(
+        key: key,
+        children: [
+          Text(
+            value,
+            style: TWType.label.copyWith(
+              color: color ?? TWColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TWType.caption.copyWith(color: TWColors.textTertiary),
+          ),
+        ],
+      ),
     );
   }
 
