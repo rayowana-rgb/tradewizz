@@ -273,27 +273,23 @@ class TWFlatSection extends StatelessWidget {
   /// Draws the bottom hairline that separates this section from the next.
   final bool divider;
 
-  /// When true, fills the section with a plain translucent purple block
-  /// (rounded corners, no hairline) to highlight it while staying flat.
+  /// When true, renders the section as a flat hairline-separated row (matches
+  /// the Insights nav cards) instead of a filled block.
   final bool highlight;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    final showHairline = divider || highlight;
     final content = Container(
       width: double.infinity,
-      decoration: highlight
-          ? BoxDecoration(
-              color: TWColors.surfaceCard.withValues(alpha: 0.45),
-              borderRadius: BorderRadius.circular(TWRadius.card),
+      decoration: showHairline
+          ? const BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: TWColors.hairlineTop, width: 1),
+              ),
             )
-          : (divider
-              ? const BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(color: TWColors.hairlineTop, width: 1),
-                  ),
-                )
-              : null),
+          : null,
       padding: padding,
       child: child,
     );

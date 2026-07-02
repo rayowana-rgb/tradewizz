@@ -265,13 +265,17 @@ class _ReportCardState extends State<_ReportCard> {
             Row(
               children: [
                 _ScoreCell(
-                    label: 'Portfolio', value: report.portfolioScore),
+                    label: 'Portfolio',
+                    value: report.portfolioScore,
+                    compact: widget.flat),
                 _ScoreCell(
                     label: 'Diversif.',
-                    value: report.diversificationScore),
+                    value: report.diversificationScore,
+                    compact: widget.flat),
                 _ScoreCell(
                     label: 'Concentr.',
-                    value: report.concentrationScore),
+                    value: report.concentrationScore,
+                    compact: widget.flat),
               ],
             ),
             const Divider(height: 24),
@@ -346,9 +350,11 @@ class _ReportCardState extends State<_ReportCard> {
 }
 
 class _ScoreCell extends StatelessWidget {
-  const _ScoreCell({required this.label, required this.value});
+  const _ScoreCell(
+      {required this.label, required this.value, this.compact = false});
   final String label;
   final double value;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -356,9 +362,9 @@ class _ScoreCell extends StatelessWidget {
       child: Column(
         children: [
           Text(value.toStringAsFixed(0),
-              style: const TextStyle(
+              style: TextStyle(
                   fontWeight: FontWeight.w800,
-                  fontSize: 20,
+                  fontSize: compact ? 15 : 20,
                   color: TWColors.textPrimary)),
           const SizedBox(height: 2),
           Text(label,

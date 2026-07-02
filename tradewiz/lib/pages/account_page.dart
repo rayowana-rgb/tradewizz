@@ -898,7 +898,7 @@ class _PortfolioValueHeader extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      fontSize: 20,
+                      fontSize: 15,
                       fontWeight: FontWeight.w900,
                       color: TWColors.textPrimary)),
             ],
@@ -1143,7 +1143,7 @@ class _SummaryCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                       fontWeight: FontWeight.w800,
-                      fontSize: 15,
+                      fontSize: 12,
                       color: color ?? TWColors.textPrimary)),
             ],
           ),
@@ -1152,9 +1152,8 @@ class _SummaryCard extends StatelessWidget {
     return TWFlatSection(
       key: const Key('account_portfolio_card'),
       highlight: highlight,
-      padding: highlight
-          ? const EdgeInsets.fromLTRB(TWSpace.md, TWSpace.md, TWSpace.md, 16)
-          : const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
+      padding:
+          const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
       child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1518,11 +1517,12 @@ class _PortfolioHealthCard extends StatelessWidget {
                   key: const Key('account_health_score'),
                   style: TextStyle(
                       fontWeight: FontWeight.w900,
-                      fontSize: 28,
+                      fontSize: 20,
                       color: color)),
               const SizedBox(width: 8),
               Text('/ 100  ${h.rating}',
                   style: const TextStyle(
+                      fontSize: 12,
                       color: TWColors.textTertiary, fontWeight: FontWeight.w600)),
             ]),
             if (h.strengths.isNotEmpty) ...[

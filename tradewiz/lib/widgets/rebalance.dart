@@ -258,7 +258,7 @@ class _RebalanceCardState extends State<RebalanceCard> {
           Text(value,
               style: TextStyle(
                   fontWeight: FontWeight.w800,
-                  fontSize: 20,
+                  fontSize: widget.flat ? 15 : 20,
                   color: color ?? TWColors.textPrimary)),
           const SizedBox(height: 2),
           Text(label,
