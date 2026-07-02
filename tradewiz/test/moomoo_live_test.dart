@@ -367,7 +367,16 @@ void main() {
     expect(find.text('Realized gain'), findsOneWidget);
     expect(find.textContaining('+\$123.45'), findsWidgets);
     // Net P/L = 35 - 20 = +15.00 over 800 cost basis = +1.88%.
-    expect(find.text('Unrealized P/L'), findsOneWidget);
+    // 'Unrealized P/L' labels both the summary row and the sort chip; assert
+    // the summary row exists by pairing the label with its value in one Row.
+    expect(find.text('Unrealized P/L'), findsWidgets);
+    expect(
+      find.ancestor(
+        of: find.text('Unrealized P/L'),
+        matching: find.byType(Row),
+      ),
+      findsWidgets,
+    );
     expect(find.textContaining('+\$15.00'), findsWidgets);
     // Per-position tiles render with avg cost.
     expect(find.byKey(const Key('moomoo_pos_INTC')), findsOneWidget);

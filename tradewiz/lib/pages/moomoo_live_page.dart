@@ -1905,14 +1905,17 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
       padding: const EdgeInsets.only(
         left: TWSpace.xs, right: TWSpace.xs, bottom: TWSpace.sm,
       ),
-      child: Row(
-        children: [
-          Text('Sort', style: TWType.overline),
-          const SizedBox(width: TWSpace.sm),
-          _sortChip('moomoo_sort_pl', 'P/L', 'pl'),
-          const SizedBox(width: TWSpace.xs),
-          _sortChip('moomoo_sort_weight', 'Weight', 'weight'),
-        ],
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            Text('Sort', style: TWType.overline),
+            const SizedBox(width: TWSpace.sm),
+            _sortChip('moomoo_sort_pl', 'Unrealized P/L', 'pl'),
+            const SizedBox(width: TWSpace.xs),
+            _sortChip('moomoo_sort_weight', 'Weight', 'weight'),
+          ],
+        ),
       ),
     );
   }
