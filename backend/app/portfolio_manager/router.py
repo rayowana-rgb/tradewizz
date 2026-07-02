@@ -57,7 +57,19 @@ def portfolio_manager(
     uid = _user_id(authorization)
     sub = get_sub_service()
     sub.record_usage(uid, METRIC_PORTFOLIO, meta="manager")
-    report = get_service().report(uid)
+    # OWNER with the Moomoo bridge configured -> advise over the REAL live book
+    # (same engine); everyone else stays on the simulation. Fall back to the
+    # simulation if the live book is momentarily unavailable.
+    from ..moomoo.router import owner_live_analytics
+    analytics = owner_live_analytics(uid)
+    report = None
+    if analytics is not None:
+        try:
+            report = analytics.manager()
+        except Exception:
+            report = None
+    if report is None:
+        report = get_service().report(uid)
     # portfolio_manager_opened: user_id, risk_level.
     sub.record_preview_event(
         uid, EVENT_PORTFOLIO_MANAGER_OPENED, meta=report.risk_level

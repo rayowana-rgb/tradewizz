@@ -19,6 +19,7 @@ from typing import Callable, List
 
 from ..models import Market
 from ..portfolio_health.service import PortfolioHealthService
+from ..portfolio_manager.service import PortfolioManagerService
 from ..rebalance.service import RebalanceService
 
 # Moomoo live holdings are US-listed; the scoring engine + regime are per-market.
@@ -62,6 +63,13 @@ class MoomooAnalytics:
             score_provider=score_provider,
             regime_provider=regime_provider,
         )
+        # AI Portfolio Manager over the SAME live holdings, reusing the exact
+        # simulation service (no snapshot history for the live book).
+        self._manager = PortfolioManagerService(
+            health_service=self._health,
+            positions_provider=self._positions,
+            account_provider=self._account,
+        )
 
     # -- adapters --------------------------------------------------------
     def _positions(self, _user_id=0) -> List[_PosAdapter]:
@@ -89,3 +97,6 @@ class MoomooAnalytics:
 
     def rebalance(self, profile=None):
         return self._rebalance.rebalance(0, profile=profile)
+
+    def manager(self):
+        return self._manager.report(0)

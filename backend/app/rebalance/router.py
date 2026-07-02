@@ -50,7 +50,21 @@ def rebalance(
     profile: Optional[str] = Query(default=None),
     authorization: Optional[str] = Header(default=None),
 ) -> RebalanceResponse:
-    """Rule-based ADD/HOLD/REDUCE/EXIT suggestions over the simulation."""
+    """Rule-based ADD/HOLD/REDUCE/EXIT suggestions.
+
+    For an OWNER account with the Moomoo bridge configured, the suggestions are
+    computed over the owner's REAL live holdings (same scoring engine); every
+    other user keeps the simulation. If the live book is momentarily
+    unavailable (OpenD down, rate-limited, etc.) we fall back to the simulation
+    so the endpoint never hard-fails.
+    """
     uid = _user_id(authorization)
     get_sub_service().record_preview_event(uid, EVENT_REBALANCE_OPENED)
+    from ..moomoo.router import owner_live_analytics
+    analytics = owner_live_analytics(uid)
+    if analytics is not None:
+        try:
+            return analytics.rebalance(profile=profile)
+        except Exception:
+            pass  # live book unavailable -> fall back to the simulation below.
     return get_service().rebalance(uid, profile=profile)

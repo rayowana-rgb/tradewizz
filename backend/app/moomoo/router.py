@@ -127,6 +127,24 @@ def _require_owner(authorization: Optional[str], secret: Optional[str]) -> int:
     return int(uid)
 
 
+def owner_live_analytics(uid: int):
+    """Return the live-Moomoo analytics bridge when [uid] is an owner and the
+    bridge is configured/wired, else None.
+
+    Used by the shared /v1/portfolio/{manager,rebalance,health} endpoints so an
+    OWNER sees advice computed over their REAL Moomoo book, while every other
+    user keeps the simulation. No secret header is required here: access is
+    already gated by the owner's own JWT, the data is the owner's own, and the
+    bridge only activates when TRADEWIZZ_MOOMOO_SECRET is configured (so a box
+    with the bridge disabled transparently falls back to the simulation).
+    """
+    if int(uid) not in _owner_uids():
+        return None
+    if not os.environ.get("TRADEWIZZ_MOOMOO_SECRET", ""):
+        return None
+    return _analytics  # may be None if not yet wired -> caller falls back.
+
+
 def _handle(exc: MoomooError) -> HTTPException:
     return HTTPException(status_code=exc.status_code, detail=exc.message)
 

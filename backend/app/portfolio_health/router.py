@@ -75,7 +75,19 @@ def portfolio_health(
     _require(uid, FEATURE_PORTFOLIO_HEALTH)
     sub = get_sub_service()
     sub.record_usage(uid, METRIC_PORTFOLIO, meta="health")
-    result = get_service().health(uid)
+    # OWNER with the Moomoo bridge configured -> health over the REAL live book
+    # (same engine); everyone else stays on the simulation, with a safe
+    # fallback to the simulation if the live book is momentarily unavailable.
+    from ..moomoo.router import owner_live_analytics
+    analytics = owner_live_analytics(uid)
+    result = None
+    if analytics is not None:
+        try:
+            result = analytics.health()
+        except Exception:
+            result = None
+    if result is None:
+        result = get_service().health(uid)
     # portfolio_health_opened: user_id, portfolio_score.
     sub.record_preview_event(
         uid,
