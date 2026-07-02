@@ -1040,19 +1040,25 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
   }
 
   Widget _scoreChip(String label, double value) {
-    return Column(
-      children: [
-        Text(
-          value.toStringAsFixed(0),
-          style: TWType.body.copyWith(color: TWColors.textPrimary),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          textAlign: TextAlign.center,
-          style: TWType.overline.copyWith(color: TWColors.textTertiary),
-        ),
-      ],
+    return Expanded(
+      child: Column(
+        children: [
+          Text(
+            value.toStringAsFixed(0),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TWType.body.copyWith(color: TWColors.textPrimary),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TWType.overline.copyWith(color: TWColors.textTertiary),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2412,8 +2418,20 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
     child: Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(k, style: TWType.caption),
-        Text(v, style: TWType.tabular(TWType.label)),
+        Flexible(
+          child: Text(k,
+              style: TWType.caption,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis),
+        ),
+        const SizedBox(width: TWSpace.sm),
+        Flexible(
+          child: Text(v,
+              style: TWType.tabular(TWType.label),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right),
+        ),
       ],
     ),
   );
@@ -2432,10 +2450,21 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(k, style: TWType.caption),
-          Text(
-            '$amount$pct',
-            style: TWType.tabular(TWType.label).copyWith(color: color),
+          Flexible(
+            child: Text(k,
+                style: TWType.caption,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
+          ),
+          const SizedBox(width: TWSpace.sm),
+          Flexible(
+            child: Text(
+              '$amount$pct',
+              style: TWType.tabular(TWType.label).copyWith(color: color),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.right,
+            ),
           ),
         ],
       ),
