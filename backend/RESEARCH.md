@@ -65,6 +65,13 @@ they are populated only by atoms that pass Stage 4.
 - Net conviction: the most promising (but theoretically fragile) production
   candidate so far is SHORT-TERM (1-month) MOMENTUM behind a liquidity gate,
   pending out-of-sample and a regime guard. Nothing is production-ready yet.
+- **Multi-year backfill assessed & readied** (2026-07-04): feasibility CONFIRMED
+  (AAPL `period=max` = 11,480 rows, 1980..2026 via the backend fetch path).
+  Plan: backfill ONLY the liquid tradable sub-universe (top ~800 by ADV, index
+  symbols excluded), ~29 min at <=14 req/30s, resumable, separate cache entry
+  (does NOT overwrite 1y). Script + note in `research/backfill/`. NOT yet run
+  (bulk Yahoo fetch awaits go-ahead). This unblocks momentum 12-1, crash
+  calibration, regime-guard, and the >55 evidence ceiling.
 - **Regime guard tested & the naive version REJECTED** (2026-07-04): momentum
   IC was state-dependent (higher when trending) but the tradable SPREAD was
   better in the off-regime, so a naive on/off gate would have hurt returns.
