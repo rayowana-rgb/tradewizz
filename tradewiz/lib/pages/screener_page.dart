@@ -19,6 +19,7 @@ import '../widgets/broker_open_sheet.dart';
 import '../widgets/ds/ds.dart';
 import 'ai_analysis_page.dart';
 import 'moomoo_live_page.dart' show kMoomooOwnerUid;
+import 'momentum_page.dart';
 import 'order_ticket_page.dart';
 
 /// Non-order action emitted by the swipe-left menu (alongside [OrderSide]).
@@ -834,6 +835,21 @@ class _ScreenerPageState extends State<ScreenerPage> {
         ),
         // Quick market + category chips remain for fast access.
         _MarketFilterBar(selected: _market, onSelected: _selectMarket),
+        // Momentum Research entry (EXPERIMENTAL, Stage-3b). Opens the dedicated
+        // 12-1 momentum picks page. US-only research signal; honestly labelled.
+        _MomentumEntryBanner(
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => MomentumPage(
+                  repository: _repo,
+                  secretStore: _moomooSecret,
+                  ownerUid: AuthScope.read(context).user?.id,
+                ),
+              ),
+            );
+          },
+        ),
         // Sentiment (category) chips and the Tight-Stop Swing toggle now live
         // inside the Filters sheet. When swing mode is active we keep a compact
         // inline note so the (re-ranked) results still read clearly.
@@ -1862,6 +1878,72 @@ class _BulkResultDialog extends StatelessWidget {
           child: const Text('Done'),
         ),
       ],
+    );
+  }
+}
+
+/// Explore entry point for the EXPERIMENTAL momentum research signal. A slim
+/// tappable banner that opens the dedicated [MomentumPage]. Kept intentionally
+/// distinct (accent + science glyph) so it reads as research, not a screener
+/// category.
+class _MomentumEntryBanner extends StatelessWidget {
+  const _MomentumEntryBanner({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Material(
+        color: TWColors.surfaceCardGlass,
+        borderRadius: BorderRadius.circular(TWRadius.card),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(TWRadius.card),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+                horizontal: TWSpace.lg, vertical: TWSpace.md),
+            child: Row(
+              children: [
+                const Icon(Icons.trending_up,
+                    color: TWColors.accent, size: 20),
+                const SizedBox(width: TWSpace.sm),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text('Momentum Research', style: TWType.label),
+                          const SizedBox(width: TWSpace.sm),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: TWColors.warn.withValues(alpha: 0.18),
+                              borderRadius: BorderRadius.circular(TWRadius.sm),
+                            ),
+                            child: Text('EXPERIMENTAL',
+                                style: TWType.overline
+                                    .copyWith(color: TWColors.warn)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text('Top US 12-1 momentum · monthly hold (Stage-3b)',
+                          style: TWType.caption
+                              .copyWith(color: TWColors.textTertiary)),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right,
+                    color: TWColors.textTertiary, size: 20),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

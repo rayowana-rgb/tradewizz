@@ -236,6 +236,46 @@ class ApiClient {
   }) =>
       _brokerCall('DELETE', path, bearer: bearer, moomooSecret: secret);
 
+  // -- Momentum Research (EXPERIMENTAL, Stage-3b) ---------------------------- #
+  // Read-only 12-1 momentum picks. No auth (research signal, not order flow).
+  // NEVER falls back to mock data -- a bad response surfaces the error.
+  Future<Map<String, dynamic>> momentumPicks({int topN = 10}) =>
+      _brokerCall('GET', '/v1/momentum/picks?top_n=$topN');
+
+  // Owner-only basket preview/buy. Reuse the hardened moomoo secret+bearer gate.
+  Future<Map<String, dynamic>> momentumBasketPreview(
+    List<String> symbols,
+    double perPositionUsd, {
+    required String bearer,
+    required String secret,
+  }) =>
+      moomooPost(
+        '/v1/momentum/basket/preview',
+        {'symbols': symbols, 'per_position_usd': perPositionUsd},
+        bearer: bearer,
+        secret: secret,
+      );
+
+  Future<Map<String, dynamic>> momentumBasketBuy(
+    List<String> symbols,
+    double perPositionUsd, {
+    required String bearer,
+    required String secret,
+    required bool confirm,
+    String? tradePin,
+  }) =>
+      moomooPost(
+        '/v1/momentum/basket/buy',
+        {
+          'symbols': symbols,
+          'per_position_usd': perPositionUsd,
+          'confirm': confirm,
+          if (tradePin != null) 'trade_pin': tradePin,
+        },
+        bearer: bearer,
+        secret: secret,
+      );
+
   Future<Map<String, dynamic>> _brokerCall(
     String method,
     String path, {

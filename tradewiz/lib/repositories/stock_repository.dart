@@ -2,6 +2,7 @@ import '../models/analysis_result.dart';
 import '../models/broker.dart';
 import '../models/broker_connection.dart';
 import '../models/moomoo_live.dart';
+import '../models/momentum.dart';
 import '../models/market.dart';
 import '../models/market_index.dart';
 import '../models/news.dart';
@@ -350,6 +351,43 @@ class StockRepository {
     return (j['positions'] as List<dynamic>? ?? [])
         .map((e) => MoomooLivePosition.fromJson(e as Map<String, dynamic>))
         .toList();
+  }
+
+  // -- Momentum Research (EXPERIMENTAL, Stage-3b) -------------------------- #
+  /// Read-only 12-1 momentum picks (no auth). Backs `GET /v1/momentum/picks`.
+  Future<MomentumPicks> momentumPicks({int topN = 10}) async {
+    final j = await _client.momentumPicks(topN: topN);
+    return MomentumPicks.fromJson(j);
+  }
+
+  /// Owner-only basket preview (no order placed).
+  Future<MomentumBasketPreview> momentumBasketPreview({
+    required List<String> symbols,
+    required double perPositionUsd,
+    required String token,
+    required String secret,
+  }) async {
+    final j = await _client.momentumBasketPreview(
+      symbols, perPositionUsd,
+      bearer: token, secret: secret,
+    );
+    return MomentumBasketPreview.fromJson(j);
+  }
+
+  /// Owner-only one-tap basket BUY on Moomoo LIVE (real money).
+  Future<MomentumBasketResult> momentumBasketBuy({
+    required List<String> symbols,
+    required double perPositionUsd,
+    required String token,
+    required String secret,
+    required bool confirm,
+    String? tradePin,
+  }) async {
+    final j = await _client.momentumBasketBuy(
+      symbols, perPositionUsd,
+      bearer: token, secret: secret, confirm: confirm, tradePin: tradePin,
+    );
+    return MomentumBasketResult.fromJson(j);
   }
 
   /// Bare symbols with a BUY order placed today (held or already sold).
