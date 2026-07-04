@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../models/momentum.dart';
 import '../repositories/stock_repository.dart';
+import '../services/api_client.dart' show ApiException;
 import '../services/auth_scope.dart';
 import '../services/moomoo_secret_store.dart';
 import '../theme_tradewizz.dart';
@@ -371,8 +372,8 @@ class _MomentumPageState extends State<MomentumPage> {
     }
     if (!mounted) return;
 
-    // 2) Confirm dialog with an optional trade PIN.
-    final pinCtrl = TextEditingController();
+    // 2) Confirm dialog. Trade unlock is done manually in the OpenD GUI, so no
+    //    PIN is collected here (matches the Explore "Buy all" flow).
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -404,16 +405,6 @@ class _MomentumPageState extends State<MomentumPage> {
                       ],
                     ),
                   )),
-              const SizedBox(height: TWSpace.md),
-              TextField(
-                controller: pinCtrl,
-                obscureText: true,
-                keyboardType: TextInputType.number,
-                style: TWType.body,
-                decoration: const InputDecoration(
-                  labelText: 'Trade PIN (if set)',
-                ),
-              ),
             ],
           ),
         ),
@@ -430,39 +421,120 @@ class _MomentumPageState extends State<MomentumPage> {
         ],
       ),
     );
-    final pin = pinCtrl.text.trim();
-    pinCtrl.dispose();
     if (confirmed != true || !mounted) return;
 
-    // 3) Place. Show a left->right progress bar so the owner can see the buy is
-    //    running until it finishes. The backend places all legs in one call, so
-    //    this is an indeterminate sweep (not per-leg), dismissed on completion.
+    // 3) Place. Place each leg as its own MARKET BUY sequentially, exactly like
+    //    the Explore "Buy all" flow, so the owner sees a real per-order progress
+    //    bar counting up (1/n, 2/n, …) instead of an indeterminate sweep.
+    //    (Trade unlock is done manually in the OpenD GUI, so no PIN is sent.)
+    final progress = ValueNotifier<int>(0);
+    final cancel = _MomentumCancelToken();
     showDialog<void>(
       context: context,
       barrierDismissible: false,
       barrierColor: Colors.black54,
-      builder: (_) => _BuyProgressDialog(orderCount: preview.legs.length),
+      builder: (_) => _MomentumBuyProgressDialog(
+        total: preview.legs.length,
+        progress: progress,
+        cancel: cancel,
+      ),
     );
 
-    MomentumBasketResult result;
-    try {
-      result = await widget.repository.momentumBasketBuy(
-        symbols: symbols,
-        perPositionUsd: size,
-        token: token,
-        secret: secret,
-        confirm: true,
-        tradePin: pin.isEmpty ? null : pin,
-      );
-    } catch (e) {
-      if (mounted) Navigator.of(context, rootNavigator: true).pop(); // close bar
-      _snack('Order placement failed. $e');
-      return;
+    var filled = 0;
+    var skipped = 0;
+    var failed = 0;
+    final failures = <String>[];
+    var cancelled = false;
+
+    for (var i = 0; i < preview.legs.length; i++) {
+      if (cancel.isCancelled) {
+        cancelled = true;
+        break;
+      }
+      final leg = preview.legs[i];
+
+      // Moomoo throttles placement to ~15 orders / 30s. Pace ourselves so a
+      // large basket does not trip the broker's rate limiter.
+      if (i > 0 && _kMomentumOrderGap > Duration.zero) {
+        await Future<void>.delayed(_kMomentumOrderGap);
+      }
+
+      var outcome = 0; // 0=filled, 1=skipped, 2=failed
+      String? failMsg;
+      for (var attempt = 0; attempt < _kMomentumMaxRetries; attempt++) {
+        if (cancel.isCancelled) break;
+        try {
+          await widget.repository.moomooPlace(
+            token: token,
+            secret: secret,
+            symbol: leg.symbol,
+            side: 'BUY',
+            quantity: leg.quantity,
+            orderType: 'MARKET',
+          );
+          outcome = 0;
+          break;
+        } on ApiException catch (e) {
+          final msg = e.message.toLowerCase();
+          // Transient broker rate limit: wait out the window and retry.
+          if (msg.contains('high frequency') ||
+              msg.contains('per 30 seconds') ||
+              msg.contains('rate limit') ||
+              msg.contains('too many requests')) {
+            outcome = 2;
+            failMsg = e.message;
+            if (attempt < _kMomentumMaxRetries - 1) {
+              await Future<void>.delayed(_kMomentumRetryBackoff);
+              continue;
+            }
+            break;
+          }
+          // Expected, non-fatal per-stock outcomes: skip & continue the run.
+          if (msg.contains('cap') ||
+              msg.contains('notional') ||
+              msg.contains('cash') ||
+              msg.contains('buying power') ||
+              msg.contains('minimum order amount') ||
+              (msg.contains('fractional') && msg.contains('minimum')) ||
+              msg.contains('monetary authority') ||
+              msg.contains('complete the evaluation')) {
+            outcome = 1;
+          } else {
+            outcome = 2;
+            failMsg = e.message;
+          }
+          break;
+        } catch (e) {
+          outcome = 2;
+          failMsg = '$e';
+          break;
+        }
+      }
+
+      if (outcome == 0) {
+        filled++;
+      } else if (outcome == 1) {
+        skipped++;
+      } else {
+        failed++;
+        failures.add('${leg.symbol}: ${failMsg ?? 'failed'}');
+      }
+      progress.value = i + 1;
     }
+
+    progress.dispose();
     if (!mounted) return;
-    Navigator.of(context, rootNavigator: true).pop(); // close the progress bar
-    _snack('Placed ${result.placed} order(s)'
-        '${result.failed > 0 ? ', ${result.failed} failed' : ''}.');
+    // Close the progress dialog only if it is still up (a confirmed cancel may
+    // have already popped it).
+    if (!cancel.dialogClosed) {
+      Navigator.of(context, rootNavigator: true).pop();
+    }
+    final parts = <String>[
+      'Placed $filled order(s)',
+      if (skipped > 0) '$skipped skipped',
+      if (failed > 0) '$failed failed',
+    ];
+    _snack('${cancelled ? 'Stopped. ' : ''}${parts.join(', ')}.');
   }
 
   void _snack(String msg) {
@@ -472,110 +544,145 @@ class _MomentumPageState extends State<MomentumPage> {
   }
 }
 
-/// A modal shown while a LIVE basket buy is being placed. Displays an animated
-/// left->right progress sweep so the owner can clearly see the purchase is
-/// running until it completes. The backend places every leg in a single call,
-/// so this is an indeterminate (looping) sweep rather than per-leg progress.
-class _BuyProgressDialog extends StatefulWidget {
-  const _BuyProgressDialog({required this.orderCount});
+/// Default pacing for the LIVE basket buy: Moomoo allows ~15 orders / 30s, so a
+/// ~2.2s gap keeps us comfortably under the limit (≈ 13-14 orders / 30s).
+const Duration _kMomentumOrderGap = Duration(milliseconds: 2200);
 
-  final int orderCount;
+/// How long to wait after a transient rate-limit rejection before retrying.
+const Duration _kMomentumRetryBackoff = Duration(seconds: 8);
 
-  @override
-  State<_BuyProgressDialog> createState() => _BuyProgressDialogState();
+/// Max attempts per order (initial try + retries) for transient rate limits.
+const int _kMomentumMaxRetries = 3;
+
+/// Cooperative cancel flag shared between the basket-buy loop and its progress
+/// dialog so the owner can stop a run in flight.
+class _MomentumCancelToken {
+  bool isCancelled = false;
+  bool dialogClosed = false;
 }
 
-class _BuyProgressDialogState extends State<_BuyProgressDialog>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c;
+/// A modal shown while a LIVE basket buy is being placed. Each leg is placed as
+/// its own order, so this shows a real determinate bar counting up (1/n, 2/n,
+/// …) — matching the Explore "Buy all" flow. Tap outside to stop.
+class _MomentumBuyProgressDialog extends StatefulWidget {
+  const _MomentumBuyProgressDialog({
+    required this.total,
+    required this.progress,
+    required this.cancel,
+  });
+
+  final int total;
+  final ValueNotifier<int> progress;
+  final _MomentumCancelToken cancel;
 
   @override
-  void initState() {
-    super.initState();
-    _c = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1100),
-    )..repeat();
+  State<_MomentumBuyProgressDialog> createState() =>
+      _MomentumBuyProgressDialogState();
+}
+
+class _MomentumBuyProgressDialogState
+    extends State<_MomentumBuyProgressDialog> {
+  bool _stopping = false;
+
+  Future<bool> _confirmStop() async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: TWColors.surfaceCard,
+        title: const Text('Stop the purchase?', style: TWType.body),
+        content: Text(
+          'Orders already placed will stay. The remaining orders won’t '
+          'be placed.',
+          style: TWType.caption.copyWith(color: TWColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('No'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Yes'),
+          ),
+        ],
+      ),
+    );
+    return yes ?? false;
   }
 
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
+  Future<void> _requestCancel() async {
+    if (_stopping) return;
+    final yes = await _confirmStop();
+    if (!mounted) return;
+    if (yes) {
+      setState(() => _stopping = true);
+      widget.cancel.isCancelled = true;
+      widget.cancel.dialogClosed = true;
+      Navigator.of(context).pop();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: TWSpace.xxl),
-        child: TWFloatingCard(
-          padding: const EdgeInsets.all(TWSpace.xl),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Placing your orders', style: TWType.body),
-              const SizedBox(height: TWSpace.xs),
-              Text(
-                'Sending ${widget.orderCount} MARKET BUY '
-                'order${widget.orderCount == 1 ? '' : 's'} to Moomoo LIVE. '
-                'Please keep the app open.',
-                style: TWType.caption.copyWith(
-                  color: TWColors.textSecondary,
-                  height: 1.35,
-                ),
-              ),
-              const SizedBox(height: TWSpace.lg),
-              // The left->right sweeping bar.
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: SizedBox(
-                  height: 8,
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final w = constraints.maxWidth;
-                      const barFraction = 0.42; // width of the moving segment
-                      final barW = w * barFraction;
-                      return Stack(
-                        children: [
-                          // Track.
-                          Container(
-                            color: TWColors.bgBase.withValues(alpha: 0.6),
-                          ),
-                          // Moving segment, driven left->right by the controller.
-                          AnimatedBuilder(
-                            animation: _c,
-                            builder: (context, _) {
-                              final travel = w + barW;
-                              final x = _c.value * travel - barW;
-                              return Transform.translate(
-                                offset: Offset(x, 0),
-                                child: Container(
-                                  width: barW,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(999),
-                                    gradient: const LinearGradient(
-                                      colors: [
-                                        Color(0x004F7CFF),
-                                        TWColors.accent,
-                                        Color(0x004F7CFF),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ],
-                      );
-                    },
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _requestCancel();
+      },
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _requestCancel,
+            ),
+          ),
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: TWSpace.xxl),
+              child: TWFloatingCard(
+                padding: const EdgeInsets.all(TWSpace.xl),
+                child: ValueListenableBuilder<int>(
+                  valueListenable: widget.progress,
+                  builder: (context, done, _) => Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Placing your orders', style: TWType.body),
+                      const SizedBox(height: TWSpace.xs),
+                      Text(
+                        _stopping
+                            ? 'Stopping…  $done / ${widget.total}'
+                            : 'Placing LIVE orders…  $done / ${widget.total}',
+                        style: TWType.caption.copyWith(
+                          color: TWColors.textSecondary,
+                          height: 1.35,
+                        ),
+                      ),
+                      const SizedBox(height: TWSpace.lg),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(999),
+                        child: LinearProgressIndicator(
+                          value: widget.total == 0 ? null : done / widget.total,
+                          minHeight: 8,
+                          backgroundColor:
+                              TWColors.bgBase.withValues(alpha: 0.6),
+                          color: TWColors.accent,
+                        ),
+                      ),
+                      const SizedBox(height: TWSpace.sm),
+                      Text(
+                        'Tap outside to stop.',
+                        style: TWType.caption
+                            .copyWith(color: TWColors.textTertiary),
+                      ),
+                    ],
                   ),
                 ),
               ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
