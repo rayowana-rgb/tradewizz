@@ -1,0 +1,80 @@
+{
+  "universe_symbols": 343,
+  "rebalances": 231,
+  "cost_bps_per_side": 10.0,
+  "params": {
+    "stop": 0.15,
+    "target_vol_hold": 0.06,
+    "trend_k": 3.0
+  },
+  "benchmark": {
+    "mean_per_hold": 0.01481,
+    "worst": -0.3128,
+    "cum_return": 19.235,
+    "sharpe": 0.89
+  },
+  "net_of_cost": {
+    "baseline": {
+      "mean_per_hold": 0.02419,
+      "worst": -0.366,
+      "cum_return": 93.445,
+      "sharpe": 0.892
+    },
+    "partial_voltarget": {
+      "mean_per_hold": 0.01768,
+      "worst": -0.366,
+      "cum_return": 28.978,
+      "sharpe": 0.814
+    },
+    "per_hold_stop": {
+      "mean_per_hold": 0.02686,
+      "worst": -0.1508,
+      "cum_return": 211.235,
+      "sharpe": 1.079
+    },
+    "half_in_bear": {
+      "mean_per_hold": 0.02232,
+      "worst": -0.3304,
+      "cum_return": 72.758,
+      "sharpe": 0.902
+    },
+    "trend_scaled": {
+      "mean_per_hold": 0.02655,
+      "worst": -0.3964,
+      "cum_return": 134.001,
+      "sharpe": 0.893
+    }
+  },
+  "excess_over_benchmark": {
+    "baseline": {
+      "mean_per_hold": 0.00938,
+      "worst": -0.2297,
+      "cum_return": 4.932,
+      "sharpe": 0.552
+    },
+    "partial_voltarget": {
+      "mean_per_hold": 0.00287,
+      "worst": -0.1719,
+      "cum_return": 0.551,
+      "sharpe": 0.222
+    },
+    "per_hold_stop": {
+      "mean_per_hold": 0.01205,
+      "worst": -0.1713,
+      "cum_return": 10.308,
+      "sharpe": 0.735
+    },
+    "half_in_bear": {
+      "mean_per_hold": 0.00751,
+      "worst": -0.2297,
+      "cum_return": 2.853,
+      "sharpe": 0.442
+    },
+    "trend_scaled": {
+      "mean_per_hold": 0.01174,
+      "worst": -0.2958,
+      "cum_return": 7.605,
+      "sharpe": 0.57
+    }
+  }
+}

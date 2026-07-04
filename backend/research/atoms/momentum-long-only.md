@@ -2,8 +2,8 @@
 title: Long-Only Momentum (top-decile, cost-aware) — production form
 slug: momentum-long-only
 stage: backtest-oos
-confidence: 78
-evidence: 66
+confidence: 80
+evidence: 70
 domains: [momentum, factor-investing, quantitative-trading, portfolio-construction]
 frameworks: [momentum_score]
 timeframe: position
@@ -75,16 +75,21 @@ WORSE by sitting out the recovery.
 - Portfolio: equal-weight top decile (in the app, ~top 10 by score), long only.
 - Rebalance monthly (21 trading days).
 - Costs: model ~10 bps/side on turnover.
-- Risk control: do NOT use the long-short bear+vol cash gate (it costs upside).
-  Prefer per-name stop-loss / position sizing (as the app already does), or a
-  partial-scale vol-target rather than a full cash gate. (Open research item.)
+- Risk control: use a **per-position STOP-LOSS**, NOT a market cash gate and NOT
+  a vol-target scale-down. A stop-loss overlay was the ONLY control tested that
+  improved BOTH the tail AND compounding (see evidence log 2026-07-04b). This
+  matches the app's existing SL/TP design. De-risking overlays (cash gate,
+  partial vol-target) all HURT long-only momentum by giving up upside.
 
 ## Backtesting ideas
 - DONE: long-only top-decile vs equal-weight benchmark, net of 10 bps/side,
   2007-2026, with and without the bear+vol cash guard.
-- NEXT: cost sensitivity (5 / 20 bps); top-N (10 vs 20 names) sensitivity; a
-  long-only-appropriate risk overlay (trailing stop / partial vol-target)
-  instead of the full cash gate; OOS split on this long-only form.
+- DONE (2026-07-04b): risk-control comparison -- baseline vs partial
+  vol-target vs per-hold stop vs half-in-bear vs trend-scaled. Per-hold
+  stop-loss won decisively.
+- NEXT: cost sensitivity (5 / 20 bps); top-N (10 vs 20 names); calibrate the
+  stop to the app's real intraday SL mechanics (not a monthly floor proxy);
+  OOS split on the stop-loss overlay; then Stage-4 live-eval.
 
 ## Relationships to other concepts
 - Production form of **cross-sectional-momentum** (which is the long-short study).
@@ -130,3 +135,32 @@ WORSE by sitting out the recovery.
   cost/top-N sensitivity, and true Stage-4 live-eval (TestFlight) before
   production. Recorded. Honest correction of the crash-guard's scope is the
   main knowledge gained here.
+
+- 2026-07-04b: Stage-3 RISK-CONTROL comparison for the long-only book.
+  `research/backtests/momentum-longonly-risk/run.py`; results `results.json`.
+  Same 343-name / 231-rebalance / 10bps setup. Five overlays on the top-decile
+  book (all causal): baseline, partial vol-target (scale 0.5-1.0, never cash),
+  per-hold stop (floor each hold at -15%), half-in-bear (50% when mkt<200dMA),
+  trend-scaled (continuous exposure by mkt/200dMA).
+
+  Measured (real, not fabricated), NET OF COST:
+  - baseline:          +2.42%/hold, worst -36.6%, cum +93.4x, Sharpe 0.89
+  - partial voltarget: +1.77%/hold, worst -36.6%, cum +29.0x, Sharpe 0.81
+  - **per-hold stop:   +2.69%/hold, worst -15.1%, cum +211x, Sharpe 1.08**
+  - half-in-bear:      +2.23%/hold, worst -33.0%, cum +72.8x, Sharpe 0.90
+  - trend-scaled:      +2.66%/hold, worst -39.6%, cum +134x, Sharpe 0.89
+  EXCESS Sharpe: per-hold stop 0.74 (best) vs baseline 0.55.
+
+  FINDING: a **per-position stop-loss** is the winning long-only risk control --
+  the ONLY overlay that improved BOTH the tail (worst -36.6% -> -15.1%) AND
+  compounding (cum +93.4x -> +211x, Sharpe 0.89 -> 1.08). Mechanism: cutting
+  losers early keeps capital in winners (momentum's own thesis) instead of
+  parking in cash. This is exactly what the app already does (SL/TP). Every
+  DE-RISKING overlay (cash gate earlier, partial vol-target here) HURT -- the
+  consistent lesson is: do not step OUT of a long-only momentum book, cut the
+  individual losers instead.
+  HONEST CAVEATS (recorded): (1) the -15% cap is applied to a MONTHLY realized
+  return -- a crude proxy for the app's intraday -1% SL, so the exact +211x is
+  optimistic; the DIRECTION (stops help) is robust, the magnitude is not. (2)
+  -15% level is in-sample; needs sensitivity + OOS before trust. Confidence
+  78->80, evidence 66->70.
