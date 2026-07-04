@@ -1,0 +1,76 @@
+{
+  "universe_symbols": 343,
+  "split_year": 2017,
+  "train_rebalances": 119,
+  "test_rebalances": 112,
+  "calibrated_on_train": {
+    "target_vol_per_hold": 0.0703,
+    "market_vol_tercile_cut": 0.1811
+  },
+  "signal_generalization": {
+    "train_12_1": {
+      "n": 119,
+      "mean_ic": 0.0145,
+      "ic_tstat": 0.778
+    },
+    "test_12_1": {
+      "n": 112,
+      "mean_ic": 0.0356,
+      "ic_tstat": 1.673
+    }
+  },
+  "guard_generalization": {
+    "TRAIN": {
+      "raw": {
+        "n": 119,
+        "mean_per_hold": 0.0006,
+        "worst": -0.3767,
+        "sum": 0.0731,
+        "sharpe_annual_proxy": 0.03,
+        "tstat": 0.095
+      },
+      "vol_target": {
+        "n": 119,
+        "mean_per_hold": 0.0072,
+        "worst": -0.261,
+        "sum": 0.859,
+        "sharpe_annual_proxy": 0.319,
+        "tstat": 1.004
+      },
+      "bear_vol_gate": {
+        "n": 119,
+        "mean_per_hold": 0.0088,
+        "worst": -0.1144,
+        "sum": 1.0504,
+        "sharpe_annual_proxy": 0.607,
+        "tstat": 1.912
+      }
+    },
+    "TEST": {
+      "raw": {
+        "n": 112,
+        "mean_per_hold": 0.014,
+        "worst": -0.6569,
+        "sum": 1.5679,
+        "sharpe_annual_proxy": 0.4,
+        "tstat": 1.222
+      },
+      "vol_target": {
+        "n": 112,
+        "mean_per_hold": 0.0166,
+        "worst": -0.4113,
+        "sum": 1.8582,
+        "sharpe_annual_proxy": 0.533,
+        "tstat": 1.629
+      },
+      "bear_vol_gate": {
+        "n": 112,
+        "mean_per_hold": 0.0165,
+        "worst": -0.3137,
+        "sum": 1.8478,
+        "sharpe_annual_proxy": 0.6,
+        "tstat": 1.834
+      }
+    }
+  }
+}

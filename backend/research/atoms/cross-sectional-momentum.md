@@ -1,9 +1,9 @@
 ---
 title: Cross-Sectional Price Momentum (12-1)
 slug: cross-sectional-momentum
-stage: backtest
-confidence: 78
-evidence: 55
+stage: backtest-oos
+confidence: 80
+evidence: 68
 domains: [momentum, factor-investing, quantitative-trading]
 frameworks: [momentum_score]
 timeframe: position
@@ -168,3 +168,18 @@ returns of top vs bottom decile. This is an in-sample, single-regime test:
   2009/2023 crashes mean a crash-guard atom must gate it, (c) universe is only
   343 liquid names -- a Stage-4 out-of-sample confirmation on a broader
   backfilled universe is the next requirement. Recorded.
+
+- 2026-07-04 (STAGE-4 OOS): train/test split (TRAIN year<2017, TEST year>=2017)
+  in `research/backtests/momentum-oos/run.py`. The 12-1 signal has NO free
+  parameters, so this tests pure generalization: TRAIN mean IC +0.0145 (t 0.78,
+  dragged by the 2008-09 crash in-sample) vs **TEST mean IC +0.0356 (t 1.67) on
+  UNSEEN 2017-2026 data**. The edge did NOT decay out-of-sample -- it was
+  stronger. Combined with the crash-guard (also OOS-validated, see
+  `momentum-crash-guard.md`), 12-1 momentum now has a COMPLETE 4-stage evidence
+  chain (up to historical OOS). Stage `backtest-oos` (NOT the live Stage-4
+  `live-eval` yet -- that needs forward/paper evaluation on the live app),
+  confidence 78->80, evidence 55->68. Still not auto-promoted: significance
+  remains marginal (t<2); the app needs a LONG-ONLY production variant (this
+  test is long-short) plus transaction-cost modelling; and true Stage-4 live
+  evaluation requires the app in the user's hands (TestFlight). This is the
+  leading production candidate.

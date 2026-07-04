@@ -48,6 +48,14 @@ It advances only when the current stage is fully satisfied and recorded.
 - A result that fails is still recorded (we never discard useful knowledge).
 - Output: a reproducible backtest + a results file with measured metrics.
 
+**Stage 3b — Historical Out-of-Sample (`status: backtest-oos`).** A stronger
+Stage-3 result: split history into TRAIN and TEST, calibrate any free
+parameters on TRAIN only, and report performance on the untouched TEST window.
+This guards against overfitting *within historical data*. It is NOT the same as
+Stage 4 (`live-eval`), which requires forward/paper evaluation on data that did
+not exist at design time. A concept may reach `backtest-oos` and still be
+unproven for production until it survives live evaluation.
+
 ### Stage 4 — Real-World Performance Evaluation  (`status: live-eval`)
 - Paper/forward evaluation on live data before production trust.
 - Compare realized outcomes to backtested expectations; measure decay.

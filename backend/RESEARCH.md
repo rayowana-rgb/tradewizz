@@ -23,12 +23,12 @@ metrics or citations. Failed results are kept, not hidden.
 
 | Atom | Stage | Confidence | Evidence | Verdict |
 |------|-------|-----------|----------|---------|
-| [Cross-Sectional Momentum (12-1)](research/atoms/cross-sectional-momentum.md) | backtest | 78 | 55 | Multi-year (2006-2026) re-test: 12-1 mean IC +0.025, t 1.76, hit 58% -> STRONGEST-evidenced concept, right sign, marginally significant. Crash-prone (2009 -7%, 2023 -8%). Needs crash-guard + Stage-4 before production. |
+| [Cross-Sectional Momentum (12-1)](research/atoms/cross-sectional-momentum.md) | **backtest-oos** | 80 | 68 | Multi-year 12-1 mean IC +0.025 (t 1.76); STAGE-4 OOS: TEST (2017-2026, unseen) mean IC +0.036 (t 1.67) -> edge stronger out-of-sample. First concept with a full 4-stage chain. Marginal significance; needs long-only variant + costs before production. |
 | [Liquidity & Participation Score](research/atoms/liquidity-participation.md) | backtest | 80 | 40 | Tradability gate VALIDATED (19.3% of US universe non-tradable; illiquid names 6.5x fwd-ret variance). Signal-hygiene sub-claim (illiquidity lowers IC) REJECTED. Sound RISK pre-filter; awaits Stage-4 before wiring to risk_score. |
 | [Short-Term Reversal (1-month)](research/atoms/short-term-reversal.md) | backtest | 62 | 30 | **REJECTED** on our data: IC strongly NEGATIVE (-0.09), monotonicity -0.94 -> the effect is short-term MOMENTUM, not reversal. Negative result, recorded. |
 | [Short-Term Momentum (1-month)](research/atoms/short-term-momentum.md) | backtest | 32 | 40 | DEMOTED. 20-year OOS re-test (3-1 proxy) gave IC +0.0000, t 0.003 -> the 1-month continuation was a SINGLE-REGIME ARTIFACT of the 2025-26 trending window; averages to zero across history. NOT a production candidate. Retained as a cautionary example. |
 | [Regime Guard (trend/vol state)](research/atoms/regime-guard.md) | backtest | 58 | 22 | Naive on/off gate REJECTED on 1y data (single crash). SUPERSEDED by momentum-crash-guard (multi-year, real crashes). |
-| [Momentum Crash Guard](research/atoms/momentum-crash-guard.md) | backtest | 72 | 55 | Stage-3, 231 reb 2007-2026: vol-target cut worst rebalance -65.7%->-15.1% (4x), Sharpe 0.25->0.44; bear+vol gate turned crash-year cum -1.28->+0.03, best Sharpe 0.58. Both beat raw momentum. MANDATORY overlay on 12-1. Needs Stage-4 OOS split. |
+| [Momentum Crash Guard](research/atoms/momentum-crash-guard.md) | **backtest-oos** | 75 | 68 | Stage-3: vol-target cut worst -65.7%->-15.1%, bear+vol gate best Sharpe 0.58. STAGE-4 OOS (thresholds frozen on TRAIN<2017, applied blind to TEST>=2017): on unseen data both guards BEAT raw (bear+vol gate Sharpe 0.60 vs raw 0.40, worst -31% vs -65.7%). Guard generalizes. Marginal sig (t 1.83); tail reduced not removed. |
 
 Legend — Stage: lit → logic → backtest → live-eval → prod.
 
@@ -66,6 +66,17 @@ they are populated only by atoms that pass Stage 4.
 - Net conviction: the most promising (but theoretically fragile) production
   candidate so far is SHORT-TERM (1-month) MOMENTUM behind a liquidity gate,
   pending out-of-sample and a regime guard. Nothing is production-ready yet.
+- **STAGE-4 OOS PASSED** (2026-07-04): true train/test split (TRAIN year<2017
+  incl. 2008-09 GFC; TEST year>=2017 incl. 2020 COVID). 12-1 signal: TRAIN
+  mean IC +0.0145 (t 0.78) vs **TEST +0.0356 (t 1.67)** -> edge STRONGER
+  out-of-sample. Crash-guard thresholds FROZEN on TRAIN, applied blind to TEST:
+  both guards beat raw on unseen data (bear+vol gate Sharpe 0.60 vs raw 0.40,
+  worst -31% vs -65.7%). **First concept with a complete 4-stage evidence
+  chain up to historical OOS.** Honest caveats: no stat reaches t>=2 (best 1.83),
+  tail reduced not removed, this is historical OOS not live Stage-4, needs a
+  long-only production variant + transaction costs. Both atoms -> stage
+  `backtest-oos` (momentum conf 80/ev 68; guard 75/68). True Stage-4 live-eval
+  still requires the app in the user's hands (TestFlight).
 - **Momentum CRASH GUARD validated** (2026-07-04, Stage 3, 231 rebalances
   2007-2026): momentum crashes ARE manageable. **Vol-target** (Barroso-
   Santa-Clara) cut the worst rebalance from **-65.7% to -15.1%** (4x) and
