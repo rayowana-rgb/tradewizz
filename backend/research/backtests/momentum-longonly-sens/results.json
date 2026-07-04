@@ -1,0 +1,241 @@
+{
+  "universe_symbols": 343,
+  "rebalances": 231,
+  "stop": 0.15,
+  "grid": {
+    "top10_cost5bps": {
+      "raw_net": {
+        "mean_per_hold": 0.03239,
+        "worst": -0.3506,
+        "cum_return": 347.21,
+        "sharpe": 0.929
+      },
+      "stop_net": {
+        "mean_per_hold": 0.03573,
+        "worst": -0.1504,
+        "cum_return": 950.19,
+        "sharpe": 1.092
+      },
+      "excess_raw": {
+        "mean_per_hold": 0.01708,
+        "worst": -0.2378,
+        "cum_return": 20.96,
+        "sharpe": 0.662
+      },
+      "excess_stop": {
+        "mean_per_hold": 0.02042,
+        "worst": -0.1725,
+        "cum_return": 48.78,
+        "sharpe": 0.815
+      }
+    },
+    "top10_cost10bps": {
+      "raw_net": {
+        "mean_per_hold": 0.03211,
+        "worst": -0.3508,
+        "cum_return": 325.4,
+        "sharpe": 0.92
+      },
+      "stop_net": {
+        "mean_per_hold": 0.03544,
+        "worst": -0.1508,
+        "cum_return": 890.95,
+        "sharpe": 1.084
+      },
+      "excess_raw": {
+        "mean_per_hold": 0.0173,
+        "worst": -0.2376,
+        "cum_return": 22.07,
+        "sharpe": 0.67
+      },
+      "excess_stop": {
+        "mean_per_hold": 0.02063,
+        "worst": -0.1722,
+        "cum_return": 51.28,
+        "sharpe": 0.823
+      }
+    },
+    "top10_cost20bps": {
+      "raw_net": {
+        "mean_per_hold": 0.03153,
+        "worst": -0.3512,
+        "cum_return": 285.78,
+        "sharpe": 0.904
+      },
+      "stop_net": {
+        "mean_per_hold": 0.03487,
+        "worst": -0.1516,
+        "cum_return": 783.27,
+        "sharpe": 1.066
+      },
+      "excess_raw": {
+        "mean_per_hold": 0.01772,
+        "worst": -0.2372,
+        "cum_return": 24.45,
+        "sharpe": 0.687
+      },
+      "excess_stop": {
+        "mean_per_hold": 0.02106,
+        "worst": -0.1716,
+        "cum_return": 56.65,
+        "sharpe": 0.84
+      }
+    },
+    "top20_cost5bps": {
+      "raw_net": {
+        "mean_per_hold": 0.0279,
+        "worst": -0.3584,
+        "cum_return": 177.72,
+        "sharpe": 0.924
+      },
+      "stop_net": {
+        "mean_per_hold": 0.03096,
+        "worst": -0.1505,
+        "cum_return": 447.74,
+        "sharpe": 1.108
+      },
+      "excess_raw": {
+        "mean_per_hold": 0.01259,
+        "worst": -0.2511,
+        "cum_return": 9.59,
+        "sharpe": 0.616
+      },
+      "excess_stop": {
+        "mean_per_hold": 0.01565,
+        "worst": -0.168,
+        "cum_return": 21.42,
+        "sharpe": 0.797
+      }
+    },
+    "top20_cost10bps": {
+      "raw_net": {
+        "mean_per_hold": 0.02762,
+        "worst": -0.3588,
+        "cum_return": 166.91,
+        "sharpe": 0.915
+      },
+      "stop_net": {
+        "mean_per_hold": 0.03068,
+        "worst": -0.1509,
+        "cum_return": 420.74,
+        "sharpe": 1.098
+      },
+      "excess_raw": {
+        "mean_per_hold": 0.01281,
+        "worst": -0.2507,
+        "cum_return": 10.15,
+        "sharpe": 0.627
+      },
+      "excess_stop": {
+        "mean_per_hold": 0.01587,
+        "worst": -0.1677,
+        "cum_return": 22.61,
+        "sharpe": 0.808
+      }
+    },
+    "top20_cost20bps": {
+      "raw_net": {
+        "mean_per_hold": 0.02707,
+        "worst": -0.3596,
+        "cum_return": 147.21,
+        "sharpe": 0.896
+      },
+      "stop_net": {
+        "mean_per_hold": 0.03013,
+        "worst": -0.1518,
+        "cum_return": 371.5,
+        "sharpe": 1.079
+      },
+      "excess_raw": {
+        "mean_per_hold": 0.01326,
+        "worst": -0.2499,
+        "cum_return": 11.36,
+        "sharpe": 0.649
+      },
+      "excess_stop": {
+        "mean_per_hold": 0.01632,
+        "worst": -0.1671,
+        "cum_return": 25.16,
+        "sharpe": 0.831
+      }
+    },
+    "top34_cost5bps": {
+      "raw_net": {
+        "mean_per_hold": 0.02385,
+        "worst": -0.334,
+        "cum_return": 92.92,
+        "sharpe": 0.908
+      },
+      "stop_net": {
+        "mean_per_hold": 0.02614,
+        "worst": -0.1503,
+        "cum_return": 185.69,
+        "sharpe": 1.073
+      },
+      "excess_raw": {
+        "mean_per_hold": 0.00854,
+        "worst": -0.2219,
+        "cum_return": 4.08,
+        "sharpe": 0.527
+      },
+      "excess_stop": {
+        "mean_per_hold": 0.01083,
+        "worst": -0.1654,
+        "cum_return": 7.8,
+        "sharpe": 0.687
+      }
+    },
+    "top34_cost10bps": {
+      "raw_net": {
+        "mean_per_hold": 0.02361,
+        "worst": -0.3342,
+        "cum_return": 87.86,
+        "sharpe": 0.899
+      },
+      "stop_net": {
+        "mean_per_hold": 0.0259,
+        "worst": -0.1506,
+        "cum_return": 175.67,
+        "sharpe": 1.063
+      },
+      "excess_raw": {
+        "mean_per_hold": 0.0088,
+        "worst": -0.2215,
+        "cum_return": 4.38,
+        "sharpe": 0.543
+      },
+      "excess_stop": {
+        "mean_per_hold": 0.01109,
+        "worst": -0.1651,
+        "cum_return": 8.33,
+        "sharpe": 0.703
+      }
+    },
+    "top34_cost20bps": {
+      "raw_net": {
+        "mean_per_hold": 0.02312,
+        "worst": -0.3346,
+        "cum_return": 78.55,
+        "sharpe": 0.88
+      },
+      "stop_net": {
+        "mean_per_hold": 0.02541,
+        "worst": -0.1512,
+        "cum_return": 157.21,
+        "sharpe": 1.043
+      },
+      "excess_raw": {
+        "mean_per_hold": 0.00931,
+        "worst": -0.2208,
+        "cum_return": 5.06,
+        "sharpe": 0.574
+      },
+      "excess_stop": {
+        "mean_per_hold": 0.0116,
+        "worst": -0.1646,
+        "cum_return": 9.49,
+        "sharpe": 0.736
+      }
+    }
+  }
+}
