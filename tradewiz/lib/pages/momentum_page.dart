@@ -98,14 +98,20 @@ class _MomentumPageState extends State<MomentumPage> {
         elevation: 0,
         title: const Text('Momentum Research', style: TWType.body),
       ),
-      body: TWScaffoldBackground(
-        child: SafeArea(
-          top: false,
-          child: RefreshIndicator(
-            color: TWColors.accent,
-            backgroundColor: TWColors.surfaceCard,
-            onRefresh: _refresh,
-            child: _buildBody(),
+      // Dismiss the number pad when tapping anywhere outside the field so it
+      // never sits on top of the Buy button.
+      body: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: TWScaffoldBackground(
+          child: SafeArea(
+            top: false,
+            child: RefreshIndicator(
+              color: TWColors.accent,
+              backgroundColor: TWColors.surfaceCard,
+              onRefresh: _refresh,
+              child: _buildBody(),
+            ),
           ),
         ),
       ),
@@ -145,9 +151,13 @@ class _MomentumPageState extends State<MomentumPage> {
       );
     }
 
+    // Extra bottom padding equal to the keyboard inset so the Buy button can
+    // always be scrolled clear of the number pad.
+    final kb = MediaQuery.of(context).viewInsets.bottom;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(
-          TWSpace.lg, TWSpace.md, TWSpace.lg, TWSpace.xxxl),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: EdgeInsets.fromLTRB(
+          TWSpace.lg, TWSpace.md, TWSpace.lg, TWSpace.xxxl + kb),
       children: [
         _disclaimerCard(p),
         const SizedBox(height: TWSpace.md),
@@ -295,6 +305,10 @@ class _MomentumPageState extends State<MomentumPage> {
                   controller: _sizeCtrl,
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
+                  // A visible Done/submit action so the number pad (which has no
+                  // return key) can be dismissed without tapping away.
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => FocusScope.of(context).unfocus(),
                   inputFormatters: [
                     FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
                   ],
@@ -319,7 +333,12 @@ class _MomentumPageState extends State<MomentumPage> {
           TWGradientButton(
             label: 'Review & Buy Top ${p.picks.length}',
             icon: Icons.shopping_cart_checkout,
-            onPressed: _perPosition == null ? null : () => _reviewAndBuy(p),
+            onPressed: _perPosition == null
+                ? null
+                : () {
+                    FocusScope.of(context).unfocus();
+                    _reviewAndBuy(p);
+                  },
           ),
         ],
       ),

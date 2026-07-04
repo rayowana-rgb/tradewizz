@@ -34,6 +34,11 @@ from ..universe import UniverseRepository
 logger = logging.getLogger("tradewiz.momentum")
 
 # --- Stage-3b production-spec constants (do NOT tune casually) ------------- #
+# Memoise the full ranking this long. Rebalance is monthly and the underlying
+# OHLCV cache updates at most daily, so a fresh scan every 30 min is plenty and
+# keeps the request well under the app timeout after the first (cold) call.
+RESULT_TTL_SECONDS = 1800
+
 LOOKBACK = 252          # trailing return window (trading days)
 SKIP = 21               # skip most-recent month (short-term reversal)
 LIQ_WIN = 63            # liquidity window for the tradability gate
@@ -92,6 +97,16 @@ class MomentumService:
         # substitute a fake without touching disk.
         self._cache = cache
         self._universe = universe or UniverseRepository()
+        # Result cache. Scanning 300+ symbols off disk takes ~30s, which blew
+        # past the app's request timeout and made the page "load forever". The
+        # ranking only changes when the daily OHLCV cache updates, so we memoise
+        # the full sorted result and slice per top_n. Thread-safe enough for the
+        # single-worker uvicorn deployment.
+        self._cached: Optional[tuple[float, list, str, str, int, int]] = None
+
+    def invalidate(self) -> None:
+        """Drop the memoised ranking (e.g. after a cache refresh)."""
+        self._cached = None
 
     # -- helpers ----------------------------------------------------------- #
     def _frame(self, symbol: str) -> Optional[pd.DataFrame]:
@@ -144,11 +159,46 @@ class MomentumService:
         return (p_now / p_then) - 1.0
 
     # -- public ------------------------------------------------------------ #
+    def _compute_rows(self):
+        """Full scan: returns (sorted_rows, regime, regime_note, usable, tradable).
+        Expensive (~30s over 300+ names); callers should go through the cache."""
+        symbols = self._universe.symbols(Market.US)
+        return self._scan(symbols)
+
     def picks(self, top_n: int = DEFAULT_TOP_N) -> MomentumPicks:
         from datetime import datetime, timezone
+        import time
 
         n = max(1, min(int(top_n or DEFAULT_TOP_N), MAX_TOP_N))
-        symbols = self._universe.symbols(Market.US)
+
+        now = time.time()
+        cached = self._cached
+        if cached is not None and (now - cached[0]) < RESULT_TTL_SECONDS:
+            _, rows, regime, regime_note, usable, tradable = cached
+        else:
+            rows, regime, regime_note, usable, tradable = self._compute_rows()
+            self._cached = (now, rows, regime, regime_note, usable, tradable)
+
+        top = [
+            MomentumPick(
+                symbol=r.symbol, rank=i + 1, momentum=round(r.momentum, 4),
+                last_price=r.last_price, median_dollar_vol=r.median_dollar_vol,
+            )
+            for i, r in enumerate(rows[:n])
+        ]
+        return MomentumPicks(
+            picks=top,
+            universe_size=usable,
+            tradable_size=tradable,
+            top_n=n,
+            regime=regime,
+            regime_note=regime_note,
+            stage=STAGE,
+            disclaimer=DISCLAIMER,
+            generated_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+    def _scan(self, symbols):
 
         rows: List[MomentumPick] = []
         mkt_last_returns: List[float] = []   # for a crude regime read
@@ -186,27 +236,8 @@ class MomentumService:
                 level_tails.append((tail / tail.iloc[0]).reset_index(drop=True))
 
         rows.sort(key=lambda r: r.momentum, reverse=True)
-        top = [
-            MomentumPick(
-                symbol=r.symbol, rank=i + 1, momentum=round(r.momentum, 4),
-                last_price=r.last_price, median_dollar_vol=r.median_dollar_vol,
-            )
-            for i, r in enumerate(rows[:n])
-        ]
-
         regime, regime_note = self._regime(level_tails)
-
-        return MomentumPicks(
-            picks=top,
-            universe_size=usable,
-            tradable_size=tradable,
-            top_n=n,
-            regime=regime,
-            regime_note=regime_note,
-            stage=STAGE,
-            disclaimer=DISCLAIMER,
-            generated_at=datetime.now(timezone.utc).isoformat(),
-        )
+        return rows, regime, regime_note, usable, tradable
 
     @staticmethod
     def _regime(level_tails: List[pd.Series]) -> tuple[str, str]:
