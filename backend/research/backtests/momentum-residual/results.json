@@ -1,0 +1,165 @@
+{
+  "universe_symbols": 343,
+  "total_rebalances": 231,
+  "top_n": 10,
+  "split_year": 2017,
+  "full": {
+    "n_rebalances": 231,
+    "corr_12_resid": 0.91,
+    "avg_name_overlap_of_10": 7.56,
+    "mom_12_1": {
+      "n": 231,
+      "mean_per_hold": 0.03211,
+      "t_stat": 4.039,
+      "worst": -0.3508,
+      "cum_return": 325.4,
+      "sharpe": 0.92
+    },
+    "resid_mom": {
+      "n": 231,
+      "mean_per_hold": 0.03479,
+      "t_stat": 4.229,
+      "worst": -0.351,
+      "cum_return": 563.65,
+      "sharpe": 0.964
+    },
+    "blend_50_50": {
+      "n": 231,
+      "mean_per_hold": 0.03345,
+      "t_stat": 4.231,
+      "worst": -0.3509,
+      "cum_return": 457.94,
+      "sharpe": 0.964
+    },
+    "excess_12_1": {
+      "n": 231,
+      "mean_per_hold": 0.0173,
+      "t_stat": 2.94,
+      "worst": -0.2376,
+      "cum_return": 22.07,
+      "sharpe": 0.67
+    },
+    "excess_resid": {
+      "n": 231,
+      "mean_per_hold": 0.01998,
+      "t_stat": 3.229,
+      "worst": -0.2351,
+      "cum_return": 39.38,
+      "sharpe": 0.736
+    },
+    "excess_blend": {
+      "n": 231,
+      "mean_per_hold": 0.01864,
+      "t_stat": 3.22,
+      "worst": -0.2364,
+      "cum_return": 31.64,
+      "sharpe": 0.734
+    }
+  },
+  "train": {
+    "n_rebalances": 119,
+    "corr_12_resid": 0.897,
+    "avg_name_overlap_of_10": 7.75,
+    "mom_12_1": {
+      "n": 119,
+      "mean_per_hold": 0.0168,
+      "t_stat": 2.424,
+      "worst": -0.3508,
+      "cum_return": 4.11,
+      "sharpe": 0.77
+    },
+    "resid_mom": {
+      "n": 119,
+      "mean_per_hold": 0.01575,
+      "t_stat": 2.233,
+      "worst": -0.351,
+      "cum_return": 3.44,
+      "sharpe": 0.709
+    },
+    "blend_50_50": {
+      "n": 119,
+      "mean_per_hold": 0.01627,
+      "t_stat": 2.39,
+      "worst": -0.3509,
+      "cum_return": 3.86,
+      "sharpe": 0.759
+    },
+    "excess_12_1": {
+      "n": 119,
+      "mean_per_hold": 0.00616,
+      "t_stat": 1.383,
+      "worst": -0.1321,
+      "cum_return": 0.81,
+      "sharpe": 0.439
+    },
+    "excess_resid": {
+      "n": 119,
+      "mean_per_hold": 0.00512,
+      "t_stat": 1.211,
+      "worst": -0.1187,
+      "cum_return": 0.62,
+      "sharpe": 0.385
+    },
+    "excess_blend": {
+      "n": 119,
+      "mean_per_hold": 0.00564,
+      "t_stat": 1.395,
+      "worst": -0.1094,
+      "cum_return": 0.74,
+      "sharpe": 0.443
+    }
+  },
+  "test": {
+    "n_rebalances": 112,
+    "corr_12_resid": 0.912,
+    "avg_name_overlap_of_10": 7.36,
+    "mom_12_1": {
+      "n": 112,
+      "mean_per_hold": 0.04836,
+      "t_stat": 3.327,
+      "worst": -0.3399,
+      "cum_return": 62.72,
+      "sharpe": 1.089
+    },
+    "resid_mom": {
+      "n": 112,
+      "mean_per_hold": 0.055,
+      "t_stat": 3.66,
+      "worst": -0.3357,
+      "cum_return": 126.0,
+      "sharpe": 1.198
+    },
+    "blend_50_50": {
+      "n": 112,
+      "mean_per_hold": 0.05168,
+      "t_stat": 3.576,
+      "worst": -0.337,
+      "cum_return": 93.35,
+      "sharpe": 1.17
+    },
+    "excess_12_1": {
+      "n": 112,
+      "mean_per_hold": 0.02911,
+      "t_stat": 2.624,
+      "worst": -0.2376,
+      "cum_return": 11.75,
+      "sharpe": 0.859
+    },
+    "excess_resid": {
+      "n": 112,
+      "mean_per_hold": 0.03576,
+      "t_stat": 3.032,
+      "worst": -0.2351,
+      "cum_return": 23.9,
+      "sharpe": 0.992
+    },
+    "excess_blend": {
+      "n": 112,
+      "mean_per_hold": 0.03243,
+      "t_stat": 2.944,
+      "worst": -0.2364,
+      "cum_return": 17.71,
+      "sharpe": 0.964
+    }
+  }
+}

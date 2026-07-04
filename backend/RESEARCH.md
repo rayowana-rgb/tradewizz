@@ -29,6 +29,7 @@ metrics or citations. Failed results are kept, not hidden.
 | [Short-Term Momentum (1-month)](research/atoms/short-term-momentum.md) | backtest | 32 | 40 | DEMOTED. 20-year OOS re-test (3-1 proxy) gave IC +0.0000, t 0.003 -> the 1-month continuation was a SINGLE-REGIME ARTIFACT of the 2025-26 trending window; averages to zero across history. NOT a production candidate. Retained as a cautionary example. |
 | [Regime Guard (trend/vol state)](research/atoms/regime-guard.md) | backtest | 58 | 22 | Naive on/off gate REJECTED on 1y data (single crash). SUPERSEDED by momentum-crash-guard (multi-year, real crashes). |
 | [Long-Only Momentum (production form)](research/atoms/momentum-long-only.md) | **backtest-oos** | 85 | 82 | App-tradable form (long-only, TOP-10, monthly, net of 10bps/side). BEATS market after costs (+0.84%/hold excess, ~4x wealth); top-10 concentration OPTIMAL; edge survives 20bps. CRITICAL CORRECTION (07-04d): realistic intraday sim shows the app's SL-1%/TP+3% config DESTROYS the edge (+235x -> -53%) -- a -1% stop is inside daily noise & +3% clips momentum's fat tail. Monthly momentum needs NO tight stop (let rebalance exit) or only a WIDE disaster stop. Earlier "stop wins" was a monthly-proxy artifact, SUPERSEDED. LEADING production candidate, with corrected exit rule. |
+| [Residual Momentum (beta-adjusted)](research/atoms/residual-momentum.md) | backtest-oos | 70 | 66 | Signal UPGRADE candidate: beta-adjusted momentum beats raw 12-1 excess every split (FULL t 3.23 vs 2.94; TEST 3.03 vs 2.62), higher Sharpe, slightly tamer DD. BUT orthogonality hypothesis REFUTED -- corr(12-1,resid) 0.91 (higher than 6-1's 0.87), 7.5/10 names shared -> NOT a diversifier, blend adds nothing. Actionable as a production ranking swap pending Stage-4, not a blend partner. |
 | [Low-Volatility (long-only, unlevered)](research/atoms/low-volatility.md) | backtest-oos | 30 | 55 | **REJECTED** standalone: long-only unlevered low-vol UNDERPERFORMS the market (excess t -3.42 FULL / -3.12 TEST). The academic low-vol edge needs shorting+leverage we don't have. KNOWLEDGE RETAINED: it's ~orthogonal to momentum (corr 0.24-0.49) and a 50/50 blend raised ABSOLUTE Sharpe above both books -- but with no standalone alpha it DILUTES momentum's significance (blend excess-t 1.06/1.30 < momentum's 2.94/2.62). Wrong blend partner; decorrelation method is reusable with an alpha-bearing partner. |
 | [Momentum Crash Guard](research/atoms/momentum-crash-guard.md) | **backtest-oos** | 75 | 68 | Stage-3: vol-target cut worst -65.7%->-15.1%, bear+vol gate best Sharpe 0.58. STAGE-4 OOS (thresholds frozen on TRAIN<2017, applied blind to TEST>=2017): on unseen data both guards BEAT raw (bear+vol gate Sharpe 0.60 vs raw 0.40, worst -31% vs -65.7%). Guard generalizes. Marginal sig (t 1.83); tail reduced not removed. |
 
@@ -78,6 +79,16 @@ they are populated only by atoms that pass Stage 4.
   scope corrected to long-short only; new atom `momentum-long-only.md` (conf 78,
   ev 66). Open item: a long-only risk control (trailing stop / partial
   vol-target). This is now the leading PRODUCTION candidate.
+- **RESIDUAL (beta-adjusted) momentum** (2026-07-04h, Stage 3): tested as both a
+  stronger signal and an orthogonal partner. (a) Resid momentum is a modestly
+  STRONGER standalone signal -- beats raw 12-1 excess EVERY split (FULL t 3.23
+  vs 2.94; TEST **3.03 vs 2.62**), higher Sharpe, slightly tamer DD. (b) BUT the
+  orthogonality HYPOTHESIS was REFUTED: corr(12-1,resid)=0.91 (HIGHER than 6-1's
+  0.87), 7.5/10 names shared -- over a long lookback the beta term is too small
+  to move the ranking, so the blend adds nothing (excess-t 3.22 ~ resid 3.23).
+  => residual momentum is a SIGNAL UPGRADE candidate (swap the production ranking
+  to beta-adjusted momentum for a small OOS edge, pending Stage-4), NOT a
+  diversifier. New atom residual-momentum.md (conf 70 ev 66).
 - **MULTI-HORIZON blend 12-1 + 6-1** (2026-07-04g, Stage 3): re-ran the
   decorrelation method with an ALPHA-bearing partner (another momentum horizon)
   instead of low-vol. Both top-10/monthly/no-stop, net 10bps. UNLIKE low-vol,

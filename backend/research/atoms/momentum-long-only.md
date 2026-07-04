@@ -299,3 +299,16 @@ WORSE by sitting out the recovery.
   blend is a MODEST, genuine refinement of the production spec (slightly higher
   significance + tamer tail than 6-1 alone), not a new pillar. Confidence
   84->85, evidence 80->82.
+
+- 2026-07-04h: RESIDUAL (beta-adjusted) momentum tested as (a) a stronger signal
+  and (b) an orthogonal partner. `research/backtests/momentum-residual/run.py`.
+  Rank by mean daily residual from OLS of stock ret on equal-weight market ret
+  over 252d/skip-21d. RESULTS (excess-over-benchmark t, 12-1/resid/blend):
+  FULL 2.94/3.23/3.22; TEST 2.62/**3.03**/2.94. (a) resid is a modestly STRONGER
+  standalone signal (beats raw 12-1 every split, higher Sharpe, slightly tamer
+  DD). (b) BUT the orthogonality HYPOTHESIS was REFUTED: corr(12-1,resid)=0.91
+  (HIGHER than 6-1's 0.87), 7.5/10 names shared -- over a long window the beta
+  term is too small to change the ranking, so the blend adds nothing. => resid
+  is a SIGNAL UPGRADE, not a diversifier. See new atom `residual-momentum.md`
+  (conf 70, ev 66). Momentum atom UNCHANGED here (resid is a candidate ranking
+  swap pending Stage-4, not a proven change to THIS atom's spec).
