@@ -1,0 +1,163 @@
+{
+  "universe_symbols": 343,
+  "total_rebalances": 231,
+  "top_n": 10,
+  "vol_win": 63,
+  "split_year": 2017,
+  "full": {
+    "n_rebalances": 231,
+    "corr_mom_lv": 0.302,
+    "momentum": {
+      "n": 231,
+      "mean_per_hold": 0.03211,
+      "t_stat": 4.039,
+      "worst": -0.3508,
+      "cum_return": 325.4,
+      "sharpe": 0.92
+    },
+    "low_vol": {
+      "n": 231,
+      "mean_per_hold": 0.00351,
+      "t_stat": 3.15,
+      "worst": -0.0874,
+      "cum_return": 1.17,
+      "sharpe": 0.718
+    },
+    "blend_50_50": {
+      "n": 231,
+      "mean_per_hold": 0.01781,
+      "t_stat": 4.263,
+      "worst": -0.2191,
+      "cum_return": 37.1,
+      "sharpe": 0.972
+    },
+    "excess_momentum": {
+      "n": 231,
+      "mean_per_hold": 0.0173,
+      "t_stat": 2.94,
+      "worst": -0.2376,
+      "cum_return": 22.07,
+      "sharpe": 0.67
+    },
+    "excess_low_vol": {
+      "n": 231,
+      "mean_per_hold": -0.0113,
+      "t_stat": -3.418,
+      "worst": -0.1617,
+      "cum_return": -0.95,
+      "sharpe": -0.779
+    },
+    "excess_blend": {
+      "n": 231,
+      "mean_per_hold": 0.003,
+      "t_stat": 1.061,
+      "worst": -0.1611,
+      "cum_return": 0.62,
+      "sharpe": 0.242
+    }
+  },
+  "train": {
+    "n_rebalances": 119,
+    "corr_mom_lv": 0.488,
+    "momentum": {
+      "n": 119,
+      "mean_per_hold": 0.0168,
+      "t_stat": 2.424,
+      "worst": -0.3508,
+      "cum_return": 4.11,
+      "sharpe": 0.77
+    },
+    "low_vol": {
+      "n": 119,
+      "mean_per_hold": 0.00402,
+      "t_stat": 2.505,
+      "worst": -0.0874,
+      "cum_return": 0.58,
+      "sharpe": 0.795
+    },
+    "blend_50_50": {
+      "n": 119,
+      "mean_per_hold": 0.01041,
+      "t_stat": 2.655,
+      "worst": -0.2191,
+      "cum_return": 2.07,
+      "sharpe": 0.843
+    },
+    "excess_momentum": {
+      "n": 119,
+      "mean_per_hold": 0.00616,
+      "t_stat": 1.383,
+      "worst": -0.1321,
+      "cum_return": 0.81,
+      "sharpe": 0.439
+    },
+    "excess_low_vol": {
+      "n": 119,
+      "mean_per_hold": -0.00662,
+      "t_stat": -1.611,
+      "worst": -0.1524,
+      "cum_return": -0.6,
+      "sharpe": -0.512
+    },
+    "excess_blend": {
+      "n": 119,
+      "mean_per_hold": -0.00023,
+      "t_stat": -0.078,
+      "worst": -0.1423,
+      "cum_return": -0.08,
+      "sharpe": -0.025
+    }
+  },
+  "test": {
+    "n_rebalances": 112,
+    "corr_mom_lv": 0.243,
+    "momentum": {
+      "n": 112,
+      "mean_per_hold": 0.04836,
+      "t_stat": 3.327,
+      "worst": -0.3399,
+      "cum_return": 62.72,
+      "sharpe": 1.089
+    },
+    "low_vol": {
+      "n": 112,
+      "mean_per_hold": 0.00296,
+      "t_stat": 1.912,
+      "worst": -0.0478,
+      "cum_return": 0.37,
+      "sharpe": 0.626
+    },
+    "blend_50_50": {
+      "n": 112,
+      "mean_per_hold": 0.02566,
+      "t_stat": 3.424,
+      "worst": -0.1939,
+      "cum_return": 11.39,
+      "sharpe": 1.121
+    },
+    "excess_momentum": {
+      "n": 112,
+      "mean_per_hold": 0.02911,
+      "t_stat": 2.624,
+      "worst": -0.2376,
+      "cum_return": 11.75,
+      "sharpe": 0.859
+    },
+    "excess_low_vol": {
+      "n": 112,
+      "mean_per_hold": -0.01629,
+      "t_stat": -3.122,
+      "worst": -0.1617,
+      "cum_return": -0.87,
+      "sharpe": -1.022
+    },
+    "excess_blend": {
+      "n": 112,
+      "mean_per_hold": 0.00641,
+      "t_stat": 1.296,
+      "worst": -0.1611,
+      "cum_return": 0.76,
+      "sharpe": 0.424
+    }
+  }
+}

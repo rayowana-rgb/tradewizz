@@ -265,3 +265,17 @@ WORSE by sitting out the recovery.
   intraday stop -- is validated OOS at t>=2 and is the strongest-evidenced,
   most production-ready concept in the institute. Remaining before prod: Stage-4
   live-eval (needs TestFlight). Confidence 80->84, evidence 76->80.
+
+- 2026-07-04f: DIVERSIFICATION TEST -- momentum + low-vol blend (Stage 3).
+  `research/backtests/momentum-lowvol-combo/run.py`. Tested whether adding an
+  orthogonal low-vol book raises portfolio Sharpe via decorrelation. RESULT:
+  the decorrelation is REAL (corr 0.24-0.49) and a 50/50 blend DID raise
+  ABSOLUTE Sharpe above both books (FULL 0.97>0.92/0.72; TEST 1.12>1.09/0.63).
+  BUT low-vol has NO standalone alpha in a long-only unlevered book (its
+  excess-over-benchmark is significantly NEGATIVE, FULL t -3.42), so the blend
+  DILUTES momentum's significant edge: blend excess-t falls to 1.06 (FULL) /
+  1.30 (TEST), BELOW momentum's own t 2.94/2.62. CONCLUSION: PURE MOMENTUM
+  remains the better production candidate; low-vol is the WRONG blend partner
+  here. See atom `low-volatility.md` (rejected standalone). The decorrelation
+  METHOD is validated and worth reusing with an alpha-bearing partner (value/
+  quality). Momentum atom confidence/evidence UNCHANGED (blend did not beat it).
