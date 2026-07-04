@@ -106,6 +106,20 @@ from .moomoo.router import router as moomoo_router  # noqa: E402
 
 app.include_router(moomoo_router)
 
+# Momentum Research (EXPERIMENTAL, Stage-3b): read-only 12-1 momentum picks in
+# Explore + owner-only one-tap basket buy (reuses the hardened Moomoo order
+# path). Honestly labelled research-stage; see research/production-candidate.md.
+from .momentum.router import (  # noqa: E402
+    router as momentum_router,
+    set_service as _set_momentum_service,
+)
+from .momentum.service import MomentumService  # noqa: E402
+
+_set_momentum_service(
+    MomentumService(cache=getattr(engine._fetch, "cache", None))  # noqa: SLF001
+)
+app.include_router(momentum_router)
+
 # Per-user multi-broker connection framework under /v1/brokers.
 from .brokers.router import router as brokers_router  # noqa: E402
 from .brokers.router import get_service as _get_conn_service  # noqa: E402
