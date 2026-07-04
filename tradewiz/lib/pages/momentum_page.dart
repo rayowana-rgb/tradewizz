@@ -434,7 +434,16 @@ class _MomentumPageState extends State<MomentumPage> {
     pinCtrl.dispose();
     if (confirmed != true || !mounted) return;
 
-    // 3) Place.
+    // 3) Place. Show a left->right progress bar so the owner can see the buy is
+    //    running until it finishes. The backend places all legs in one call, so
+    //    this is an indeterminate sweep (not per-leg), dismissed on completion.
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black54,
+      builder: (_) => _BuyProgressDialog(orderCount: preview.legs.length),
+    );
+
     MomentumBasketResult result;
     try {
       result = await widget.repository.momentumBasketBuy(
@@ -446,10 +455,12 @@ class _MomentumPageState extends State<MomentumPage> {
         tradePin: pin.isEmpty ? null : pin,
       );
     } catch (e) {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop(); // close bar
       _snack('Order placement failed. $e');
       return;
     }
     if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pop(); // close the progress bar
     _snack('Placed ${result.placed} order(s)'
         '${result.failed > 0 ? ', ${result.failed} failed' : ''}.');
   }
@@ -458,5 +469,114 @@ class _MomentumPageState extends State<MomentumPage> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(msg)));
+  }
+}
+
+/// A modal shown while a LIVE basket buy is being placed. Displays an animated
+/// left->right progress sweep so the owner can clearly see the purchase is
+/// running until it completes. The backend places every leg in a single call,
+/// so this is an indeterminate (looping) sweep rather than per-leg progress.
+class _BuyProgressDialog extends StatefulWidget {
+  const _BuyProgressDialog({required this.orderCount});
+
+  final int orderCount;
+
+  @override
+  State<_BuyProgressDialog> createState() => _BuyProgressDialogState();
+}
+
+class _BuyProgressDialogState extends State<_BuyProgressDialog>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: TWSpace.xxl),
+        child: TWFloatingCard(
+          padding: const EdgeInsets.all(TWSpace.xl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Placing your orders', style: TWType.body),
+              const SizedBox(height: TWSpace.xs),
+              Text(
+                'Sending ${widget.orderCount} MARKET BUY '
+                'order${widget.orderCount == 1 ? '' : 's'} to Moomoo LIVE. '
+                'Please keep the app open.',
+                style: TWType.caption.copyWith(
+                  color: TWColors.textSecondary,
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: TWSpace.lg),
+              // The left->right sweeping bar.
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: SizedBox(
+                  height: 8,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final w = constraints.maxWidth;
+                      const barFraction = 0.42; // width of the moving segment
+                      final barW = w * barFraction;
+                      return Stack(
+                        children: [
+                          // Track.
+                          Container(
+                            color: TWColors.bgBase.withValues(alpha: 0.6),
+                          ),
+                          // Moving segment, driven left->right by the controller.
+                          AnimatedBuilder(
+                            animation: _c,
+                            builder: (context, _) {
+                              final travel = w + barW;
+                              final x = _c.value * travel - barW;
+                              return Transform.translate(
+                                offset: Offset(x, 0),
+                                child: Container(
+                                  width: barW,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(999),
+                                    gradient: const LinearGradient(
+                                      colors: [
+                                        Color(0x004F7CFF),
+                                        TWColors.accent,
+                                        Color(0x004F7CFF),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
