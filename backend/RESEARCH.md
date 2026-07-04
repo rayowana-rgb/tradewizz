@@ -24,6 +24,7 @@ metrics or citations. Failed results are kept, not hidden.
 | Atom | Stage | Confidence | Evidence | Verdict |
 |------|-------|-----------|----------|---------|
 | [Cross-Sectional Momentum (12-1)](research/atoms/cross-sectional-momentum.md) | backtest | 74 | 32 | Backtested on 1y US data; edge WEAK & not significant (t≈0), 6-1 inverted. **Not promoted.** |
+| [Liquidity & Participation Score](research/atoms/liquidity-participation.md) | backtest | 80 | 40 | Tradability gate VALIDATED (19.3% of US universe non-tradable; illiquid names 6.5x fwd-ret variance). Signal-hygiene sub-claim (illiquidity lowers IC) REJECTED. Sound RISK pre-filter; awaits Stage-4 before wiring to risk_score. |
 
 Legend — Stage: lit → logic → backtest → live-eval → prod.
 
@@ -39,8 +40,19 @@ they are populated only by atoms that pass Stage 4.
    failure mode; a volatility/regime guard is a prerequisite before momentum
    could ever be trusted. (lit → logic)
 2. **Short-term reversal (1-month)** — the effect we deliberately skip; worth an
-   atom in its own right and testable on our data.
-3. **Low-volatility / defensive factor** — testable cross-sectionally on 1y.
-4. **Liquidity/participation score** — needed to avoid stale-price ranking that
-   contaminates every cross-sectional signal.
-5. Acquire **multi-year history** to lift the evidence ceiling above ~55.
+   atom in its own right and testable on our data. Given the 6-1 momentum
+   INVERSION we found, short-term/medium reversal may be the stronger effect in
+   this regime — high-priority next test.
+3. **Low-volatility / defensive factor** — testable cross-sectionally on 1y; the
+   6.5x variance gap we measured suggests volatility itself is highly
+   dispersed and worth ranking.
+4. Acquire **multi-year history** to lift the evidence ceiling above ~55 and
+   test momentum-crash / regime behavior properly.
+
+## Cross-atom findings (measured, 2026-07-04)
+- Momentum 6-1 INVERTED on 1y data while 3-1 was weakly positive → the recent
+  US regime favored shorter-horizon / reversal behavior. Flagged for the
+  reversal atom.
+- Illiquid US names carry ~6.5x the forward-return variance of liquid names →
+  strong risk argument for a mandatory liquidity pre-filter, independent of any
+  return-factor claim.

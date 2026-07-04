@@ -1,0 +1,23 @@
+{
+  "universe_symbols": 10335,
+  "common_calendar_days": 251,
+  "data_window": "2025-07-03 .. 2026-07-02",
+  "regime_note": "single ~1y regime; NOT multi-regime. Evidence capped.",
+  "claim_A_tradability_coverage": {
+    "asof": "2026-07-02",
+    "evaluated": 10335,
+    "tradable": 8338,
+    "non_tradable": 1997,
+    "non_tradable_frac": 0.1932,
+    "adv_median_of_universe": 1641520.45,
+    "adv_p10": 27954.1,
+    "adv_p90": 129738613.5
+  },
+  "claim_B_signal_hygiene_by_liquidity": {
+    "rebalances": 8,
+    "mean_IC_liquid_half": 0.0444,
+    "mean_IC_illiquid_half": 0.0836,
+    "mean_fwd_return_variance_liquid": 0.0407,
+    "mean_fwd_return_variance_illiquid": 0.2673
+  }
+}
