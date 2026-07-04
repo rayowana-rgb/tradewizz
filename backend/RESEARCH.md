@@ -36,7 +36,7 @@ metrics or citations. Failed results are kept, not hidden.
 | [Short-Term Momentum (1-month)](research/atoms/short-term-momentum.md) | backtest | 32 | 40 | DEMOTED. 20-year OOS re-test (3-1 proxy) gave IC +0.0000, t 0.003 -> the 1-month continuation was a SINGLE-REGIME ARTIFACT of the 2025-26 trending window; averages to zero across history. NOT a production candidate. Retained as a cautionary example. |
 | [Regime Guard (trend/vol state)](research/atoms/regime-guard.md) | backtest | 58 | 22 | Naive on/off gate REJECTED on 1y data (single crash). SUPERSEDED by momentum-crash-guard (multi-year, real crashes). |
 | [Long-Only Momentum (production form)](research/atoms/momentum-long-only.md) | **backtest-oos** | 85 | 82 | App-tradable form (long-only, TOP-10, monthly, net of 10bps/side). BEATS market after costs (+0.84%/hold excess, ~4x wealth); top-10 concentration OPTIMAL; edge survives 20bps. CRITICAL CORRECTION (07-04d): realistic intraday sim shows the app's SL-1%/TP+3% config DESTROYS the edge (+235x -> -53%) -- a -1% stop is inside daily noise & +3% clips momentum's fat tail. Monthly momentum needs NO tight stop (let rebalance exit) or only a WIDE disaster stop. Earlier "stop wins" was a monthly-proxy artifact, SUPERSEDED. LEADING production candidate, with corrected exit rule. |
-| [Long-Term Reversal (DeBondt-Thaler)](research/atoms/longterm-reversal.md) | backtest-oos | 45 | 60 | FIRST truly orthogonal partner to momentum (corr 0.34-0.46 vs 6-1's 0.87 / resid's 0.91; ~1.4/10 names shared). BUT alpha is WEAK & REGIME-DEPENDENT (TRAIN GFC t 1.66, TEST bull t 0.28) so a 50/50 blend DILUTES momentum (blend excess-t 2.38 TEST < mom 3.23). Notable: reversal is strongest exactly when momentum is weakest (TRAIN) -> candidate CONDITIONAL crash-recovery tilt (hypothesis only, untested). |
+| [Long-Term Reversal (DeBondt-Thaler)](research/atoms/longterm-reversal.md) | backtest-oos | 55 | 68 | FIRST truly orthogonal partner to momentum (corr 0.34-0.46; ~1.4/10 names shared). Standalone alpha WEAK & REGIME-DEPENDENT so a 50/50 blend DILUTES momentum. BUT a REGIME-SWITCHED crash-recovery OVERLAY (60/40 only when market < 200d SMA, ~18% of periods) IMPROVES full-sample excess-t (3.25 vs 2.92), Sharpe (0.75 vs 0.68) AND worst-DD (-14.7% vs -21.3%) vs pure momentum, with big crisis protection (TRAIN DD -8.6% vs -21.3%). Mild OOS-bull cost (TEST t 3.04 vs 3.23). First diversification that does NOT dilute -- optional overlay. |
 | [Residual Momentum (beta-adjusted)](research/atoms/residual-momentum.md) | backtest-oos | 70 | 66 | Signal UPGRADE candidate: beta-adjusted momentum beats raw 12-1 excess every split (FULL t 3.23 vs 2.94; TEST 3.03 vs 2.62), higher Sharpe, slightly tamer DD. BUT orthogonality hypothesis REFUTED -- corr(12-1,resid) 0.91 (higher than 6-1's 0.87), 7.5/10 names shared -> NOT a diversifier, blend adds nothing. Actionable as a production ranking swap pending Stage-4, not a blend partner. |
 | [Low-Volatility (long-only, unlevered)](research/atoms/low-volatility.md) | backtest-oos | 30 | 55 | **REJECTED** standalone: long-only unlevered low-vol UNDERPERFORMS the market (excess t -3.42 FULL / -3.12 TEST). The academic low-vol edge needs shorting+leverage we don't have. KNOWLEDGE RETAINED: it's ~orthogonal to momentum (corr 0.24-0.49) and a 50/50 blend raised ABSOLUTE Sharpe above both books -- but with no standalone alpha it DILUTES momentum's significance (blend excess-t 1.06/1.30 < momentum's 2.94/2.62). Wrong blend partner; decorrelation method is reusable with an alpha-bearing partner. |
 | [Momentum Crash Guard](research/atoms/momentum-crash-guard.md) | **backtest-oos** | 75 | 68 | Stage-3: vol-target cut worst -65.7%->-15.1%, bear+vol gate best Sharpe 0.58. STAGE-4 OOS (thresholds frozen on TRAIN<2017, applied blind to TEST>=2017): on unseen data both guards BEAT raw (bear+vol gate Sharpe 0.60 vs raw 0.40, worst -31% vs -65.7%). Guard generalizes. Marginal sig (t 1.83); tail reduced not removed. |
@@ -98,6 +98,19 @@ they are populated only by atoms that pass Stage 4.
   weakest (TRAIN) -> a CONDITIONAL crash-recovery tilt (e.g. 80/20 or regime-
   switched) is a HYPOTHESIS worth testing, but is NOT claimed to work yet. New
   atom longterm-reversal.md (conf 45 ev 60).
+- **CONDITIONAL CRASH-RECOVERY TILT** (2026-07-04j, Stage 3): the above
+  hypothesis was TESTED and CONFIRMED. `research/backtests/momentum-reversal-
+  tilt/`. A regime-switched overlay -- tilt 60/40 momentum/reversal ONLY when the
+  equal-weight market is below its 200d SMA (~18% of periods), else 100% momentum
+  -- IMPROVES the FULL sample on every metric vs pure momentum: excess-t 3.25 vs
+  2.92, Sharpe 0.75 vs 0.68, worst-DD -14.7% vs -21.3% (cum 166.7x vs 142.9x).
+  Crisis protection lands where it should: TRAIN worst-DD -8.6% vs -21.3%,
+  excess-t 1.25 vs 0.42. HONEST caveats: mild OOS-bull cost (TEST excess-t 3.04
+  vs 3.23) and the big TRAIN gain leans on the single 2008-09 recovery. This is
+  the FIRST diversification structure that does NOT dilute momentum -- because it
+  only engages reversal during stress, exactly when momentum is weakest.
+  Promoted to optional refinement #3 in production-candidate.md. longterm-
+  reversal atom conf 45->55, ev 60->68.
 - **RESIDUAL (beta-adjusted) momentum** (2026-07-04h, Stage 3): tested as both a
   stronger signal and an orthogonal partner. (a) Resid momentum is a modestly
   STRONGER standalone signal -- beats raw 12-1 excess EVERY split (FULL t 3.23

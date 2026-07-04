@@ -2,11 +2,14 @@
 
 - **id:** longterm-reversal
 - **stage:** backtest-oos
-- **confidence:** 45
-- **evidence:** 60
-- **status:** First TRULY orthogonal partner to momentum (corr 0.34-0.46), but
-  alpha is WEAK & REGIME-DEPENDENT; a naive 50/50 blend DILUTES momentum.
-  Retained as a candidate CONDITIONAL (crash-recovery) hedge, not a steady blend.
+- **confidence:** 55
+- **evidence:** 68
+- **status:** First TRULY orthogonal partner to momentum (corr 0.34-0.46). Alpha
+  is WEAK & REGIME-DEPENDENT so a naive 50/50 blend DILUTES momentum -- BUT a
+  REGIME-SWITCHED crash-recovery OVERLAY (60/40 only when market < 200d SMA)
+  IMPROVES full-sample excess-t, Sharpe AND worst-DD vs pure momentum
+  (2026-07-04j). Confirmed as a genuine optional overlay, with a mild OOS-bull
+  trade-off. See below.
 
 ## Claim (tested)
 Going long the multi-year LOSERS (lowest ~5y return, skipping the last 12 months
@@ -50,5 +53,30 @@ monthly/no-stop, net 10bps. TRAIN<2017 / TEST>=2017. (Not directly comparable to
   NOT tested here; do not claim it works until a weighted/regime-switched
   backtest is run.
 
+## 2026-07-04j -- CONDITIONAL TILT tested (hypothesis CONFIRMED)
+`research/backtests/momentum-reversal-tilt/run.py`. Same 301-name/223-reb
+universe. Tested static 90/10 & 80/20 tilts and a REGIME-SWITCHED overlay
+(60/40 mom/rev only when equal-weight market < its 200d SMA; else 100% mom;
+bear_frac ~18%). Pre-stated rule: a tilt wins only if worst-DD improves AND
+excess-t/Sharpe does NOT fall vs pure momentum.
+  excess-over-benchmark (t / Sharpe / worst-DD):
+    pure mom : FULL 2.92/0.68/-21.3% ; TRAIN 0.42/0.14/-21.3% ; TEST 3.23/1.05/-14.7%
+    regime   : FULL 3.25/0.75/-14.7% ; TRAIN 1.25/0.41/ -8.6% ; TEST 3.04/0.99/-14.7%
+    tilt80/20: FULL 3.10/0.72/-14.8% ; TRAIN 0.86/0.28/-14.8% ; TEST 3.16/1.03/-13.0%
+VERDICT: **hypothesis CONFIRMED.** The regime overlay PASSES the rule on the
+FULL sample -- higher excess-t (3.25 vs 2.92), higher Sharpe (0.75 vs 0.68) AND
+much smaller worst-DD (-14.7% vs -21.3%), with higher cum return (166.7x vs
+142.9x). Protection lands in stress: TRAIN worst-DD -8.6% vs -21.3% and excess-t
+1.25 vs 0.42. HONEST CAVEATS: (1) mild OOS-bull cost -- TEST excess-t 3.04 vs
+3.23 (reversal barely helps in a bull, tilt occasionally leans in for little
+gain); (2) 301-name >=6y subset and the big TRAIN gain leans on the single
+2008-09 recovery, so magnitude is not over-claimed. This is the FIRST
+diversification structure that does NOT dilute momentum. Recorded as a genuine,
+evidence-backed OPTIONAL crash-recovery OVERLAY (with a mild bull trade-off),
+NOT a strict domination. Atom confidence 45->55, evidence 60->68 for the
+CONDITIONAL-tilt use (pure reversal standalone stays weak).
+
 ## Evidence log
 - 2026-07-04i: initial backtest + OOS split. See RESEARCH.md.
+- 2026-07-04j: conditional crash-recovery tilt CONFIRMED (regime overlay).
+  See momentum-reversal-tilt/ and production-candidate.md.

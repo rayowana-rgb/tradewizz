@@ -26,13 +26,23 @@ on the record (see "What we rejected").
   20 bps/side.
 - **Beta:** ~1.0 (this is a long-only equity book, not market-neutral).
 
-### Two evidence-backed refinements (optional, small edge)
+### Three evidence-backed refinements (optional)
 1. **Ranking upgrade -- residual (beta-adjusted) momentum.** Ranking by the
    market-residual of 12-1 momentum beat raw 12-1 excess in every split
    (TEST excess-t 3.03 vs 2.62). Small OOS boost, no other change. Candidate
    swap, pending Stage-4.
 2. **Tail-smoothing blend -- 50/50 12-1 + 6-1.** Slightly higher significance
    and a tamer worst drawdown than either horizon alone. Modest; not a new pillar.
+3. **Crash-recovery overlay -- regime-switched reversal tilt (2026-07-04j).**
+   When the equal-weight market is below its 200d SMA (~18% of periods), tilt
+   60/40 momentum/long-term-reversal; otherwise 100% momentum. On the FULL
+   sample this IMPROVES every metric vs pure momentum -- excess-t 3.25 vs 2.92,
+   Sharpe 0.75 vs 0.68, worst-DD -14.7% vs -21.3% -- with big crisis-regime
+   drawdown protection (TRAIN worst-DD -8.6% vs -21.3%). HONEST trade-off: a
+   mild OOS-bull cost (TEST excess-t 3.04 vs 3.23), and the large crisis gain
+   leans on the single 2008-09 recovery. The FIRST diversification structure
+   that does not dilute momentum. Optional risk-reduction overlay, pending
+   Stage-4. See `research/backtests/momentum-reversal-tilt/`.
 
 ---
 
@@ -116,9 +126,12 @@ alpha (low-vol, reversal). We never found a partner that is BOTH strongly
 alpha-bearing AND genuinely orthogonal -- which is itself an important, honest
 conclusion: **pure momentum stands on its own; blending has not improved it.**
 
-Still-open (hypothesis only, untested): a CONDITIONAL crash-recovery tilt
-(e.g. 80/20 momentum/reversal or regime-switched), motivated by reversal being
-strongest exactly when momentum is weakest (TRAIN/GFC). Not claimed to work.
+RESOLVED (2026-07-04j): the CONDITIONAL crash-recovery tilt hypothesis was
+TESTED and CONFIRMED -- a regime-switched (200d-SMA) 60/40 overlay improves
+full-sample excess-t, Sharpe AND worst-DD vs pure momentum, with a mild
+OOS-bull cost. Promoted from "hypothesis" to optional refinement #3 above. This
+is the one diversification idea that did NOT dilute momentum -- because it only
+engages reversal during market stress, exactly when momentum is weakest.
 
 ---
 
