@@ -25,6 +25,8 @@ metrics or citations. Failed results are kept, not hidden.
 |------|-------|-----------|----------|---------|
 | [Cross-Sectional Momentum (12-1)](research/atoms/cross-sectional-momentum.md) | backtest | 74 | 32 | Backtested on 1y US data; edge WEAK & not significant (t≈0), 6-1 inverted. **Not promoted.** |
 | [Liquidity & Participation Score](research/atoms/liquidity-participation.md) | backtest | 80 | 40 | Tradability gate VALIDATED (19.3% of US universe non-tradable; illiquid names 6.5x fwd-ret variance). Signal-hygiene sub-claim (illiquidity lowers IC) REJECTED. Sound RISK pre-filter; awaits Stage-4 before wiring to risk_score. |
+| [Short-Term Reversal (1-month)](research/atoms/short-term-reversal.md) | backtest | 62 | 30 | **REJECTED** on our data: IC strongly NEGATIVE (-0.09), monotonicity -0.94 -> the effect is short-term MOMENTUM, not reversal. Negative result, recorded. |
+| [Short-Term Momentum (1-month)](research/atoms/short-term-momentum.md) | backtest | 55 | 40 | Discovered empirically (sign-flip of the reversal test). Cleanest signal we have (|monotonicity|~0.9), stronger among tradable names. BUT contradicts academic prior + single regime -> low confidence, NO production without Stage-4 OOS + regime guard. |
 
 Legend — Stage: lit → logic → backtest → live-eval → prod.
 
@@ -50,9 +52,15 @@ they are populated only by atoms that pass Stage 4.
    test momentum-crash / regime behavior properly.
 
 ## Cross-atom findings (measured, 2026-07-04)
-- Momentum 6-1 INVERTED on 1y data while 3-1 was weakly positive → the recent
-  US regime favored shorter-horizon / reversal behavior. Flagged for the
-  reversal atom.
-- Illiquid US names carry ~6.5x the forward-return variance of liquid names →
-  strong risk argument for a mandatory liquidity pre-filter, independent of any
-  return-factor claim.
+- **Horizon structure of this regime (2025-07..2026-07):** 1-month = STRONG
+  momentum (continuation, |monotonicity| ~0.9); 6-month = INVERTED momentum
+  (weak); 3-month = weakly positive momentum. My earlier guess of a
+  'mean-reverting regime' was WRONG and corrected by the reversal test: the
+  short horizon is strongly trend-continuing, NOT reverting.
+- Illiquid US names carry ~6.5x the forward-return variance of liquid names,
+  AND the liquidity gate STRENGTHENED the short-term momentum signal -> the
+  liquidity pre-filter improves both risk AND signal cleanliness. Strong
+  argument for making it mandatory.
+- Net conviction: the most promising (but theoretically fragile) production
+  candidate so far is SHORT-TERM (1-month) MOMENTUM behind a liquidity gate,
+  pending out-of-sample and a regime guard. Nothing is production-ready yet.

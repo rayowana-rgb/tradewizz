@@ -1,0 +1,51 @@
+{
+  "universe_symbols": 9822,
+  "common_calendar_days": 251,
+  "data_window": "2025-07-03 .. 2026-07-02",
+  "regime_note": "single ~1y regime; NOT multi-regime. Evidence capped.",
+  "reversal_lookback_days": 21,
+  "hold_days": 21,
+  "note": "signal = NEGATIVE trailing 21d return (recent losers rank high)",
+  "all_names": {
+    "rebalances": 8,
+    "mean_ic": -0.0916,
+    "ic_frac_positive": 0.125,
+    "mean_top_minus_bottom_per_hold": -0.0242,
+    "spread_hit_rate": 0.375,
+    "spread_tstat": -1.041,
+    "decile_monotonicity_spearman": -0.9394,
+    "mean_forward_return_by_decile": [
+      0.0239,
+      0.017,
+      0.012,
+      0.0113,
+      0.0082,
+      0.0089,
+      0.0101,
+      0.0049,
+      -0.0011,
+      -0.0003
+    ]
+  },
+  "tradable_only": {
+    "rebalances": 8,
+    "mean_ic": -0.0973,
+    "ic_frac_positive": 0.125,
+    "mean_top_minus_bottom_per_hold": -0.037,
+    "spread_hit_rate": 0.125,
+    "spread_tstat": -1.491,
+    "decile_monotonicity_spearman": -0.903,
+    "mean_forward_return_by_decile": [
+      0.0325,
+      0.015,
+      0.0119,
+      0.0106,
+      0.0083,
+      0.0095,
+      0.0118,
+      0.0029,
+      -0.0063,
+      -0.0045
+    ]
+  }
+}
