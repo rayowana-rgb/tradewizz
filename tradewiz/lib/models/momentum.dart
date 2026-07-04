@@ -178,3 +178,93 @@ class MomentumBasketResult {
             .toList(),
       );
 }
+
+/// One SELL leg of a monthly rebalance: a momentum-held name that dropped out
+/// of the fresh top-N and should be fully closed.
+class MomentumRebalanceSell {
+  const MomentumRebalanceSell({
+    required this.symbol,
+    required this.quantity,
+    required this.lastPrice,
+    required this.estNotional,
+  });
+
+  final String symbol;
+  final double quantity;
+  final double lastPrice;
+  final double estNotional;
+
+  factory MomentumRebalanceSell.fromJson(Map<String, dynamic> j) =>
+      MomentumRebalanceSell(
+        symbol: (j['symbol'] ?? '').toString(),
+        quantity: (j['quantity'] as num?)?.toDouble() ?? 0.0,
+        lastPrice: (j['last_price'] as num?)?.toDouble() ?? 0.0,
+        estNotional: (j['est_notional'] as num?)?.toDouble() ?? 0.0,
+      );
+}
+
+/// One BUY leg of a monthly rebalance: a fresh top-N name not yet held.
+class MomentumRebalanceBuy {
+  const MomentumRebalanceBuy({
+    required this.symbol,
+    required this.rank,
+    required this.quantity,
+    required this.lastPrice,
+    required this.estNotional,
+  });
+
+  final String symbol;
+  final int rank;
+  final double quantity;
+  final double lastPrice;
+  final double estNotional;
+
+  factory MomentumRebalanceBuy.fromJson(Map<String, dynamic> j) =>
+      MomentumRebalanceBuy(
+        symbol: (j['symbol'] ?? '').toString(),
+        rank: (j['rank'] as num?)?.toInt() ?? 0,
+        quantity: (j['quantity'] as num?)?.toDouble() ?? 0.0,
+        lastPrice: (j['last_price'] as num?)?.toDouble() ?? 0.0,
+        estNotional: (j['est_notional'] as num?)?.toDouble() ?? 0.0,
+      );
+}
+
+/// The full monthly-rebalance plan: what to sell, buy, and hold.
+class MomentumRebalancePreview {
+  const MomentumRebalancePreview({
+    required this.sells,
+    required this.buys,
+    required this.holds,
+    required this.perPositionUsd,
+    required this.maxNotionalPerOrder,
+    required this.disclaimer,
+  });
+
+  final List<MomentumRebalanceSell> sells;
+  final List<MomentumRebalanceBuy> buys;
+  final List<String> holds;
+  final double perPositionUsd;
+  final double maxNotionalPerOrder;
+  final String disclaimer;
+
+  bool get isEmpty => sells.isEmpty && buys.isEmpty;
+
+  factory MomentumRebalancePreview.fromJson(Map<String, dynamic> j) =>
+      MomentumRebalancePreview(
+        sells: ((j['sells'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(MomentumRebalanceSell.fromJson)
+            .toList(),
+        buys: ((j['buys'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(MomentumRebalanceBuy.fromJson)
+            .toList(),
+        holds: ((j['holds'] as List?) ?? const [])
+            .map((e) => e.toString())
+            .toList(),
+        perPositionUsd: (j['per_position_usd'] as num?)?.toDouble() ?? 0.0,
+        maxNotionalPerOrder:
+            (j['max_notional_per_order'] as num?)?.toDouble() ?? 0.0,
+        disclaimer: (j['disclaimer'] ?? '').toString(),
+      );
+}

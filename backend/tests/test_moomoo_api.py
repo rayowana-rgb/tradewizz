@@ -78,7 +78,7 @@ class FakeMoomooService:
         }
 
     def place(self, symbol, side, qty, order_type, price, confirm,
-              trade_pin=None, *, extended_hours=False):
+              trade_pin=None, *, extended_hours=False, strategy=None):
         import os as _os
         # Record whether the caller asked for an extended/overnight order so
         # tests can assert the closed-market path used a resting LIMIT.
@@ -524,7 +524,7 @@ class _ClosedMarketFake:
         ]
 
     def place(self, symbol, side, qty, order_type, price, confirm,
-              trade_pin=None, *, extended_hours=False):
+              trade_pin=None, *, extended_hours=False, strategy=None):
         self.last_extended = bool(extended_hours)
         self.placed.append({
             "symbol": symbol, "side": side, "qty": qty,

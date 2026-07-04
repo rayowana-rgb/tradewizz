@@ -276,6 +276,21 @@ class ApiClient {
         secret: secret,
       );
 
+  // Owner-only monthly rebalance plan: diff momentum-owned holdings vs fresh
+  // top-N (SELL dropouts / BUY new entries / HOLD survivors). Read-only.
+  Future<Map<String, dynamic>> momentumRebalancePreview(
+    double perPositionUsd,
+    int topN, {
+    required String bearer,
+    required String secret,
+  }) =>
+      moomooPost(
+        '/momentum/rebalance/preview',
+        {'per_position_usd': perPositionUsd, 'top_n': topN},
+        bearer: bearer,
+        secret: secret,
+      );
+
   Future<Map<String, dynamic>> _brokerCall(
     String method,
     String path, {

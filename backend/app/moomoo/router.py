@@ -319,7 +319,7 @@ def moomoo_place(
     try:
         r = get_service().place(
             req.symbol, req.side, req.quantity, req.order_type, req.price,
-            req.confirm, trade_pin=req.trade_pin,
+            req.confirm, trade_pin=req.trade_pin, strategy=req.strategy,
         )
     except MoomooError as exc:
         raise _handle(exc)

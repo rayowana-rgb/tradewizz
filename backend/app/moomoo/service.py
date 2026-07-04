@@ -594,7 +594,12 @@ class MoomooService:
         trade_pin: Optional[str] = None,
         *,
         extended_hours: bool = False,
+        strategy: Optional[str] = None,
     ) -> MoomooOrderResult:
+        # ``strategy`` (e.g. "momentum") tags the order at the broker via its
+        # remark and updates that strategy's local holdings ledger so a later
+        # rebalance only ever touches its own positions. When None, behaviour
+        # is unchanged (generic "tradewizz" remark, no ledger).
         # ``extended_hours`` lets a LIMIT order rest and fill in the pre/post/
         # overnight sessions instead of being rejected outside regular hours.
         # Only meaningful for LIMIT (MARKET cannot fill outside RTH).
@@ -645,6 +650,14 @@ class MoomooService:
             except Exception:  # noqa: BLE001
                 extra = {}
 
+        # Tag the order so its owning strategy is identifiable at the broker.
+        strat = (strategy or "").strip().lower()
+        if strat == "momentum":
+            from ..momentum.ledger import MOMENTUM_REMARK
+            remark = MOMENTUM_REMARK
+        else:
+            remark = "tradewizz"
+
         with self._lock:
             ctx = self._ctx_obj()
             # REAL trading requires an unlocked context. Unlock with the
@@ -658,11 +671,24 @@ class MoomooService:
                 order_type=otype_enum,
                 trd_env=TrdEnv.REAL,
                 acc_id=_env_acc_id(),
-                remark="tradewizz",
+                remark=remark,
                 **extra,
             )
             data = self._check_ok(ret, data)
         row = data.iloc[0]
+
+        # Keep the strategy ledger in step with what we just placed so a later
+        # rebalance only ever touches this strategy's own positions.
+        if strat == "momentum":
+            from ..momentum.ledger import MomentumLedger
+            ledger = MomentumLedger()
+            if side.upper() == "BUY":
+                ledger.record_buy(symbol, float(qty))
+            else:
+                # A rebalance sells the whole momentum position for a name that
+                # dropped out, so drop it from the ledger entirely.
+                ledger.record_sell(symbol)
+
         return MoomooOrderResult(
             order_id=str(row.get("order_id", "")),
             code=str(row.get("code", code)),

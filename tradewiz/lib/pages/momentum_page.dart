@@ -341,6 +341,23 @@ class _MomentumPageState extends State<MomentumPage> {
                     _reviewAndBuy(p);
                   },
           ),
+          const SizedBox(height: TWSpace.sm),
+          TWGhostButton(
+            label: 'Rebalance to Top ${p.picks.length}',
+            icon: Icons.sync,
+            onPressed: _perPosition == null
+                ? null
+                : () {
+                    FocusScope.of(context).unfocus();
+                    _reviewAndRebalance(p);
+                  },
+          ),
+          const SizedBox(height: TWSpace.xs),
+          Text(
+            'Sells momentum names that dropped out of the top ${p.picks.length} '
+            'and buys the new ones. Only touches positions bought here.',
+            style: TWType.caption.copyWith(color: TWColors.textTertiary),
+          ),
         ],
       ),
     );
@@ -423,10 +440,142 @@ class _MomentumPageState extends State<MomentumPage> {
     );
     if (confirmed != true || !mounted) return;
 
-    // 3) Place. Place each leg as its own MARKET BUY sequentially, exactly like
-    //    the Explore "Buy all" flow, so the owner sees a real per-order progress
-    //    bar counting up (1/n, 2/n, …) instead of an indeterminate sweep.
-    //    (Trade unlock is done manually in the OpenD GUI, so no PIN is sent.)
+    // 3) Place. Each leg is its own MARKET BUY, exactly like the Explore
+    //    "Buy all" flow, so the owner sees a real per-order progress bar
+    //    counting up (1/n, 2/n, …) instead of an indeterminate sweep.
+    final orders = [
+      for (final l in preview.legs)
+        _MomentumOrder(symbol: l.symbol, side: 'BUY', quantity: l.quantity),
+    ];
+    await _runOrders(orders, token: token, secret: secret);
+  }
+
+  /// Compare the momentum-owned holdings against the fresh top-N and, on the
+  /// owner's confirmation, SELL the dropouts then BUY the new entries. Only
+  /// momentum-owned positions are ever sold; other strategies are untouched.
+  Future<void> _reviewAndRebalance(MomentumPicks p) async {
+    final size = _perPosition;
+    final token = AuthScope.read(context).token;
+    final secret = widget.secretStore.secret;
+    if (size == null) return;
+    if (token == null || secret == null || secret.isEmpty) {
+      _snack('LIVE trading unavailable (missing credentials).');
+      return;
+    }
+
+    // 1) Preview the rebalance plan.
+    MomentumRebalancePreview plan;
+    try {
+      plan = await widget.repository.momentumRebalancePreview(
+        perPositionUsd: size,
+        topN: p.picks.length,
+        token: token,
+        secret: secret,
+      );
+    } catch (e) {
+      _snack('Rebalance preview failed. $e');
+      return;
+    }
+    if (!mounted) return;
+
+    if (plan.isEmpty) {
+      _snack('Already aligned with the top ${p.picks.length}. Nothing to do.');
+      return;
+    }
+
+    // 2) Confirm dialog listing the SELLs, BUYs and HOLDs.
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: TWColors.surfaceCard,
+        title: const Text('Confirm LIVE rebalance', style: TWType.body),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Real money. ${plan.sells.length} SELL then '
+                '${plan.buys.length} BUY MARKET order(s). '
+                '${plan.holds.length} position(s) kept.',
+                style: TWType.caption
+                    .copyWith(color: TWColors.textSecondary, height: 1.35),
+              ),
+              if (plan.sells.isNotEmpty) ...[
+                const SizedBox(height: TWSpace.md),
+                Text('Sell (dropped out)',
+                    style: TWType.caption.copyWith(color: TWColors.down)),
+                const SizedBox(height: TWSpace.xs),
+                ...plan.sells.map((s) => _rebalRow(
+                    s.symbol, '${s.quantity.toStringAsFixed(4)} sh')),
+              ],
+              if (plan.buys.isNotEmpty) ...[
+                const SizedBox(height: TWSpace.md),
+                Text('Buy (new entries)',
+                    style: TWType.caption.copyWith(color: TWColors.up)),
+                const SizedBox(height: TWSpace.xs),
+                ...plan.buys.map((b) => _rebalRow(
+                    b.symbol, '${b.quantity.toStringAsFixed(4)} sh')),
+              ],
+              if (plan.holds.isNotEmpty) ...[
+                const SizedBox(height: TWSpace.md),
+                Text('Hold: ${plan.holds.join(', ')}',
+                    style: TWType.caption
+                        .copyWith(color: TWColors.textTertiary)),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(
+                'Place ${plan.sells.length + plan.buys.length} orders',
+                style: const TextStyle(color: TWColors.warn)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    // 3) Execute: SELL the dropouts first (frees cash), then BUY the new
+    //    entries. Single per-order progress bar across the whole plan.
+    final orders = <_MomentumOrder>[
+      for (final s in plan.sells)
+        _MomentumOrder(symbol: s.symbol, side: 'SELL', quantity: s.quantity),
+      for (final b in plan.buys)
+        _MomentumOrder(symbol: b.symbol, side: 'BUY', quantity: b.quantity),
+    ];
+    await _runOrders(orders, token: token, secret: secret);
+  }
+
+  Widget _rebalRow(String symbol, String qty) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          children: [
+            Expanded(child: Text(symbol, style: TWType.caption)),
+            Text(qty,
+                style: TWType.tabular(TWType.caption)
+                    .copyWith(color: TWColors.textTertiary)),
+          ],
+        ),
+      );
+
+  /// Place a list of MARKET orders one at a time, mirroring the Explore
+  /// "Buy all" engine: ~2.2s pacing (Moomoo ~15 orders/30s), transient
+  /// rate-limit retry, per-stock skip guards, a tap-to-stop cancel, and a
+  /// determinate progress bar counting up. Every order is tagged
+  /// strategy=momentum so the ledger stays in step for future rebalances.
+  Future<void> _runOrders(
+    List<_MomentumOrder> orders, {
+    required String token,
+    required String secret,
+  }) async {
+    if (orders.isEmpty) return;
     final progress = ValueNotifier<int>(0);
     final cancel = _MomentumCancelToken();
     showDialog<void>(
@@ -434,7 +583,7 @@ class _MomentumPageState extends State<MomentumPage> {
       barrierDismissible: false,
       barrierColor: Colors.black54,
       builder: (_) => _MomentumBuyProgressDialog(
-        total: preview.legs.length,
+        total: orders.length,
         progress: progress,
         cancel: cancel,
       ),
@@ -446,15 +595,15 @@ class _MomentumPageState extends State<MomentumPage> {
     final failures = <String>[];
     var cancelled = false;
 
-    for (var i = 0; i < preview.legs.length; i++) {
+    for (var i = 0; i < orders.length; i++) {
       if (cancel.isCancelled) {
         cancelled = true;
         break;
       }
-      final leg = preview.legs[i];
+      final order = orders[i];
 
       // Moomoo throttles placement to ~15 orders / 30s. Pace ourselves so a
-      // large basket does not trip the broker's rate limiter.
+      // large plan does not trip the broker's rate limiter.
       if (i > 0 && _kMomentumOrderGap > Duration.zero) {
         await Future<void>.delayed(_kMomentumOrderGap);
       }
@@ -467,10 +616,11 @@ class _MomentumPageState extends State<MomentumPage> {
           await widget.repository.moomooPlace(
             token: token,
             secret: secret,
-            symbol: leg.symbol,
-            side: 'BUY',
-            quantity: leg.quantity,
+            symbol: order.symbol,
+            side: order.side,
+            quantity: order.quantity,
             orderType: 'MARKET',
+            strategy: 'momentum',
           );
           outcome = 0;
           break;
@@ -517,7 +667,7 @@ class _MomentumPageState extends State<MomentumPage> {
         skipped++;
       } else {
         failed++;
-        failures.add('${leg.symbol}: ${failMsg ?? 'failed'}');
+        failures.add('${order.symbol}: ${failMsg ?? 'failed'}');
       }
       progress.value = i + 1;
     }
@@ -559,6 +709,19 @@ const int _kMomentumMaxRetries = 3;
 class _MomentumCancelToken {
   bool isCancelled = false;
   bool dialogClosed = false;
+}
+
+/// One MARKET order in a basket buy or rebalance run.
+class _MomentumOrder {
+  const _MomentumOrder({
+    required this.symbol,
+    required this.side, // BUY | SELL
+    required this.quantity,
+  });
+
+  final String symbol;
+  final String side;
+  final double quantity;
 }
 
 /// A modal shown while a LIVE basket buy is being placed. Each leg is placed as

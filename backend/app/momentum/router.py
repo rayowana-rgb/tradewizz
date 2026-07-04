@@ -102,6 +102,33 @@ class BasketBuyResultModel(BaseModel):
     legs: List[BasketLegResult]
 
 
+class RebalanceSellLeg(BaseModel):
+    symbol: str
+    quantity: float        # shares to sell (the whole momentum holding)
+    last_price: float
+    est_notional: float
+
+
+class RebalanceBuyLeg(BaseModel):
+    symbol: str
+    rank: int
+    quantity: float        # fractional MARKET qty from per_position_usd
+    last_price: float
+    est_notional: float
+
+
+class RebalancePreviewModel(BaseModel):
+    # Symbols currently held via momentum that dropped out of the new top-N.
+    sells: List[RebalanceSellLeg]
+    # New top-N names not yet held via momentum.
+    buys: List[RebalanceBuyLeg]
+    # Momentum names that stay in the top-N (no action).
+    holds: List[str]
+    per_position_usd: float
+    max_notional_per_order: float
+    disclaimer: str
+
+
 # -- read-only picks -------------------------------------------------------- #
 @router.get("/picks", response_model=MomentumPicksModel)
 def momentum_picks(top_n: int = 10) -> MomentumPicksModel:
@@ -219,3 +246,87 @@ def basket_buy(
             legs.append(BasketLegResult(symbol=sym, ok=False, error=str(exc)))
             logger.warning("MOMENTUM BASKET leg %s FAILED: %s", sym, exc)
     return BasketBuyResultModel(live=True, placed=placed, failed=failed, legs=legs)
+
+
+# -- monthly rebalance (owner-only) ----------------------------------------- #
+class RebalancePreviewRequest(BaseModel):
+    per_position_usd: float = Field(..., gt=0)
+    top_n: int = Field(10, ge=1, le=25)
+
+
+@router.post("/rebalance/preview", response_model=RebalancePreviewModel)
+def rebalance_preview(
+    req: RebalancePreviewRequest,
+    authorization: Optional[str] = Header(default=None),
+    x_moomoo_secret: Optional[str] = Header(default=None),
+) -> RebalancePreviewModel:
+    """Diff the momentum-owned holdings against the fresh top-N.
+
+    SELL  = momentum-owned names that dropped OUT of the new top-N.
+    BUY   = new top-N names not currently held via momentum.
+    HOLD  = momentum-owned names that remain in the top-N (no action).
+
+    Only positions momentum actually bought (tracked in the local ledger and
+    confirmed against the LIVE positions) are ever considered for selling, so
+    the owner's other strategies are never touched.
+    """
+    require_owner, moomoo_service = _moomoo()
+    require_owner(authorization, x_moomoo_secret)
+    svc = moomoo_service()
+
+    from .ledger import MomentumLedger
+    ledger = MomentumLedger()
+
+    # Fresh top-N target set.
+    picks = get_service().picks(top_n=req.top_n)
+    target_syms = {p.symbol.upper(): p for p in picks.picks}
+
+    # Momentum-owned symbols per the ledger, intersected with what is actually
+    # held LIVE (drops names the owner has since sold manually elsewhere).
+    ledger_syms = {s.upper() for s in ledger.symbols()}
+    live_qty: dict = {}
+    try:
+        for pos in svc.positions():
+            live_qty[pos.symbol.upper()] = float(pos.can_sell_qty or pos.qty)
+    except Exception as exc:  # noqa: BLE001 - positions best-effort
+        logger.info("rebalance positions lookup failed: %s", exc)
+    owned = {s for s in ledger_syms if live_qty.get(s, 0.0) > 0}
+
+    cap = 0.0
+
+    sells: List[RebalanceSellLeg] = []
+    for sym in sorted(owned - set(target_syms)):
+        qty = live_qty.get(sym, 0.0)
+        px = _last_price(sym)
+        sells.append(RebalanceSellLeg(
+            symbol=sym, quantity=round(qty, 4), last_price=round(px, 4),
+            est_notional=round(qty * px, 2),
+        ))
+
+    buys: List[RebalanceBuyLeg] = []
+    for sym, pick in sorted(target_syms.items(), key=lambda kv: kv[1].rank):
+        if sym in owned:
+            continue
+        qty, px = _qty_for(sym, req.per_position_usd)
+        est = round(qty * px, 2)
+        try:
+            pv = svc.preview(sym, "BUY", qty, "MARKET", None)
+            cap = float(pv.get("max_notional", cap))
+            moomoo_est = float(pv.get("est_notional", 0.0) or 0.0)
+            if moomoo_est > 0:
+                est = moomoo_est
+        except Exception as exc:  # noqa: BLE001 - preview best-effort
+            logger.info("rebalance buy preview %s failed: %s", sym, exc)
+        buys.append(RebalanceBuyLeg(
+            symbol=sym, rank=pick.rank, quantity=qty,
+            last_price=round(px, 4), est_notional=est,
+        ))
+
+    holds = sorted(owned & set(target_syms))
+
+    return RebalancePreviewModel(
+        sells=sells, buys=buys, holds=holds,
+        per_position_usd=req.per_position_usd,
+        max_notional_per_order=cap,
+        disclaimer=picks.disclaimer,
+    )

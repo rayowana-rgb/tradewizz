@@ -390,6 +390,22 @@ class StockRepository {
     return MomentumBasketResult.fromJson(j);
   }
 
+  /// Owner-only monthly rebalance plan (read-only): what momentum should sell
+  /// (dropouts), buy (new entries), and hold. Never touches other strategies'
+  /// positions -- only momentum-owned names (ledger ∩ live) are considered.
+  Future<MomentumRebalancePreview> momentumRebalancePreview({
+    required double perPositionUsd,
+    required int topN,
+    required String token,
+    required String secret,
+  }) async {
+    final j = await _client.momentumRebalancePreview(
+      perPositionUsd, topN,
+      bearer: token, secret: secret,
+    );
+    return MomentumRebalancePreview.fromJson(j);
+  }
+
   /// Bare symbols with a BUY order placed today (held or already sold).
   /// Backs `GET /v1/broker/moomoo/bought-today`. Used so a LIVE "Buy all"
   /// can skip names already bought today even if no longer held.
@@ -450,6 +466,7 @@ class StockRepository {
     required double quantity,
     required String orderType,
     double? price,
+    String? strategy,
   }) async {
     final body = <String, dynamic>{
       'symbol': symbol,
@@ -459,6 +476,7 @@ class StockRepository {
       'confirm': true,
     };
     if (price != null) body['price'] = price;
+    if (strategy != null) body['strategy'] = strategy;
     final j = await _client.moomooPost('/broker/moomoo/order/place', body,
         bearer: token, secret: secret);
     return MoomooLiveOrderResult.fromJson(j);

@@ -76,6 +76,9 @@ class MoomooOrderRequest(BaseModel):
     confirm: bool = False
     # Moomoo trade PIN, supplied per-request for unlock. Never stored.
     trade_pin: Optional[str] = None
+    # Owning strategy, e.g. "momentum". Tags the order at the broker and keeps
+    # that strategy's local holdings ledger in step. None = generic order.
+    strategy: Optional[str] = None
 
 
 class MoomooOrderPreview(BaseModel):
