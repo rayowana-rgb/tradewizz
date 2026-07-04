@@ -240,7 +240,7 @@ class ApiClient {
   // Read-only 12-1 momentum picks. No auth (research signal, not order flow).
   // NEVER falls back to mock data -- a bad response surfaces the error.
   Future<Map<String, dynamic>> momentumPicks({int topN = 10}) =>
-      _brokerCall('GET', '/v1/momentum/picks?top_n=$topN');
+      _brokerCall('GET', '/momentum/picks?top_n=$topN');
 
   // Owner-only basket preview/buy. Reuse the hardened moomoo secret+bearer gate.
   Future<Map<String, dynamic>> momentumBasketPreview(
@@ -250,7 +250,7 @@ class ApiClient {
     required String secret,
   }) =>
       moomooPost(
-        '/v1/momentum/basket/preview',
+        '/momentum/basket/preview',
         {'symbols': symbols, 'per_position_usd': perPositionUsd},
         bearer: bearer,
         secret: secret,
@@ -265,7 +265,7 @@ class ApiClient {
     String? tradePin,
   }) =>
       moomooPost(
-        '/v1/momentum/basket/buy',
+        '/momentum/basket/buy',
         {
           'symbols': symbols,
           'per_position_usd': perPositionUsd,
