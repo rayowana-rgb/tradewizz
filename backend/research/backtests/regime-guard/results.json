@@ -1,0 +1,79 @@
+{
+  "universe_symbols": 9810,
+  "common_calendar_days": 251,
+  "data_window": "2025-07-03 .. 2026-07-02",
+  "regime_note": "single ~1y regime; few off-dates; SUGGESTIVE only, NOT conclusive.",
+  "proxy": "equal-weight mean daily return across tradable US names",
+  "regime_on_fraction_of_days": 0.2271,
+  "signal": "1-month cross-sectional MOMENTUM (recent winners rank high), tradable-only",
+  "regime_on": {
+    "rebalances": 3,
+    "mean_ic": 0.1045,
+    "mean_top_minus_bottom_per_hold": -0.0003,
+    "spread_hit_rate": 0.3333
+  },
+  "regime_off": {
+    "rebalances": 4,
+    "mean_ic": 0.01,
+    "mean_top_minus_bottom_per_hold": 0.0182,
+    "spread_hit_rate": 0.75
+  },
+  "per_rebalance": [
+    {
+      "date": "2025-11-24",
+      "regime_on": false,
+      "trend_on": false,
+      "vol_on": false,
+      "ic": 0.0174,
+      "tmb": 0.0734
+    },
+    {
+      "date": "2025-12-24",
+      "regime_on": true,
+      "trend_on": true,
+      "vol_on": true,
+      "ic": 0.1171,
+      "tmb": -0.0042
+    },
+    {
+      "date": "2026-01-27",
+      "regime_on": true,
+      "trend_on": true,
+      "vol_on": true,
+      "ic": 0.1861,
+      "tmb": 0.0639
+    },
+    {
+      "date": "2026-02-26",
+      "regime_on": false,
+      "trend_on": true,
+      "vol_on": false,
+      "ic": 0.1161,
+      "tmb": 0.0538
+    },
+    {
+      "date": "2026-03-27",
+      "regime_on": false,
+      "trend_on": false,
+      "vol_on": false,
+      "ic": -0.3074,
+      "tmb": -0.1743
+    },
+    {
+      "date": "2026-04-28",
+      "regime_on": false,
+      "trend_on": true,
+      "vol_on": false,
+      "ic": 0.2139,
+      "tmb": 0.1202
+    },
+    {
+      "date": "2026-05-28",
+      "regime_on": true,
+      "trend_on": true,
+      "vol_on": true,
+      "ic": 0.0102,
+      "tmb": -0.0607
+    }
+  ]
+}
