@@ -26,7 +26,7 @@ metrics or citations. Failed results are kept, not hidden.
 | [Cross-Sectional Momentum (12-1)](research/atoms/cross-sectional-momentum.md) | backtest | 74 | 32 | Backtested on 1y US data; edge WEAK & not significant (t≈0), 6-1 inverted. **Not promoted.** |
 | [Liquidity & Participation Score](research/atoms/liquidity-participation.md) | backtest | 80 | 40 | Tradability gate VALIDATED (19.3% of US universe non-tradable; illiquid names 6.5x fwd-ret variance). Signal-hygiene sub-claim (illiquidity lowers IC) REJECTED. Sound RISK pre-filter; awaits Stage-4 before wiring to risk_score. |
 | [Short-Term Reversal (1-month)](research/atoms/short-term-reversal.md) | backtest | 62 | 30 | **REJECTED** on our data: IC strongly NEGATIVE (-0.09), monotonicity -0.94 -> the effect is short-term MOMENTUM, not reversal. Negative result, recorded. |
-| [Short-Term Momentum (1-month)](research/atoms/short-term-momentum.md) | backtest | 55 | 40 | Discovered empirically (sign-flip of the reversal test). Cleanest signal we have (|monotonicity|~0.9), stronger among tradable names. BUT contradicts academic prior + single regime -> low confidence, NO production without Stage-4 OOS + regime guard. |
+| [Short-Term Momentum (1-month)](research/atoms/short-term-momentum.md) | backtest | 32 | 40 | DEMOTED. 20-year OOS re-test (3-1 proxy) gave IC +0.0000, t 0.003 -> the 1-month continuation was a SINGLE-REGIME ARTIFACT of the 2025-26 trending window; averages to zero across history. NOT a production candidate. Retained as a cautionary example. |
 | [Regime Guard (trend/vol state)](research/atoms/regime-guard.md) | backtest | 58 | 22 | Prerequisite gate for short-term momentum. IC IS state-dependent (0.10 on vs 0.01 off) BUT tradable spread was BETTER off-regime -> naive gate REJECTED. Only 7 rebalances; one crash date dominates. Needs multi-year data to calibrate. |
 
 Legend — Stage: lit → logic → backtest → live-eval → prod.
@@ -65,6 +65,17 @@ they are populated only by atoms that pass Stage 4.
 - Net conviction: the most promising (but theoretically fragile) production
   candidate so far is SHORT-TERM (1-month) MOMENTUM behind a liquidity gate,
   pending out-of-sample and a regime guard. Nothing is production-ready yet.
+- **Multi-year momentum re-test DONE** (2026-07-04, ~343 liquid names, common
+  calendar 2006-2026, ~20y, multi-regime): **12-1 is now the strongest-evidenced
+  concept** -- mean IC +0.0247, IC t 1.76, spread +0.71%/hold, hit 58% across
+  231 rebalances; RIGHT sign, marginally significant. Horizon ordering over 20y
+  is **12-1 > 6-1 > 3-1** (IC 0.025 > 0.015 > 0.000) -- the OPPOSITE of the 1y
+  finding, confirming classic momentum and DEMOTING short-term-momentum (its
+  3-1 proxy IC is ~0 over 20y => single-regime artifact). Regime dependence is
+  now visible: momentum CRASHED in 2009 (IC -0.15, spread -7%, textbook post-GFC
+  crash) and 2023 (-8%); strong 2013/2017/2022/2024. Momentum confidence raised
+  74->78, evidence 32->55. Still not auto-promoted: t<2, crash-guard mandatory,
+  and Stage-4 needs a broader backfilled universe.
 - **Multi-year backfill assessed & readied** (2026-07-04): feasibility CONFIRMED
   (AAPL `period=max` = 11,480 rows, 1980..2026 via the backend fetch path).
   Plan: backfill ONLY the liquid tradable sub-universe (top ~800 by ADV, index

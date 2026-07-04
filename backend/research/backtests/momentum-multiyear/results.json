@@ -1,0 +1,351 @@
+{
+  "universe_symbols": 343,
+  "common_calendar_days": 5140,
+  "data_window": "2006-01-26 .. 2026-07-02",
+  "note": "Liquid backfilled universe (~343 names) -> smaller cross-section than 1y run; many rebalances across ~10y (incl. 2020 COVID crash, 2022 bear) compensate. IC t-stat across rebalances is the key stat.",
+  "variants": {
+    "12-1": {
+      "label": "12-1",
+      "rebalances": 231,
+      "mean_ic": 0.0247,
+      "ic_tstat": 1.756,
+      "mean_top_minus_bottom_per_hold": 0.0071,
+      "tmb_tstat": 1.098,
+      "spread_hit_rate": 0.5844,
+      "per_year": {
+        "2007": {
+          "rebalances": 11,
+          "mean_tmb": 0.0056,
+          "mean_ic": 0.0228
+        },
+        "2008": {
+          "rebalances": 12,
+          "mean_tmb": -0.0184,
+          "mean_ic": -0.0028
+        },
+        "2009": {
+          "rebalances": 12,
+          "mean_tmb": -0.07,
+          "mean_ic": -0.1455
+        },
+        "2010": {
+          "rebalances": 12,
+          "mean_tmb": 0.0174,
+          "mean_ic": 0.0415
+        },
+        "2011": {
+          "rebalances": 12,
+          "mean_tmb": -0.0039,
+          "mean_ic": -0.017
+        },
+        "2012": {
+          "rebalances": 12,
+          "mean_tmb": 0.0239,
+          "mean_ic": 0.0591
+        },
+        "2013": {
+          "rebalances": 12,
+          "mean_tmb": 0.0362,
+          "mean_ic": 0.1243
+        },
+        "2014": {
+          "rebalances": 12,
+          "mean_tmb": 0.0182,
+          "mean_ic": 0.0513
+        },
+        "2015": {
+          "rebalances": 12,
+          "mean_tmb": 0.0135,
+          "mean_ic": 0.0807
+        },
+        "2016": {
+          "rebalances": 12,
+          "mean_tmb": -0.0157,
+          "mean_ic": -0.0685
+        },
+        "2017": {
+          "rebalances": 12,
+          "mean_tmb": 0.0281,
+          "mean_ic": 0.1026
+        },
+        "2018": {
+          "rebalances": 11,
+          "mean_tmb": -0.002,
+          "mean_ic": 0.001
+        },
+        "2019": {
+          "rebalances": 12,
+          "mean_tmb": 0.0013,
+          "mean_ic": 0.0101
+        },
+        "2020": {
+          "rebalances": 13,
+          "mean_tmb": 0.0112,
+          "mean_ic": 0.0489
+        },
+        "2021": {
+          "rebalances": 12,
+          "mean_tmb": 0.0056,
+          "mean_ic": -0.0334
+        },
+        "2022": {
+          "rebalances": 11,
+          "mean_tmb": 0.0554,
+          "mean_ic": 0.1465
+        },
+        "2023": {
+          "rebalances": 12,
+          "mean_tmb": -0.0811,
+          "mean_ic": -0.0393
+        },
+        "2024": {
+          "rebalances": 12,
+          "mean_tmb": 0.0241,
+          "mean_ic": 0.082
+        },
+        "2025": {
+          "rebalances": 12,
+          "mean_tmb": 0.0321,
+          "mean_ic": -0.0274
+        },
+        "2026": {
+          "rebalances": 5,
+          "mean_tmb": 0.1427,
+          "mean_ic": 0.1186
+        }
+      }
+    },
+    "6-1": {
+      "label": "6-1",
+      "rebalances": 237,
+      "mean_ic": 0.0152,
+      "ic_tstat": 1.148,
+      "mean_top_minus_bottom_per_hold": 0.0047,
+      "tmb_tstat": 0.808,
+      "spread_hit_rate": 0.5654,
+      "per_year": {
+        "2006": {
+          "rebalances": 5,
+          "mean_tmb": 0.0032,
+          "mean_ic": -0.0098
+        },
+        "2007": {
+          "rebalances": 12,
+          "mean_tmb": 0.0157,
+          "mean_ic": 0.0505
+        },
+        "2008": {
+          "rebalances": 12,
+          "mean_tmb": -0.0321,
+          "mean_ic": -0.0362
+        },
+        "2009": {
+          "rebalances": 12,
+          "mean_tmb": -0.0508,
+          "mean_ic": -0.0883
+        },
+        "2010": {
+          "rebalances": 12,
+          "mean_tmb": 0.0163,
+          "mean_ic": 0.0188
+        },
+        "2011": {
+          "rebalances": 12,
+          "mean_tmb": -0.0279,
+          "mean_ic": -0.0967
+        },
+        "2012": {
+          "rebalances": 12,
+          "mean_tmb": -0.0048,
+          "mean_ic": -0.0405
+        },
+        "2013": {
+          "rebalances": 12,
+          "mean_tmb": 0.0333,
+          "mean_ic": 0.1123
+        },
+        "2014": {
+          "rebalances": 12,
+          "mean_tmb": 0.0155,
+          "mean_ic": 0.0397
+        },
+        "2015": {
+          "rebalances": 12,
+          "mean_tmb": 0.0039,
+          "mean_ic": 0.044
+        },
+        "2016": {
+          "rebalances": 12,
+          "mean_tmb": -0.0023,
+          "mean_ic": -0.0359
+        },
+        "2017": {
+          "rebalances": 12,
+          "mean_tmb": 0.034,
+          "mean_ic": 0.0967
+        },
+        "2018": {
+          "rebalances": 11,
+          "mean_tmb": 0.0091,
+          "mean_ic": 0.0452
+        },
+        "2019": {
+          "rebalances": 12,
+          "mean_tmb": -0.0145,
+          "mean_ic": -0.0423
+        },
+        "2020": {
+          "rebalances": 13,
+          "mean_tmb": 0.0309,
+          "mean_ic": 0.0631
+        },
+        "2021": {
+          "rebalances": 12,
+          "mean_tmb": 0.0008,
+          "mean_ic": -0.0155
+        },
+        "2022": {
+          "rebalances": 11,
+          "mean_tmb": 0.043,
+          "mean_ic": 0.1407
+        },
+        "2023": {
+          "rebalances": 12,
+          "mean_tmb": -0.0601,
+          "mean_ic": -0.0121
+        },
+        "2024": {
+          "rebalances": 12,
+          "mean_tmb": 0.0003,
+          "mean_ic": 0.0422
+        },
+        "2025": {
+          "rebalances": 12,
+          "mean_tmb": 0.0236,
+          "mean_ic": -0.0203
+        },
+        "2026": {
+          "rebalances": 5,
+          "mean_tmb": 0.1441,
+          "mean_ic": 0.1172
+        }
+      }
+    },
+    "3-1": {
+      "label": "3-1",
+      "rebalances": 240,
+      "mean_ic": 0.0,
+      "ic_tstat": 0.003,
+      "mean_top_minus_bottom_per_hold": 0.0024,
+      "tmb_tstat": 0.404,
+      "spread_hit_rate": 0.55,
+      "per_year": {
+        "2006": {
+          "rebalances": 8,
+          "mean_tmb": -0.0205,
+          "mean_ic": -0.0995
+        },
+        "2007": {
+          "rebalances": 12,
+          "mean_tmb": 0.019,
+          "mean_ic": 0.0491
+        },
+        "2008": {
+          "rebalances": 12,
+          "mean_tmb": -0.0132,
+          "mean_ic": -0.0231
+        },
+        "2009": {
+          "rebalances": 12,
+          "mean_tmb": -0.022,
+          "mean_ic": -0.0056
+        },
+        "2010": {
+          "rebalances": 12,
+          "mean_tmb": 0.0042,
+          "mean_ic": 0.0127
+        },
+        "2011": {
+          "rebalances": 12,
+          "mean_tmb": -0.0052,
+          "mean_ic": -0.0036
+        },
+        "2012": {
+          "rebalances": 12,
+          "mean_tmb": -0.009,
+          "mean_ic": -0.0731
+        },
+        "2013": {
+          "rebalances": 12,
+          "mean_tmb": 0.0163,
+          "mean_ic": 0.061
+        },
+        "2014": {
+          "rebalances": 12,
+          "mean_tmb": 0.0155,
+          "mean_ic": 0.0185
+        },
+        "2015": {
+          "rebalances": 12,
+          "mean_tmb": -0.009,
+          "mean_ic": 0.0006
+        },
+        "2016": {
+          "rebalances": 12,
+          "mean_tmb": 0.0042,
+          "mean_ic": -0.0088
+        },
+        "2017": {
+          "rebalances": 12,
+          "mean_tmb": 0.0285,
+          "mean_ic": 0.065
+        },
+        "2018": {
+          "rebalances": 11,
+          "mean_tmb": 0.0134,
+          "mean_ic": 0.0676
+        },
+        "2019": {
+          "rebalances": 12,
+          "mean_tmb": -0.0177,
+          "mean_ic": -0.0564
+        },
+        "2020": {
+          "rebalances": 13,
+          "mean_tmb": 0.0125,
+          "mean_ic": -0.0193
+        },
+        "2021": {
+          "rebalances": 12,
+          "mean_tmb": 0.0242,
+          "mean_ic": 0.0277
+        },
+        "2022": {
+          "rebalances": 11,
+          "mean_tmb": 0.0368,
+          "mean_ic": 0.0875
+        },
+        "2023": {
+          "rebalances": 12,
+          "mean_tmb": -0.0538,
+          "mean_ic": -0.0673
+        },
+        "2024": {
+          "rebalances": 12,
+          "mean_tmb": -0.0039,
+          "mean_ic": 0.0141
+        },
+        "2025": {
+          "rebalances": 12,
+          "mean_tmb": -0.0165,
+          "mean_ic": -0.0959
+        },
+        "2026": {
+          "rebalances": 5,
+          "mean_tmb": 0.0989,
+          "mean_ic": 0.0741
+        }
+      }
+    }
+  }
+}

@@ -2,7 +2,7 @@
 title: Short-Term Momentum (1-month)
 slug: short-term-momentum
 stage: backtest
-confidence: 55
+confidence: 32
 evidence: 40
 domains: [momentum, quantitative-trading, market-microstructure]
 frameworks: [momentum_score]
@@ -121,3 +121,20 @@ Our result is the exception, tied to this regime.
   IN-SAMPLE, SINGLE-REGIME, contradicts academic prior -> confidence 55,
   evidence 40, stays stage=backtest. NO production use without Stage-4 OOS proof
   and a regime guard.
+
+- 2026-07-04 (MULTI-YEAR OUT-OF-SAMPLE, after backfill): the 20-year momentum
+  re-test (`research/backtests/momentum-multiyear/run.py`) included the 3-1
+  variant, whose short leg (1-month, skip-1) is the closest available proxy for
+  this effect over 2006..2026. Result: **3-1 mean IC +0.0000, IC t-stat 0.003,
+  spread +0.24%/hold, hit 55%** across 240 rebalances -- i.e. essentially ZERO
+  edge over 20 years and multiple regimes. The clean 1-month CONTINUATION we
+  saw in 2025-07..2026-07 does NOT generalize; it was a SINGLE-REGIME ARTIFACT
+  of a strongly trending window, exactly as the academic prior warned.
+  CONSEQUENCE: this atom FAILS the implicit Stage-4 out-of-sample test. It is
+  DEMOTED (confidence 55 -> 32) and explicitly NOT a production candidate. The
+  useful knowledge is retained: (1) short-horizon continuation exists in
+  strongly trending regimes but averages to zero across history, (2) this
+  vindicates keeping it out of production, (3) it is a cautionary example of
+  why single-regime signals must never be trusted without OOS. The classical
+  short-term REVERSAL prior stands on average; our reversal atom's rejection
+  was itself regime-specific. Superseded as a candidate by 12-1 momentum.

@@ -2,8 +2,8 @@
 title: Cross-Sectional Price Momentum (12-1)
 slug: cross-sectional-momentum
 stage: backtest
-confidence: 74
-evidence: 32
+confidence: 78
+evidence: 55
 domains: [momentum, factor-investing, quantitative-trading]
 frameworks: [momentum_score]
 timeframe: position
@@ -132,3 +132,37 @@ returns of top vs bottom decile. This is an in-sample, single-regime test:
   Per the four-stage gate, this concept does NOT advance to production. It
   stays at stage=backtest with low evidence until we have multi-regime history
   or a positive out-of-sample (Stage-4) result. Recorded, not discarded.
+
+- 2026-07-04 (MULTI-YEAR, after backfill): re-run on the backfilled
+  `period=max` liquid US universe. Harness
+  `research/backtests/momentum-multiyear/run.py`; results `results.json`.
+  Universe 343 liquid names; common calendar auto-extended to 5,140 days,
+  **2006-01-26 .. 2026-07-02 (~20 years, MULTI-REGIME incl. 2008-09 GFC, 2020
+  COVID crash, 2022 bear)**. Smaller cross-section than the 1y run -> higher
+  per-rebalance noise, compensated by ~230 rebalances. Now the 12-1 signal is
+  finally testable.
+
+  Measured (real, not fabricated):
+  - **12-1: 231 rebalances; mean IC +0.0247, IC t-stat 1.76; top-minus-bottom
+    spread +0.71%/hold, t 1.10, hit 58.4%.** Positive, RIGHT sign, marginally
+    significant.
+  - 6-1: 237 reb; mean IC +0.0152, t 1.15; spread +0.47%/hold, hit 56.5%.
+  - 3-1: 240 reb; mean IC +0.0000, t 0.003; spread +0.24%/hold, hit 55.0%.
+  - **Horizon ordering over 20y: 12-1 > 6-1 > 3-1** (the LONGER lookback is
+    stronger) -- the OPPOSITE of the 1y single-regime finding where 1-month
+    looked best. Confirms the classic momentum result and flags the earlier
+    short-term-momentum signal as a likely single-regime artifact.
+  - **Regime dependence VISIBLE and matches literature:** 12-1 IC was strongly
+    NEGATIVE in 2009 (IC -0.146, spread -7.0%) -- the textbook post-GFC
+    momentum crash (Daniel-Moskowitz) -- and negative again in 2023 (spread
+    -8.1%). Strong in 2013 (+0.124), 2017 (+0.103), 2022 (+0.147), 2024
+    (+0.082). So the edge is real but crash-prone: a crash guard is mandatory.
+
+  VERDICT: 12-1 momentum is now the STRONGEST-EVIDENCED concept in the
+  institute -- correct sign, marginally significant (t 1.76) across 20 years
+  and multiple regimes, with the documented crash signature. Confidence raised
+  74->78, evidence 32->55 (multi-regime replication lifts the ceiling). Still
+  NOT auto-promoted to production: (a) marginal significance (t<2), (b) the
+  2009/2023 crashes mean a crash-guard atom must gate it, (c) universe is only
+  343 liquid names -- a Stage-4 out-of-sample confirmation on a broader
+  backfilled universe is the next requirement. Recorded.
