@@ -9,6 +9,13 @@ until it passes the four-stage gate in [`research/pipeline.md`](research/pipelin
 with **measured** evidence that it improves decision quality. We never fabricate
 metrics or citations. Failed results are kept, not hidden.
 
+> **Production candidate (consolidated):** the strongest-evidenced concept is
+> long-only top-10 12-1 momentum. See
+> [`research/production-candidate.md`](research/production-candidate.md) for the
+> full spec, the 4-stage evidence chain, every rejected idea, and the remaining
+> Stage-4 (TestFlight) blocker. It passes historical OOS at excess TEST t 2.49;
+> only live-eval remains.
+
 ## Data we actually have (as of 2026-07-04)
 - Live OHLCV cache: ~1 trading year of **daily** bars per symbol
   (`period=1y, interval=1d`), window ~2025-07 .. 2026-07.
