@@ -2,8 +2,8 @@
 title: Long-Only Momentum (top-decile, cost-aware) — production form
 slug: momentum-long-only
 stage: backtest-oos
-confidence: 80
-evidence: 76
+confidence: 84
+evidence: 80
 domains: [momentum, factor-investing, quantitative-trading, portfolio-construction]
 frameworks: [momentum_score]
 timeframe: position
@@ -234,3 +234,34 @@ WORSE by sitting out the recovery.
   exit rule, not the user's -1%/+3% swing config. Confidence 82->80 (a claimed
   strength was removed), evidence 73->76 (knowledge INCREASED -- we now know the
   real mechanic and a real product constraint).
+
+- 2026-07-04e: Stage-3b OOS on the CORRECTED FINAL spec (top-10 long-only
+  12-1, monthly, NO tight stop). `research/backtests/momentum-longonly-final-oos/
+  run.py`; `results.json`. No fitted params in the base spec, so this is an
+  honest EDGE generalisation check across regimes. TRAIN year<2017 (119 reb,
+  incl. 2008-09 GFC); TEST year>=2017 (112 reb, incl. 2020 COVID + 2020-21
+  bull). Metric of record: excess-over-benchmark. Net of 10bps/side.
+
+  Measured (real, not fabricated), EXCESS-over-benchmark:
+  - FULL  no-stop: mean +1.59%/hold, t 2.70, cum +15.6x, Sharpe 0.62
+  - TRAIN no-stop: mean +0.48%/hold, t 1.07, cum +0.53,  Sharpe 0.34
+  - TEST  no-stop: mean +2.77%/hold, t 2.49, cum +9.87x, Sharpe 0.82
+  Absolute TEST no-stop: +4.69%/hold, cum +53.4x, Sharpe 1.06.
+
+  FINDINGS:
+  1. The edge HOLDS out of sample and STRENGTHENS: TEST excess t 2.49 (>2,
+     significant) vs TRAIN 1.07; excess Sharpe 0.34 -> 0.82. Did NOT decay in
+     the unseen 2017-2026 window. FIRST long-only excess result to cross t>=2
+     OOS -- strongest evidence in the program.
+  2. FULL-sample excess is ALSO significant: t 2.70. (Earlier signal-only ICs
+     never reached t>=2; measuring the realised excess RETURN of the
+     concentrated top-10 book yields a genuinely significant tradable edge.)
+  3. The SL-8% DISASTER stop HURTS everywhere -- cum +235x->+41x, excess t
+     2.70->1.08, NEGATIVE in TRAIN (t -0.76). Even a WIDE stop underperforms
+     letting the monthly rebalance be the exit. Recorded honestly: the disaster
+     stop is optional tail insurance PAID FOR in return, not an enhancer.
+
+  VERDICT: the corrected final spec -- long-only, TOP-10 by 12-1, monthly, NO
+  intraday stop -- is validated OOS at t>=2 and is the strongest-evidenced,
+  most production-ready concept in the institute. Remaining before prod: Stage-4
+  live-eval (needs TestFlight). Confidence 80->84, evidence 76->80.

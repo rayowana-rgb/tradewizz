@@ -1,0 +1,137 @@
+{
+  "universe_symbols": 343,
+  "total_rebalances": 231,
+  "split_year": 2017,
+  "top_n": 10,
+  "cost_bps_per_side": 10.0,
+  "disaster_sl": 0.08,
+  "full": {
+    "n_rebalances": 231,
+    "benchmark": {
+      "n": 231,
+      "mean_per_hold": 0.01481,
+      "t_stat": 3.907,
+      "worst": -0.3128,
+      "cum_return": 19.24,
+      "sharpe": 0.89
+    },
+    "top10_no_stop": {
+      "n": 231,
+      "mean_per_hold": 0.03068,
+      "t_stat": 3.859,
+      "worst": -0.3524,
+      "cum_return": 234.98,
+      "sharpe": 0.88
+    },
+    "top10_disaster_sl8": {
+      "n": 231,
+      "mean_per_hold": 0.02028,
+      "t_stat": 3.233,
+      "worst": -0.0971,
+      "cum_return": 41.26,
+      "sharpe": 0.737
+    },
+    "excess_no_stop": {
+      "n": 231,
+      "mean_per_hold": 0.01587,
+      "t_stat": 2.697,
+      "worst": -0.239,
+      "cum_return": 15.63,
+      "sharpe": 0.615
+    },
+    "excess_disaster": {
+      "n": 231,
+      "mean_per_hold": 0.00547,
+      "t_stat": 1.082,
+      "worst": -0.1756,
+      "cum_return": 0.9,
+      "sharpe": 0.247
+    }
+  },
+  "train": {
+    "n_rebalances": 119,
+    "benchmark": {
+      "n": 119,
+      "mean_per_hold": 0.01063,
+      "t_stat": 2.189,
+      "worst": -0.3128,
+      "cum_return": 1.95,
+      "sharpe": 0.695
+    },
+    "top10_no_stop": {
+      "n": 119,
+      "mean_per_hold": 0.0154,
+      "t_stat": 2.221,
+      "worst": -0.3524,
+      "cum_return": 3.34,
+      "sharpe": 0.705
+    },
+    "top10_disaster_sl8": {
+      "n": 119,
+      "mean_per_hold": 0.00702,
+      "t_stat": 1.342,
+      "worst": -0.0969,
+      "cum_return": 0.9,
+      "sharpe": 0.426
+    },
+    "excess_no_stop": {
+      "n": 119,
+      "mean_per_hold": 0.00476,
+      "t_stat": 1.068,
+      "worst": -0.1337,
+      "cum_return": 0.53,
+      "sharpe": 0.339
+    },
+    "excess_disaster": {
+      "n": 119,
+      "mean_per_hold": -0.00362,
+      "t_stat": -0.764,
+      "worst": -0.1756,
+      "cum_return": -0.45,
+      "sharpe": -0.243
+    }
+  },
+  "test": {
+    "n_rebalances": 112,
+    "benchmark": {
+      "n": 112,
+      "mean_per_hold": 0.01925,
+      "t_stat": 3.282,
+      "worst": -0.2142,
+      "cum_return": 5.86,
+      "sharpe": 1.074
+    },
+    "top10_no_stop": {
+      "n": 112,
+      "mean_per_hold": 0.04691,
+      "t_stat": 3.228,
+      "worst": -0.3411,
+      "cum_return": 53.43,
+      "sharpe": 1.057
+    },
+    "top10_disaster_sl8": {
+      "n": 112,
+      "mean_per_hold": 0.03437,
+      "t_stat": 2.971,
+      "worst": -0.0971,
+      "cum_return": 21.19,
+      "sharpe": 0.973
+    },
+    "excess_no_stop": {
+      "n": 112,
+      "mean_per_hold": 0.02766,
+      "t_stat": 2.494,
+      "worst": -0.239,
+      "cum_return": 9.87,
+      "sharpe": 0.816
+    },
+    "excess_disaster": {
+      "n": 112,
+      "mean_per_hold": 0.01512,
+      "t_stat": 1.668,
+      "worst": -0.1712,
+      "cum_return": 2.42,
+      "sharpe": 0.546
+    }
+  }
+}

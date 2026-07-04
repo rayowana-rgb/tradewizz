@@ -28,7 +28,7 @@ metrics or citations. Failed results are kept, not hidden.
 | [Short-Term Reversal (1-month)](research/atoms/short-term-reversal.md) | backtest | 62 | 30 | **REJECTED** on our data: IC strongly NEGATIVE (-0.09), monotonicity -0.94 -> the effect is short-term MOMENTUM, not reversal. Negative result, recorded. |
 | [Short-Term Momentum (1-month)](research/atoms/short-term-momentum.md) | backtest | 32 | 40 | DEMOTED. 20-year OOS re-test (3-1 proxy) gave IC +0.0000, t 0.003 -> the 1-month continuation was a SINGLE-REGIME ARTIFACT of the 2025-26 trending window; averages to zero across history. NOT a production candidate. Retained as a cautionary example. |
 | [Regime Guard (trend/vol state)](research/atoms/regime-guard.md) | backtest | 58 | 22 | Naive on/off gate REJECTED on 1y data (single crash). SUPERSEDED by momentum-crash-guard (multi-year, real crashes). |
-| [Long-Only Momentum (production form)](research/atoms/momentum-long-only.md) | **backtest-oos** | 80 | 76 | App-tradable form (long-only, TOP-10, monthly, net of 10bps/side). BEATS market after costs (+0.84%/hold excess, ~4x wealth); top-10 concentration OPTIMAL; edge survives 20bps. CRITICAL CORRECTION (07-04d): realistic intraday sim shows the app's SL-1%/TP+3% config DESTROYS the edge (+235x -> -53%) -- a -1% stop is inside daily noise & +3% clips momentum's fat tail. Monthly momentum needs NO tight stop (let rebalance exit) or only a WIDE disaster stop. Earlier "stop wins" was a monthly-proxy artifact, SUPERSEDED. LEADING production candidate, with corrected exit rule. |
+| [Long-Only Momentum (production form)](research/atoms/momentum-long-only.md) | **backtest-oos** | 84 | 80 | App-tradable form (long-only, TOP-10, monthly, net of 10bps/side). BEATS market after costs (+0.84%/hold excess, ~4x wealth); top-10 concentration OPTIMAL; edge survives 20bps. CRITICAL CORRECTION (07-04d): realistic intraday sim shows the app's SL-1%/TP+3% config DESTROYS the edge (+235x -> -53%) -- a -1% stop is inside daily noise & +3% clips momentum's fat tail. Monthly momentum needs NO tight stop (let rebalance exit) or only a WIDE disaster stop. Earlier "stop wins" was a monthly-proxy artifact, SUPERSEDED. LEADING production candidate, with corrected exit rule. |
 | [Momentum Crash Guard](research/atoms/momentum-crash-guard.md) | **backtest-oos** | 75 | 68 | Stage-3: vol-target cut worst -65.7%->-15.1%, bear+vol gate best Sharpe 0.58. STAGE-4 OOS (thresholds frozen on TRAIN<2017, applied blind to TEST>=2017): on unseen data both guards BEAT raw (bear+vol gate Sharpe 0.60 vs raw 0.40, worst -31% vs -65.7%). Guard generalizes. Marginal sig (t 1.83); tail reduced not removed. |
 
 Legend — Stage: lit → logic → backtest → live-eval → prod.
@@ -77,6 +77,17 @@ they are populated only by atoms that pass Stage 4.
   scope corrected to long-short only; new atom `momentum-long-only.md` (conf 78,
   ev 66). Open item: a long-only risk control (trailing stop / partial
   vol-target). This is now the leading PRODUCTION candidate.
+- **FINAL-SPEC OOS PASSES AT t>=2** (2026-07-04e, Stage 3b): OOS split on the
+  corrected final spec (top-10 long-only 12-1, monthly, NO tight stop). TRAIN
+  <2017 (GFC), TEST >=2017 (COVID+bull). EXCESS-over-benchmark: TEST +2.77%/hold
+  **t 2.49** (>2, significant), Sharpe 0.82 vs TRAIN t 1.07 -- the edge did NOT
+  decay OOS, it STRENGTHENED. FULL-sample excess t 2.70 -- the first long-only
+  result in the program to cross t>=2. Absolute TEST: +4.69%/hold, cum +53.4x,
+  Sharpe 1.06. The SL-8% disaster stop HURTS everywhere (excess t 2.70->1.08,
+  negative in TRAIN) -> even a WIDE stop underperforms; correct spec is NO
+  intraday stop, monthly rebalance is the exit. STRONGEST-evidenced, most
+  production-ready concept in the institute; only Stage-4 live-eval remains.
+  momentum-long-only conf 80->84, ev 76->80.
 - **CRITICAL CORRECTION -- REALISTIC INTRADAY SL/TP** (2026-07-04d, Stage 3):
   replaced the crude monthly -15% floor with a true path-dependent intraday
   stop (daily adj HIGH/LOW, stop-first on tie, gap-at-open) -- the app's actual
