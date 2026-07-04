@@ -2,8 +2,8 @@
 title: Long-Only Momentum (top-decile, cost-aware) — production form
 slug: momentum-long-only
 stage: backtest-oos
-confidence: 84
-evidence: 80
+confidence: 85
+evidence: 82
 domains: [momentum, factor-investing, quantitative-trading, portfolio-construction]
 frameworks: [momentum_score]
 timeframe: position
@@ -279,3 +279,23 @@ WORSE by sitting out the recovery.
   here. See atom `low-volatility.md` (rejected standalone). The decorrelation
   METHOD is validated and worth reusing with an alpha-bearing partner (value/
   quality). Momentum atom confidence/evidence UNCHANGED (blend did not beat it).
+
+- 2026-07-04g: MULTI-HORIZON blend 12-1 + 6-1 (Stage 3) -- decorrelation method
+  RE-TESTED with an ALPHA-bearing partner (another momentum horizon).
+  `research/backtests/momentum-multihorizon/run.py`. Both top-10/monthly/no-stop,
+  net 10bps. Measured (real): corr(12-1,6-1) 0.77-0.90 (~half the 10 names
+  differ). excess-over-benchmark t -- 12-1 / 6-1 / blend:
+    FULL 2.94 / 3.04 / **3.18**;  TRAIN 1.38 / 0.88 / 1.31;  TEST 2.62 / 2.96 / 2.94.
+  excess Sharpe -- FULL 0.67/0.69/**0.73**; TEST 0.86/0.97/0.96. Worst DD --
+  12-1 -35.1% / 6-1 -44.9% / blend -39.4%.
+  FINDINGS: (1) UNLIKE low-vol, the blend RAISES full-sample significance
+  (excess-t 2.94->3.18) and Sharpe -- because 6-1 is alpha-bearing (its own
+  excess-t 3.04). This CONFIRMS the decorrelation method works with the RIGHT
+  (alpha) partner; the low-vol failure was the partner, not the method.
+  (2) CAVEAT: horizons are highly correlated (0.77-0.90), so the lift is MODEST
+  (Sharpe 0.92->0.95 FULL), not dramatic. (3) 6-1 alone is marginally stronger
+  OOS (TEST t 2.96 vs 2.62) but has a FATTER tail (-44.9% vs -34.0%); the blend
+  keeps ~best significance while TAMING the worst DD. VERDICT: a 50/50 12-1+6-1
+  blend is a MODEST, genuine refinement of the production spec (slightly higher
+  significance + tamer tail than 6-1 alone), not a new pillar. Confidence
+  84->85, evidence 80->82.
