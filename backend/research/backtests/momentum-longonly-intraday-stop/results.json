@@ -1,0 +1,77 @@
+{
+  "universe_symbols": 343,
+  "rebalances": 231,
+  "top_n": 10,
+  "cost_bps_per_side": 10.0,
+  "note": "intraday path-dependent SL/TP using daily adj OHLC; stop-first on tie; gap exits at open",
+  "benchmark": {
+    "mean_per_hold": 0.01481,
+    "worst": -0.3128,
+    "cum_return": 19.24,
+    "sharpe": 0.89
+  },
+  "baseline_no_stop": {
+    "mean_per_hold": 0.03068,
+    "worst": -0.3524,
+    "cum_return": 234.98,
+    "sharpe": 0.88
+  },
+  "bands": {
+    "SL1_TP3": {
+      "net": {
+        "mean_per_hold": -0.00317,
+        "worst": -0.0535,
+        "cum_return": -0.53,
+        "sharpe": -0.759
+      },
+      "excess": {
+        "mean_per_hold": -0.01798,
+        "worst": -0.1936,
+        "cum_return": -0.99,
+        "sharpe": -1.085
+      }
+    },
+    "SL3_TP9": {
+      "net": {
+        "mean_per_hold": 0.001,
+        "worst": -0.0555,
+        "cum_return": 0.13,
+        "sharpe": 0.114
+      },
+      "excess": {
+        "mean_per_hold": -0.01381,
+        "worst": -0.1746,
+        "cum_return": -0.97,
+        "sharpe": -0.879
+      }
+    },
+    "SL5_TP15": {
+      "net": {
+        "mean_per_hold": 0.00776,
+        "worst": -0.0662,
+        "cum_return": 3.69,
+        "sharpe": 0.578
+      },
+      "excess": {
+        "mean_per_hold": -0.00705,
+        "worst": -0.1583,
+        "cum_return": -0.86,
+        "sharpe": -0.448
+      }
+    },
+    "SL8_TP24": {
+      "net": {
+        "mean_per_hold": 0.01253,
+        "worst": -0.0971,
+        "cum_return": 10.05,
+        "sharpe": 0.661
+      },
+      "excess": {
+        "mean_per_hold": -0.00228,
+        "worst": -0.1756,
+        "cum_return": -0.6,
+        "sharpe": -0.136
+      }
+    }
+  }
+}

@@ -28,7 +28,7 @@ metrics or citations. Failed results are kept, not hidden.
 | [Short-Term Reversal (1-month)](research/atoms/short-term-reversal.md) | backtest | 62 | 30 | **REJECTED** on our data: IC strongly NEGATIVE (-0.09), monotonicity -0.94 -> the effect is short-term MOMENTUM, not reversal. Negative result, recorded. |
 | [Short-Term Momentum (1-month)](research/atoms/short-term-momentum.md) | backtest | 32 | 40 | DEMOTED. 20-year OOS re-test (3-1 proxy) gave IC +0.0000, t 0.003 -> the 1-month continuation was a SINGLE-REGIME ARTIFACT of the 2025-26 trending window; averages to zero across history. NOT a production candidate. Retained as a cautionary example. |
 | [Regime Guard (trend/vol state)](research/atoms/regime-guard.md) | backtest | 58 | 22 | Naive on/off gate REJECTED on 1y data (single crash). SUPERSEDED by momentum-crash-guard (multi-year, real crashes). |
-| [Long-Only Momentum (production form)](research/atoms/momentum-long-only.md) | **backtest-oos** | 82 | 73 | App-tradable form (long-only, ~10 names, monthly, net of 10bps/side). BEATS market after costs: +0.84%/hold excess, ~4x terminal wealth. RISK CONTROL SOLVED: a per-position STOP-LOSS improved BOTH tail (worst -36.6%->-15.1%) AND compounding (cum +93.4x->+211x, Sharpe 0.89->1.08) -- matches app's SL/TP. Cash-gate & vol-target both HURT. LEADING production candidate. |
+| [Long-Only Momentum (production form)](research/atoms/momentum-long-only.md) | **backtest-oos** | 80 | 76 | App-tradable form (long-only, TOP-10, monthly, net of 10bps/side). BEATS market after costs (+0.84%/hold excess, ~4x wealth); top-10 concentration OPTIMAL; edge survives 20bps. CRITICAL CORRECTION (07-04d): realistic intraday sim shows the app's SL-1%/TP+3% config DESTROYS the edge (+235x -> -53%) -- a -1% stop is inside daily noise & +3% clips momentum's fat tail. Monthly momentum needs NO tight stop (let rebalance exit) or only a WIDE disaster stop. Earlier "stop wins" was a monthly-proxy artifact, SUPERSEDED. LEADING production candidate, with corrected exit rule. |
 | [Momentum Crash Guard](research/atoms/momentum-crash-guard.md) | **backtest-oos** | 75 | 68 | Stage-3: vol-target cut worst -65.7%->-15.1%, bear+vol gate best Sharpe 0.58. STAGE-4 OOS (thresholds frozen on TRAIN<2017, applied blind to TEST>=2017): on unseen data both guards BEAT raw (bear+vol gate Sharpe 0.60 vs raw 0.40, worst -31% vs -65.7%). Guard generalizes. Marginal sig (t 1.83); tail reduced not removed. |
 
 Legend — Stage: lit → logic → backtest → live-eval → prod.
@@ -77,6 +77,20 @@ they are populated only by atoms that pass Stage 4.
   scope corrected to long-short only; new atom `momentum-long-only.md` (conf 78,
   ev 66). Open item: a long-only risk control (trailing stop / partial
   vol-target). This is now the leading PRODUCTION candidate.
+- **CRITICAL CORRECTION -- REALISTIC INTRADAY SL/TP** (2026-07-04d, Stage 3):
+  replaced the crude monthly -15% floor with a true path-dependent intraday
+  stop (daily adj HIGH/LOW, stop-first on tie, gap-at-open) -- the app's actual
+  mechanic. RESULT: the app's live SL -1% / TP +3% config is CATASTROPHIC for a
+  monthly momentum book -- turns +235x into **-53%**. A -1% stop sits inside
+  one day's normal noise (stops out momentum names before the multi-week thesis
+  plays out) and a +3% target clips the fat right tail momentum lives on. Even
+  wide bands (SL8/TP24) never beat the no-stop baseline. => the 2026-07-04b
+  "stop-loss wins" result was an ARTIFACT of the monthly floor proxy and is
+  SUPERSEDED. Correct spec: monthly momentum uses NO tight intraday stop (let
+  the monthly rebalance be the exit), at most a WIDE disaster stop. Also a real
+  product flag: the app's tight swing SL/TP is INCOMPATIBLE with a monthly
+  momentum feature. Honesty > completion -- a claimed strength was removed;
+  knowledge increased. momentum-long-only conf 82->80, ev 73->76.
 - **LONG-ONLY SENSITIVITY** (2026-07-04c, Stage 3): cost x concentration grid.
   (1) TOP-10 (exactly the app's ~10-name book) is the STRONGEST cell -- higher
   excess Sharpe than top-20 and clearly above the full decile (top-34). The

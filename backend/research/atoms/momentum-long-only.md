@@ -2,8 +2,8 @@
 title: Long-Only Momentum (top-decile, cost-aware) — production form
 slug: momentum-long-only
 stage: backtest-oos
-confidence: 82
-evidence: 73
+confidence: 80
+evidence: 76
 domains: [momentum, factor-investing, quantitative-trading, portfolio-construction]
 frameworks: [momentum_score]
 timeframe: position
@@ -72,14 +72,20 @@ WORSE by sitting out the recovery.
 
 ## Implementation (rule spec)
 - Signal: 12-1 (252d return skipping the last 21d). Rank tradable names.
-- Portfolio: equal-weight top decile (in the app, ~top 10 by score), long only.
-- Rebalance monthly (21 trading days).
+- Portfolio: equal-weight TOP 10 by momentum, long only (top-10 is the optimal
+  concentration -- see 2026-07-04c). Rebalance monthly (21 trading days).
 - Costs: model ~10 bps/side on turnover.
-- Risk control: use a **per-position STOP-LOSS**, NOT a market cash gate and NOT
-  a vol-target scale-down. A stop-loss overlay was the ONLY control tested that
-  improved BOTH the tail AND compounding (see evidence log 2026-07-04b). This
-  matches the app's existing SL/TP design. De-risking overlays (cash gate,
-  partial vol-target) all HURT long-only momentum by giving up upside.
+- **RISK CONTROL -- CORRECTED (2026-07-04d):** do NOT apply a TIGHT intraday
+  stop/target. A realistic intraday simulation of the app's SL -1% / TP +3%
+  config DESTROYS the edge (turns +235x into -53%): a -1% stop sits inside one
+  day's normal noise and stops out momentum names before the multi-week thesis
+  plays out, while a +3% target clips the fat right tail momentum depends on.
+  The correct risk control for a MONTHLY momentum book is either NO intraday
+  stop (let the monthly rebalance be the exit) or only a WIDE disaster stop
+  (>= ~8% SL); tight day-trading stops and monthly momentum are incompatible.
+  Earlier "stop-loss wins" (2026-07-04b) was an ARTIFACT of a crude monthly
+  -15% floor proxy and is SUPERSEDED by this intraday result. De-risking-by-
+  exiting overlays (cash gate, partial vol-target) also all HURT.
 
 ## Backtesting ideas
 - DONE: long-only top-decile vs equal-weight benchmark, net of 10 bps/side,
@@ -190,3 +196,41 @@ WORSE by sitting out the recovery.
   with a per-position stop. Confidence 80->82, evidence 70->73. Remaining before
   production: stop-calibration to real app SL mechanics + OOS on the overlay +
   Stage-4 live-eval.
+
+- 2026-07-04d: Stage-3 REALISTIC INTRADAY SL/TP -- CORRECTS 2026-07-04b.
+  `research/backtests/momentum-longonly-intraday-stop/run.py`; `results.json`.
+  Replaces the crude monthly -15% floor with a true path-dependent intraday
+  stop: each top-10 name entered at rebalance-day close, then daily adjusted
+  HIGH/LOW checked vs SL/TP levels over the 21d hold (stop-first on tie; gap
+  exits at the open; exit to cash for the remainder). This is the app's ACTUAL
+  mechanic. 343 names, 231 rebalances, net 10bps/side.
+
+  Measured (real, not fabricated), NET OF COST, cum return / Sharpe:
+  - benchmark:              cum +19.2x, Sharpe 0.89
+  - baseline (no stop):     cum **+235x**, Sharpe 0.88
+  - SL1/TP3 (APP LIVE):     cum **-0.53 (-53%)**, Sharpe -0.76  [DESTROYS edge]
+  - SL3/TP9:                cum +0.13,  Sharpe 0.11
+  - SL5/TP15:               cum +3.69x, Sharpe 0.58
+  - SL8/TP24:               cum +10.0x, Sharpe 0.66
+  Excess-over-benchmark Sharpe was NEGATIVE for every band.
+
+  FINDING (decision-changing, honest correction): the app's live SL -1% / TP +3%
+  config is CATASTROPHIC for a monthly momentum book -- it turns +235x into
+  -53%. Mechanism: a -1% stop is INSIDE one day's normal price noise, so
+  volatile momentum names get stopped out almost immediately, before the
+  multi-week thesis plays out; and a +3% target CLIPS the fat right tail that
+  momentum lives on. You systematically realize small losses and cap small
+  gains -> bleed to death. Even wide bands (up to SL8/TP24) never beat the
+  no-stop baseline; the best any stop does is preserve SOME edge while still
+  underperforming holding to the monthly rebalance.
+
+  CONSEQUENCE: the 2026-07-04b "stop-loss wins" result was an ARTIFACT of the
+  monthly -15% floor proxy (which only capped catastrophic MONTHS and never
+  fired on daily noise) -- SUPERSEDED. Correct spec for a monthly momentum book:
+  NO tight intraday stop; let the monthly rebalance be the exit, with at most a
+  WIDE disaster stop. This ALSO flags a real product mismatch: the app's tight
+  SL/TP (designed for day/swing trades) is INCOMPATIBLE with a monthly momentum
+  strategy -- any production momentum feature must use its own (loose/none)
+  exit rule, not the user's -1%/+3% swing config. Confidence 82->80 (a claimed
+  strength was removed), evidence 73->76 (knowledge INCREASED -- we now know the
+  real mechanic and a real product constraint).
