@@ -97,7 +97,9 @@ returns of top vs bottom decile. This is an in-sample, single-regime test:
 ## Relationships to other concepts
 - Complements **trend** (absolute) — momentum is relative, trend is absolute.
 - Contaminated by **short-term reversal** (why we skip the last month).
-- Needs **momentum-crash risk overlay** (planned atom) before production.
+- Needs the **momentum-crash-guard** overlay (VALIDATED 2026-07-04:
+  vol-target cut the worst rebalance 4x, bear+vol gate eliminated crash-year
+  losses) before production. See `momentum-crash-guard.md`.
 - Feeds framework `momentum_score`; combine with `liquidity_score` to avoid
   stale-price ranking.
 

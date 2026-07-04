@@ -23,11 +23,12 @@ metrics or citations. Failed results are kept, not hidden.
 
 | Atom | Stage | Confidence | Evidence | Verdict |
 |------|-------|-----------|----------|---------|
-| [Cross-Sectional Momentum (12-1)](research/atoms/cross-sectional-momentum.md) | backtest | 74 | 32 | Backtested on 1y US data; edge WEAK & not significant (t≈0), 6-1 inverted. **Not promoted.** |
+| [Cross-Sectional Momentum (12-1)](research/atoms/cross-sectional-momentum.md) | backtest | 78 | 55 | Multi-year (2006-2026) re-test: 12-1 mean IC +0.025, t 1.76, hit 58% -> STRONGEST-evidenced concept, right sign, marginally significant. Crash-prone (2009 -7%, 2023 -8%). Needs crash-guard + Stage-4 before production. |
 | [Liquidity & Participation Score](research/atoms/liquidity-participation.md) | backtest | 80 | 40 | Tradability gate VALIDATED (19.3% of US universe non-tradable; illiquid names 6.5x fwd-ret variance). Signal-hygiene sub-claim (illiquidity lowers IC) REJECTED. Sound RISK pre-filter; awaits Stage-4 before wiring to risk_score. |
 | [Short-Term Reversal (1-month)](research/atoms/short-term-reversal.md) | backtest | 62 | 30 | **REJECTED** on our data: IC strongly NEGATIVE (-0.09), monotonicity -0.94 -> the effect is short-term MOMENTUM, not reversal. Negative result, recorded. |
 | [Short-Term Momentum (1-month)](research/atoms/short-term-momentum.md) | backtest | 32 | 40 | DEMOTED. 20-year OOS re-test (3-1 proxy) gave IC +0.0000, t 0.003 -> the 1-month continuation was a SINGLE-REGIME ARTIFACT of the 2025-26 trending window; averages to zero across history. NOT a production candidate. Retained as a cautionary example. |
-| [Regime Guard (trend/vol state)](research/atoms/regime-guard.md) | backtest | 58 | 22 | Prerequisite gate for short-term momentum. IC IS state-dependent (0.10 on vs 0.01 off) BUT tradable spread was BETTER off-regime -> naive gate REJECTED. Only 7 rebalances; one crash date dominates. Needs multi-year data to calibrate. |
+| [Regime Guard (trend/vol state)](research/atoms/regime-guard.md) | backtest | 58 | 22 | Naive on/off gate REJECTED on 1y data (single crash). SUPERSEDED by momentum-crash-guard (multi-year, real crashes). |
+| [Momentum Crash Guard](research/atoms/momentum-crash-guard.md) | backtest | 72 | 55 | Stage-3, 231 reb 2007-2026: vol-target cut worst rebalance -65.7%->-15.1% (4x), Sharpe 0.25->0.44; bear+vol gate turned crash-year cum -1.28->+0.03, best Sharpe 0.58. Both beat raw momentum. MANDATORY overlay on 12-1. Needs Stage-4 OOS split. |
 
 Legend — Stage: lit → logic → backtest → live-eval → prod.
 
@@ -65,6 +66,16 @@ they are populated only by atoms that pass Stage 4.
 - Net conviction: the most promising (but theoretically fragile) production
   candidate so far is SHORT-TERM (1-month) MOMENTUM behind a liquidity gate,
   pending out-of-sample and a regime guard. Nothing is production-ready yet.
+- **Momentum CRASH GUARD validated** (2026-07-04, Stage 3, 231 rebalances
+  2007-2026): momentum crashes ARE manageable. **Vol-target** (Barroso-
+  Santa-Clara) cut the worst rebalance from **-65.7% to -15.1%** (4x) and
+  raised Sharpe 0.25->0.44. **Bear+vol gate** (Daniel-Moskowitz; OFF when market
+  <200d MA AND vol in top tercile, ~16% of months) turned **crash-year
+  cumulative return from -1.28 to +0.03** and gave the best full-sample Sharpe
+  (0.58). Both DECISIVELY beat raw momentum. This SUPERSEDES the naive
+  regime-guard (which failed only because 1y data had a single crash). New atom
+  `momentum-crash-guard.md` (conf 72, evidence 55). Momentum + guard now needs
+  a Stage-4 OOS split before production.
 - **Multi-year momentum re-test DONE** (2026-07-04, ~343 liquid names, common
   calendar 2006-2026, ~20y, multi-regime): **12-1 is now the strongest-evidenced
   concept** -- mean IC +0.0247, IC t 1.76, spread +0.71%/hold, hit 58% across

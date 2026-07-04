@@ -12,6 +12,13 @@ assets: [us-equities, index]
 updated: 2026-07-04
 ---
 
+> **SUPERSEDED (2026-07-04)** by `momentum-crash-guard.md`. The naive on/off
+> classifier here was rejected on 1-year data (a single crash could not
+> calibrate it). With the multi-year backfill and real crashes (2009 GFC, 2020,
+> 2022), the crash-guard atom validated a working design (vol-target + bear/vol
+> gate). This atom is retained as the origin of the idea and the record of the
+> naive version's rejection — useful knowledge, not deleted.
+
 ## Definition
 A market-state classifier that labels the current environment as favorable or
 unfavorable for a given strategy family, and gates that strategy on/off (or

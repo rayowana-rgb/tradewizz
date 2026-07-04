@@ -1,0 +1,82 @@
+{
+  "universe_symbols": 343,
+  "rebalances": 231,
+  "data_window": "2007-02-28 .. 2026-05-11",
+  "gate_off_fraction": 0.16,
+  "designs": {
+    "raw_momentum": {
+      "n": 231,
+      "mean_per_hold": 0.0071,
+      "worst": -0.6569,
+      "best": 0.465,
+      "sum": 1.641,
+      "sharpe_annual_proxy": 0.25,
+      "neg_holds": 96
+    },
+    "vol_target": {
+      "n": 231,
+      "mean_per_hold": 0.004,
+      "worst": -0.1512,
+      "best": 0.1198,
+      "sum": 0.9208,
+      "sharpe_annual_proxy": 0.442,
+      "neg_holds": 96
+    },
+    "bear_vol_gate_off": {
+      "n": 231,
+      "mean_per_hold": 0.0125,
+      "worst": -0.3137,
+      "best": 0.465,
+      "sum": 2.8976,
+      "sharpe_annual_proxy": 0.576,
+      "neg_holds": 78
+    },
+    "bear_vol_gate_half": {
+      "n": 231,
+      "mean_per_hold": 0.0098,
+      "worst": -0.3285,
+      "best": 0.465,
+      "sum": 2.2693,
+      "sharpe_annual_proxy": 0.415,
+      "neg_holds": 96
+    }
+  },
+  "crash_years_only": {
+    "raw_momentum": {
+      "n": 60,
+      "mean_per_hold": -0.0213,
+      "worst": -0.6569,
+      "best": 0.1982,
+      "sum": -1.2791,
+      "sharpe_annual_proxy": -0.54,
+      "neg_holds": 29
+    },
+    "vol_target": {
+      "n": 60,
+      "mean_per_hold": -0.0035,
+      "worst": -0.1512,
+      "best": 0.0722,
+      "sum": -0.2098,
+      "sharpe_annual_proxy": -0.348,
+      "neg_holds": 29
+    },
+    "bear_vol_gate_off": {
+      "n": 60,
+      "mean_per_hold": 0.0005,
+      "worst": -0.3137,
+      "best": 0.1578,
+      "sum": 0.0307,
+      "sharpe_annual_proxy": 0.025,
+      "neg_holds": 16
+    },
+    "bear_vol_gate_half": {
+      "n": 60,
+      "mean_per_hold": -0.0104,
+      "worst": -0.3285,
+      "best": 0.1578,
+      "sum": -0.6242,
+      "sharpe_annual_proxy": -0.391,
+      "neg_holds": 29
+    }
+  }
+}
