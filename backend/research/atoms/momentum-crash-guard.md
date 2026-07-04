@@ -12,6 +12,14 @@ assets: [us-equities]
 updated: 2026-07-04
 ---
 
+> **SCOPE CORRECTION (2026-07-04):** this guard was validated on the LONG-SHORT
+> momentum spread. A subsequent long-only, cost-aware test
+> (`momentum-long-only.md`) found the SAME bear+vol cash gate is
+> COUNTERPRODUCTIVE long-only (it sits out post-crash recovery rallies that
+> held winners participate in; guarded cum +50.8x < raw +93.5x). The guard's
+> validated scope is therefore **long-short only**. Long-only momentum needs a
+> different risk control (trailing stop / partial vol-target) -- open item.
+
 ## Definition
 A risk overlay applied to a cross-sectional momentum signal that reduces
 exposure in the states where momentum historically CRASHES, so the strategy

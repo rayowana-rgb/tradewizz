@@ -28,6 +28,7 @@ metrics or citations. Failed results are kept, not hidden.
 | [Short-Term Reversal (1-month)](research/atoms/short-term-reversal.md) | backtest | 62 | 30 | **REJECTED** on our data: IC strongly NEGATIVE (-0.09), monotonicity -0.94 -> the effect is short-term MOMENTUM, not reversal. Negative result, recorded. |
 | [Short-Term Momentum (1-month)](research/atoms/short-term-momentum.md) | backtest | 32 | 40 | DEMOTED. 20-year OOS re-test (3-1 proxy) gave IC +0.0000, t 0.003 -> the 1-month continuation was a SINGLE-REGIME ARTIFACT of the 2025-26 trending window; averages to zero across history. NOT a production candidate. Retained as a cautionary example. |
 | [Regime Guard (trend/vol state)](research/atoms/regime-guard.md) | backtest | 58 | 22 | Naive on/off gate REJECTED on 1y data (single crash). SUPERSEDED by momentum-crash-guard (multi-year, real crashes). |
+| [Long-Only Momentum (production form)](research/atoms/momentum-long-only.md) | **backtest-oos** | 78 | 66 | App-tradable form (long-only, ~10 names, monthly, net of 10bps/side). BEATS equal-weight market after costs: +0.84%/hold excess, ~4x terminal wealth (cum +93.5x vs +24.4x). KEY FINDING: the long-short crash-guard HURTS long-only (sits out recoveries) -> needs a different risk control. Leading production candidate. |
 | [Momentum Crash Guard](research/atoms/momentum-crash-guard.md) | **backtest-oos** | 75 | 68 | Stage-3: vol-target cut worst -65.7%->-15.1%, bear+vol gate best Sharpe 0.58. STAGE-4 OOS (thresholds frozen on TRAIN<2017, applied blind to TEST>=2017): on unseen data both guards BEAT raw (bear+vol gate Sharpe 0.60 vs raw 0.40, worst -31% vs -65.7%). Guard generalizes. Marginal sig (t 1.83); tail reduced not removed. |
 
 Legend — Stage: lit → logic → backtest → live-eval → prod.
@@ -66,6 +67,16 @@ they are populated only by atoms that pass Stage 4.
 - Net conviction: the most promising (but theoretically fragile) production
   candidate so far is SHORT-TERM (1-month) MOMENTUM behind a liquidity gate,
   pending out-of-sample and a regime guard. Nothing is production-ready yet.
+- **LONG-ONLY production form tested** (2026-07-04, Stage 3, cost-aware): buying
+  the top-decile 12-1 names long-only, net of 10bps/side, BEATS the equal-weight
+  market by +0.84%/hold (~4x terminal wealth, cum +93.5x vs +24.4x) across
+  2007-2026. The edge survives realistic costs and is directly app-tradable.
+  **Non-obvious finding:** the bear+vol crash guard that HELPED long-short HURTS
+  long-only (guarded cum +50.8x < raw +93.5x, excess Sharpe 0.49->0.25) because
+  a cash gate just sits out post-crash recoveries the held winners join. Guard
+  scope corrected to long-short only; new atom `momentum-long-only.md` (conf 78,
+  ev 66). Open item: a long-only risk control (trailing stop / partial
+  vol-target). This is now the leading PRODUCTION candidate.
 - **STAGE-4 OOS PASSED** (2026-07-04): true train/test split (TRAIN year<2017
   incl. 2008-09 GFC; TEST year>=2017 incl. 2020 COVID). 12-1 signal: TRAIN
   mean IC +0.0145 (t 0.78) vs **TEST +0.0356 (t 1.67)** -> edge STRONGER

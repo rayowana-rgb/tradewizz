@@ -1,0 +1,45 @@
+{
+  "universe_symbols": 343,
+  "rebalances": 231,
+  "cost_bps_per_side": 10.0,
+  "gate_off_fraction": 0.16,
+  "net_of_cost": {
+    "benchmark_equal_weight": {
+      "n": 231,
+      "mean_per_hold": 0.0158,
+      "worst": -0.3118,
+      "cum_return": 24.3575,
+      "sharpe_annual_proxy": 0.95
+    },
+    "momentum_top_decile": {
+      "n": 231,
+      "mean_per_hold": 0.02419,
+      "worst": -0.366,
+      "cum_return": 93.4508,
+      "sharpe_annual_proxy": 0.892
+    },
+    "momentum_top_decile_guarded": {
+      "n": 231,
+      "mean_per_hold": 0.02058,
+      "worst": -0.3304,
+      "cum_return": 50.7669,
+      "sharpe_annual_proxy": 0.851
+    }
+  },
+  "excess_over_benchmark": {
+    "momentum_top_decile": {
+      "n": 231,
+      "mean_per_hold": 0.00839,
+      "worst": -0.2307,
+      "cum_return": 3.7274,
+      "sharpe_annual_proxy": 0.494
+    },
+    "momentum_top_decile_guarded": {
+      "n": 231,
+      "mean_per_hold": 0.00478,
+      "worst": -0.2307,
+      "cum_return": 0.845,
+      "sharpe_annual_proxy": 0.249
+    }
+  }
+}
