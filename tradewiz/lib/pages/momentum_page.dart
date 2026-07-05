@@ -9,6 +9,7 @@ import '../services/moomoo_secret_store.dart';
 import '../theme_tradewizz.dart';
 import '../widgets/ds/ds.dart';
 import 'momentum_holdings_page.dart';
+import 'strategy_comparison_page.dart';
 import 'moomoo_live_page.dart' show kMoomooOwnerUid;
 
 /// Momentum Research (EXPERIMENTAL, Stage-3b).
@@ -100,6 +101,12 @@ class _MomentumPageState extends State<MomentumPage> {
         elevation: 0,
         title: const Text('Momentum Research', style: TWType.body),
         actions: [
+          if (_isOwner)
+            IconButton(
+              icon: const Icon(Icons.insights_outlined),
+              tooltip: 'Strategy comparison',
+              onPressed: _openComparison,
+            ),
           if (_isOwner)
             IconButton(
               icon: const Icon(Icons.account_balance_wallet_outlined),
@@ -694,6 +701,15 @@ class _MomentumPageState extends State<MomentumPage> {
       if (failed > 0) '$failed failed',
     ];
     _snack('${cancelled ? 'Stopped. ' : ''}${parts.join(', ')}.');
+  }
+
+  void _openComparison() {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => StrategyComparisonPage(
+        repository: widget.repository,
+        secretStore: widget.secretStore,
+      ),
+    ));
   }
 
   void _openHoldings() {

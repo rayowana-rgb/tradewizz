@@ -352,3 +352,74 @@ class MomentumHoldings {
         generatedAt: (j['generated_at'] ?? '').toString(),
       );
 }
+
+/// One strategy sleeve in the momentum-vs-passive A/B test.
+class PortfolioSleeve {
+  const PortfolioSleeve({
+    required this.name,
+    required this.marketValue,
+    required this.weight,
+    required this.targetWeight,
+    required this.drift,
+    required this.positions,
+    required this.unrealizedPl,
+    required this.returnPct,
+    required this.maxDrawdown,
+    required this.historyPoints,
+  });
+
+  final String name; // momentum | passive | cash
+  final double marketValue;
+  final double weight; // current fraction of total
+  final double targetWeight; // 50/30/20
+  final double drift; // weight - target (signed)
+  final int positions;
+  final double unrealizedPl;
+  final double? returnPct; // null until >= 2 observations
+  final double? maxDrawdown; // null until >= 2 observations
+  final int historyPoints;
+
+  factory PortfolioSleeve.fromJson(Map<String, dynamic> j) => PortfolioSleeve(
+        name: (j['name'] ?? '').toString(),
+        marketValue: (j['market_value'] as num?)?.toDouble() ?? 0.0,
+        weight: (j['weight'] as num?)?.toDouble() ?? 0.0,
+        targetWeight: (j['target_weight'] as num?)?.toDouble() ?? 0.0,
+        drift: (j['drift'] as num?)?.toDouble() ?? 0.0,
+        positions: (j['positions'] as num?)?.toInt() ?? 0,
+        unrealizedPl: (j['unrealized_pl'] as num?)?.toDouble() ?? 0.0,
+        returnPct: (j['return_pct'] as num?)?.toDouble(),
+        maxDrawdown: (j['max_drawdown'] as num?)?.toDouble(),
+        historyPoints: (j['history_points'] as num?)?.toInt() ?? 0,
+      );
+}
+
+class PortfolioSleeves {
+  const PortfolioSleeves({
+    required this.sleeves,
+    required this.totalValue,
+    required this.generatedAt,
+    required this.metricsReady,
+  });
+
+  final List<PortfolioSleeve> sleeves;
+  final double totalValue;
+  final String generatedAt;
+  final bool metricsReady;
+
+  PortfolioSleeve? byName(String n) {
+    for (final s in sleeves) {
+      if (s.name == n) return s;
+    }
+    return null;
+  }
+
+  factory PortfolioSleeves.fromJson(Map<String, dynamic> j) => PortfolioSleeves(
+        sleeves: ((j['sleeves'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(PortfolioSleeve.fromJson)
+            .toList(),
+        totalValue: (j['total_value'] as num?)?.toDouble() ?? 0.0,
+        generatedAt: (j['generated_at'] ?? '').toString(),
+        metricsReady: (j['metrics_ready'] as bool?) ?? false,
+      );
+}

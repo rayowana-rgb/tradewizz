@@ -154,6 +154,27 @@ class MomentumHoldingsModel(BaseModel):
     generated_at: str
 
 
+class SleeveModel(BaseModel):
+    name: str                       # momentum | passive | cash
+    market_value: float             # current USD value of this sleeve
+    weight: float                   # current fraction of total account value
+    target_weight: float            # owner's target fraction (50/30/20)
+    drift: float                    # weight - target_weight (signed)
+    positions: int                  # number of live names in this sleeve
+    unrealized_pl: float            # sum of unrealized P/L for this sleeve
+    return_pct: Optional[float] = None    # total return from recorded history
+    max_drawdown: Optional[float] = None  # worst peak-to-trough (resilience)
+    history_points: int = 0         # how many real observations exist
+
+
+class SleevesModel(BaseModel):
+    sleeves: List[SleeveModel]
+    total_value: float              # momentum + passive + cash
+    generated_at: str
+    # True once there is >= 2 recorded observations so return/drawdown are real.
+    metrics_ready: bool
+
+
 # -- read-only picks -------------------------------------------------------- #
 @router.get("/picks", response_model=MomentumPicksModel)
 def momentum_picks(top_n: int = 10) -> MomentumPicksModel:
@@ -429,4 +450,103 @@ def momentum_holdings(
         top_n=top_n,
         stale_symbols=stale,
         generated_at=picks.generated_at,
+    )
+
+
+@router.get("/sleeves", response_model=SleevesModel)
+def momentum_sleeves(
+    authorization: Optional[str] = Header(default=None),
+    x_moomoo_secret: Optional[str] = Header(default=None),
+) -> SleevesModel:
+    """Split the ONE live account into strategy sleeves for the A/B test.
+
+    momentum = live positions the momentum ledger owns; passive = every other
+    live position; cash = the account's free cash (the dry-powder buffer).
+    Reports each sleeve's current value, weight vs the owner's 50/30/20 target,
+    and -- from the recorded per-sleeve history -- total return and max
+    drawdown (the resilience measure). All values are real observations; the
+    call also records a fresh history point so the comparison can be tracked
+    over time. No metrics are fabricated: return/drawdown stay null until there
+    are at least two recorded observations.
+    """
+    require_owner, moomoo_service = _moomoo()
+    require_owner(authorization, x_moomoo_secret)
+    svc = moomoo_service()
+
+    from .ledger import MomentumLedger
+    from .sleeves import SleeveTracker, TARGET_ALLOCATION, sleeve_metrics
+    from datetime import datetime, timezone
+
+    ledger_syms = {s.upper() for s in MomentumLedger().symbols()}
+
+    # Live positions -> split into momentum vs passive.
+    mom_mv = pas_mv = 0.0
+    mom_pl = pas_pl = 0.0
+    mom_n = pas_n = 0
+    try:
+        for pos in svc.positions():
+            qty = float(pos.qty)
+            if qty <= 0:
+                continue
+            mv = qty * float(pos.last_price)
+            pl = float(pos.pl_val)
+            if pos.symbol.upper() in ledger_syms:
+                mom_mv += mv
+                mom_pl += pl
+                mom_n += 1
+            else:
+                pas_mv += mv
+                pas_pl += pl
+                pas_n += 1
+    except Exception as exc:  # noqa: BLE001 - positions best-effort
+        logger.info("sleeves positions lookup failed: %s", exc)
+
+    # Cash (the buffer sleeve) from the account.
+    cash = 0.0
+    try:
+        cash = float(svc.account().cash)
+    except Exception as exc:  # noqa: BLE001
+        logger.info("sleeves account lookup failed: %s", exc)
+
+    # Record this real observation, then compute metrics over full history.
+    tracker = SleeveTracker()
+    tracker.record(momentum=mom_mv, passive=pas_mv, cash=cash)
+    history = tracker.history()
+    metrics = sleeve_metrics(history)
+
+    total = mom_mv + pas_mv + cash
+
+    def _weight(v: float) -> float:
+        return round(v / total, 4) if total else 0.0
+
+    def _sleeve(name: str, mv: float, pl: float, n: int) -> SleeveModel:
+        w = _weight(mv)
+        tw = TARGET_ALLOCATION.get(name, 0.0)
+        m = metrics.get(name, {})
+        rp = m.get("return_pct")
+        dd = m.get("max_drawdown")
+        return SleeveModel(
+            name=name,
+            market_value=round(mv, 2),
+            weight=w,
+            target_weight=tw,
+            drift=round(w - tw, 4),
+            positions=n,
+            unrealized_pl=round(pl, 2),
+            return_pct=round(rp, 6) if rp is not None else None,
+            max_drawdown=round(dd, 6) if dd is not None else None,
+            history_points=m.get("points", 0),
+        )
+
+    sleeves = [
+        _sleeve("momentum", mom_mv, mom_pl, mom_n),
+        _sleeve("passive", pas_mv, pas_pl, pas_n),
+        _sleeve("cash", cash, 0.0, 0),
+    ]
+
+    return SleevesModel(
+        sleeves=sleeves,
+        total_value=round(total, 2),
+        generated_at=datetime.now(timezone.utc).isoformat(),
+        metrics_ready=len(history) >= 2,
     )

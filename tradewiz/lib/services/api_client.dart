@@ -304,6 +304,16 @@ class ApiClient {
         secret: secret,
       );
 
+  Future<Map<String, dynamic>> momentumSleeves({
+    required String bearer,
+    required String secret,
+  }) =>
+      moomooGet(
+        '/momentum/sleeves',
+        bearer: bearer,
+        secret: secret,
+      );
+
   Future<Map<String, dynamic>> _brokerCall(
     String method,
     String path, {

@@ -421,6 +421,16 @@ class StockRepository {
     return MomentumHoldings.fromJson(j);
   }
 
+  /// Per-sleeve split of the live account (momentum / passive / cash) for the
+  /// A/B comparison. Backs `GET /v1/momentum/sleeves`.
+  Future<PortfolioSleeves> momentumSleeves({
+    required String token,
+    required String secret,
+  }) async {
+    final j = await _client.momentumSleeves(bearer: token, secret: secret);
+    return PortfolioSleeves.fromJson(j);
+  }
+
   /// Bare symbols with a BUY order placed today (held or already sold).
   /// Backs `GET /v1/broker/moomoo/bought-today`. Used so a LIVE "Buy all"
   /// can skip names already bought today even if no longer held.
