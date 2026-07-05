@@ -8,6 +8,7 @@ import '../services/auth_scope.dart';
 import '../services/moomoo_secret_store.dart';
 import '../theme_tradewizz.dart';
 import '../widgets/ds/ds.dart';
+import 'momentum_holdings_page.dart';
 import 'moomoo_live_page.dart' show kMoomooOwnerUid;
 
 /// Momentum Research (EXPERIMENTAL, Stage-3b).
@@ -98,6 +99,14 @@ class _MomentumPageState extends State<MomentumPage> {
         backgroundColor: TWColors.bgBase,
         elevation: 0,
         title: const Text('Momentum Research', style: TWType.body),
+        actions: [
+          if (_isOwner)
+            IconButton(
+              icon: const Icon(Icons.account_balance_wallet_outlined),
+              tooltip: 'Momentum holdings',
+              onPressed: _openHoldings,
+            ),
+        ],
       ),
       // Dismiss the number pad when tapping anywhere outside the field so it
       // never sits on top of the Buy button.
@@ -685,6 +694,16 @@ class _MomentumPageState extends State<MomentumPage> {
       if (failed > 0) '$failed failed',
     ];
     _snack('${cancelled ? 'Stopped. ' : ''}${parts.join(', ')}.');
+  }
+
+  void _openHoldings() {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => MomentumHoldingsPage(
+        repository: widget.repository,
+        secretStore: widget.secretStore,
+        topN: _topN,
+      ),
+    ));
   }
 
   void _snack(String msg) {

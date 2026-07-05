@@ -291,6 +291,19 @@ class ApiClient {
         secret: secret,
       );
 
+  // Owner-only: the live positions momentum actually bought (ledger ∩ live),
+  // with per-name unrealized P/L and a top-N flag. Read-only.
+  Future<Map<String, dynamic>> momentumHoldings(
+    int topN, {
+    required String bearer,
+    required String secret,
+  }) =>
+      moomooGet(
+        '/momentum/holdings?top_n=$topN',
+        bearer: bearer,
+        secret: secret,
+      );
+
   Future<Map<String, dynamic>> _brokerCall(
     String method,
     String path, {

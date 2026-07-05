@@ -406,6 +406,21 @@ class StockRepository {
     return MomentumRebalancePreview.fromJson(j);
   }
 
+  /// Owner-only (read-only): the live positions momentum actually bought,
+  /// joined with Moomoo qty / cost / last price / unrealized P/L. Other
+  /// strategies' positions are never included.
+  Future<MomentumHoldings> momentumHoldings({
+    required int topN,
+    required String token,
+    required String secret,
+  }) async {
+    final j = await _client.momentumHoldings(
+      topN,
+      bearer: token, secret: secret,
+    );
+    return MomentumHoldings.fromJson(j);
+  }
+
   /// Bare symbols with a BUY order placed today (held or already sold).
   /// Backs `GET /v1/broker/moomoo/bought-today`. Used so a LIVE "Buy all"
   /// can skip names already bought today even if no longer held.

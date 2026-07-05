@@ -129,6 +129,31 @@ class RebalancePreviewModel(BaseModel):
     disclaimer: str
 
 
+class MomentumHoldingModel(BaseModel):
+    symbol: str
+    # Live position (from Moomoo); 0 if the ledger name is no longer held.
+    qty: float
+    cost_price: float
+    last_price: float
+    market_value: float
+    unrealized_pl: float
+    unrealized_pl_ratio: float   # fraction, e.g. 0.086 == +8.6%
+    # True if the name is still in the current top-N (a HOLD next rebalance).
+    in_top_n: bool
+    rank: Optional[int] = None   # current top-N rank, when in_top_n
+    first_bought_ts: int
+
+
+class MomentumHoldingsModel(BaseModel):
+    holdings: List[MomentumHoldingModel]
+    total_market_value: float
+    total_unrealized_pl: float
+    top_n: int
+    # Ledger symbols that are no longer held live (sold manually elsewhere).
+    stale_symbols: List[str]
+    generated_at: str
+
+
 # -- read-only picks -------------------------------------------------------- #
 @router.get("/picks", response_model=MomentumPicksModel)
 def momentum_picks(top_n: int = 10) -> MomentumPicksModel:
@@ -329,4 +354,79 @@ def rebalance_preview(
         per_position_usd=req.per_position_usd,
         max_notional_per_order=cap,
         disclaimer=picks.disclaimer,
+    )
+
+
+# -- momentum holdings (owner-only, read-only) ------------------------------ #
+@router.get("/holdings", response_model=MomentumHoldingsModel)
+def momentum_holdings(
+    top_n: int = 10,
+    authorization: Optional[str] = Header(default=None),
+    x_moomoo_secret: Optional[str] = Header(default=None),
+) -> MomentumHoldingsModel:
+    """The positions momentum actually bought, joined with LIVE Moomoo data.
+
+    Reads the local momentum ledger (symbols bought via the strategy) and joins
+    each against the live Moomoo position for qty / cost / last price /
+    unrealized P/L. Names still in the current top-N are flagged ``in_top_n``
+    (a HOLD at the next rebalance). Ledger names no longer held live -- e.g.
+    sold manually in another strategy -- are reported under ``stale_symbols``
+    and excluded from the holdings list. Other strategies' positions are never
+    shown, because only ledger symbols are considered.
+    """
+    require_owner, moomoo_service = _moomoo()
+    require_owner(authorization, x_moomoo_secret)
+    svc = moomoo_service()
+
+    from .ledger import MomentumLedger
+    ledger = MomentumLedger()
+    ledger_entries = {e.symbol.upper(): e for e in ledger.entries()}
+
+    # Current top-N, for the in_top_n / rank flags.
+    picks = get_service().picks(top_n=top_n)
+    rank_by_sym = {p.symbol.upper(): p.rank for p in picks.picks}
+
+    # Live positions keyed by symbol.
+    live: dict = {}
+    try:
+        for pos in svc.positions():
+            live[pos.symbol.upper()] = pos
+    except Exception as exc:  # noqa: BLE001 - positions best-effort
+        logger.info("holdings positions lookup failed: %s", exc)
+
+    holdings: List[MomentumHoldingModel] = []
+    stale: List[str] = []
+    total_mv = 0.0
+    total_pl = 0.0
+    for sym, entry in sorted(ledger_entries.items()):
+        pos = live.get(sym)
+        qty = float(pos.qty) if pos else 0.0
+        if qty <= 0:
+            # Ledger says momentum owns it but it is not held live any more.
+            stale.append(sym)
+            continue
+        last_px = float(pos.last_price) if pos else 0.0
+        mv = round(qty * last_px, 2)
+        total_mv += mv
+        total_pl += float(pos.pl_val) if pos else 0.0
+        holdings.append(MomentumHoldingModel(
+            symbol=sym,
+            qty=round(qty, 4),
+            cost_price=round(float(pos.cost_price), 4) if pos else 0.0,
+            last_price=round(last_px, 4),
+            market_value=mv,
+            unrealized_pl=round(float(pos.pl_val), 2) if pos else 0.0,
+            unrealized_pl_ratio=round(float(pos.pl_ratio), 6) if pos else 0.0,
+            in_top_n=sym in rank_by_sym,
+            rank=rank_by_sym.get(sym),
+            first_bought_ts=entry.first_bought_ts,
+        ))
+
+    return MomentumHoldingsModel(
+        holdings=holdings,
+        total_market_value=round(total_mv, 2),
+        total_unrealized_pl=round(total_pl, 2),
+        top_n=top_n,
+        stale_symbols=stale,
+        generated_at=picks.generated_at,
     )

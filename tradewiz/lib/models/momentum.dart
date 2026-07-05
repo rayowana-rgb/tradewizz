@@ -268,3 +268,87 @@ class MomentumRebalancePreview {
         disclaimer: (j['disclaimer'] ?? '').toString(),
       );
 }
+
+/// One live position that momentum bought (ledger ∩ live), with P/L.
+class MomentumHolding {
+  const MomentumHolding({
+    required this.symbol,
+    required this.qty,
+    required this.costPrice,
+    required this.lastPrice,
+    required this.marketValue,
+    required this.unrealizedPl,
+    required this.unrealizedPlRatio,
+    required this.inTopN,
+    this.rank,
+    required this.firstBoughtTs,
+  });
+
+  final String symbol;
+  final double qty;
+  final double costPrice;
+  final double lastPrice;
+  final double marketValue;
+  final double unrealizedPl;
+
+  /// Fraction, e.g. 0.086 == +8.6%.
+  final double unrealizedPlRatio;
+
+  /// Still in the current top-N (would be a HOLD at the next rebalance).
+  final bool inTopN;
+  final int? rank;
+  final int firstBoughtTs;
+
+  factory MomentumHolding.fromJson(Map<String, dynamic> j) => MomentumHolding(
+        symbol: (j['symbol'] ?? '').toString(),
+        qty: (j['qty'] as num?)?.toDouble() ?? 0.0,
+        costPrice: (j['cost_price'] as num?)?.toDouble() ?? 0.0,
+        lastPrice: (j['last_price'] as num?)?.toDouble() ?? 0.0,
+        marketValue: (j['market_value'] as num?)?.toDouble() ?? 0.0,
+        unrealizedPl: (j['unrealized_pl'] as num?)?.toDouble() ?? 0.0,
+        unrealizedPlRatio:
+            (j['unrealized_pl_ratio'] as num?)?.toDouble() ?? 0.0,
+        inTopN: j['in_top_n'] == true,
+        rank: (j['rank'] as num?)?.toInt(),
+        firstBoughtTs: (j['first_bought_ts'] as num?)?.toInt() ?? 0,
+      );
+}
+
+/// The momentum-owned portfolio: live positions momentum bought + totals.
+class MomentumHoldings {
+  const MomentumHoldings({
+    required this.holdings,
+    required this.totalMarketValue,
+    required this.totalUnrealizedPl,
+    required this.topN,
+    required this.staleSymbols,
+    required this.generatedAt,
+  });
+
+  final List<MomentumHolding> holdings;
+  final double totalMarketValue;
+  final double totalUnrealizedPl;
+  final int topN;
+
+  /// Ledger names no longer held live (sold manually elsewhere).
+  final List<String> staleSymbols;
+  final String generatedAt;
+
+  bool get isEmpty => holdings.isEmpty;
+
+  factory MomentumHoldings.fromJson(Map<String, dynamic> j) => MomentumHoldings(
+        holdings: ((j['holdings'] as List?) ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map(MomentumHolding.fromJson)
+            .toList(),
+        totalMarketValue:
+            (j['total_market_value'] as num?)?.toDouble() ?? 0.0,
+        totalUnrealizedPl:
+            (j['total_unrealized_pl'] as num?)?.toDouble() ?? 0.0,
+        topN: (j['top_n'] as num?)?.toInt() ?? 0,
+        staleSymbols: ((j['stale_symbols'] as List?) ?? const [])
+            .map((e) => e.toString())
+            .toList(),
+        generatedAt: (j['generated_at'] ?? '').toString(),
+      );
+}
