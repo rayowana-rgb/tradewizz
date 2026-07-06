@@ -603,8 +603,37 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
   /// Bottom sheet: pick a profit threshold (percent OR dollars), preview which
   /// winners qualify, then take profit on ALL of them in one go (full sellable
   /// qty, MARKET).
+  /// Fetch the current momentum-owned symbols from the strategy ledger and
+  /// store them in [_momentumSymbols]. Called both on refresh AND right before
+  /// the Trim flow runs, so the protection can never be stale/empty at the
+  /// moment we place real sell orders. Returns the freshly fetched set (falls
+  /// back to the existing set on failure so we protect at least as much as
+  /// before -- never fewer).
+  Future<Set<String>> _fetchMomentumSymbols() async {
+    final token = _token;
+    final secret = widget.secretStore.secret;
+    if (token == null || secret == null) return _momentumSymbols;
+    try {
+      final mh = await widget.repository.momentumHoldings(
+        topN: 10,
+        token: token,
+        secret: secret,
+      );
+      final syms =
+          mh.holdings.map((h) => h.symbol.toUpperCase()).toSet();
+      if (mounted) setState(() => _momentumSymbols = syms);
+      return syms;
+    } catch (_) {
+      return _momentumSymbols;
+    }
+  }
+
   Future<void> _openTrimSheet() async {
     if (!widget.secretStore.hasSecret) return;
+    // Refresh the momentum protection list before the user can act, so opening
+    // Trim always reflects the current momentum holdings.
+    await _fetchMomentumSymbols();
+    if (!mounted) return;
     final currency = _account?.currency ?? 'USD';
     var mode = _trimMode;
     var pctVal = _trimThreshold;
@@ -811,6 +840,10 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
   /// LIVE confirmation gate before placing real sell orders, then run.
   Future<void> _confirmAndRunTrim(
       String mode, double value, String currency) async {
+    // Refresh protection before showing the confirm dialog so the count and
+    // the "protected" line reflect the real momentum holdings.
+    await _fetchMomentumSymbols();
+    if (!mounted) return;
     final candidates = _trimCandidates(mode, value);
     if (candidates.isEmpty) return;
     final ok = await showDialog<bool>(
@@ -849,7 +882,14 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
     final token = _token;
     final secret = widget.secretStore.secret;
     if (token == null || secret == null) return;
-    final candidates = _trimCandidates(mode, value);
+    // Final safety net: re-fetch momentum-owned symbols synchronously right
+    // before placing real sell orders and hard-filter them out, so a stale or
+    // not-yet-populated protection list can NEVER cause a momentum position to
+    // be sold by Trim.
+    final protectedSyms = await _fetchMomentumSymbols();
+    final candidates = _trimCandidates(mode, value)
+        .where((p) => !protectedSyms.contains(p.symbol.toUpperCase()))
+        .toList();
     if (candidates.isEmpty) return;
 
     var sold = 0;
