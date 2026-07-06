@@ -138,12 +138,19 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
 
   String? get _token => AuthScope.read(context).token;
 
+  // Symbols owned by the momentum strategy (from its ledger). These are
+  // PROTECTED from the "Trim" take-profit-all flow so it can never accidentally
+  // sell a momentum position and corrupt the strategy / A/B test.
+  Set<String> _momentumSymbols = <String>{};
+
   /// Open positions that are in profit above the given threshold (in the given
   /// mode) and have sellable shares. plRatio is a fraction (0.05 = 5%); plVal
-  /// is the absolute unrealized P/L in account currency.
+  /// is the absolute unrealized P/L in account currency. Momentum-owned symbols
+  /// are always excluded so "Trim" never touches the momentum strategy.
   List<MoomooLivePosition> _trimCandidates(String mode, double value) =>
       _positions.where((p) {
         if (p.canSellQty <= 0) return false;
+        if (_momentumSymbols.contains(p.symbol.toUpperCase())) return false;
         final metric = mode == 'usd' ? p.plVal : p.plRatio * 100.0;
         return metric > value;
       }).toList();
@@ -428,6 +435,27 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
         if (mounted) setState(() => _equity = eq);
       } catch (_) {
         /* growth chart is best-effort */
+      }
+      // Momentum-owned symbols (from the strategy ledger). Fetched so the
+      // "Trim" take-profit-all flow can EXCLUDE positions that belong to the
+      // momentum strategy -- selling them here would corrupt the A/B test and
+      // silently unwind a strategy position. Best-effort: on failure we fall
+      // back to protecting nothing extra rather than blocking the view.
+      try {
+        final mh = await widget.repository.momentumHoldings(
+          topN: 10,
+          token: token,
+          secret: secret,
+        );
+        if (mounted) {
+          setState(() {
+            _momentumSymbols = mh.holdings
+                .map((h) => h.symbol.toUpperCase())
+                .toSet();
+          });
+        }
+      } catch (_) {
+        /* momentum protection is best-effort */
       }
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -793,7 +821,8 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
         content: Text(
           'This places REAL market SELL orders for '
           '${candidates.length} position(s) with profit above '
-          '${_trimLabel(mode, value, currency)}. Real money.',
+          '${_trimLabel(mode, value, currency)}. Real money.'
+          '${_momentumSymbols.isNotEmpty ? '\n\n${_momentumSymbols.length} momentum-strategy position(s) are protected and will NOT be sold.' : ''}',
           style: TWType.caption.copyWith(color: TWColors.textSecondary),
         ),
         actions: [

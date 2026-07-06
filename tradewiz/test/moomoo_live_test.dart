@@ -979,6 +979,131 @@ void main() {
     expect(intc['quantity'], 10.0);
   });
 
+  testWidgets('Trim never sells a momentum-strategy position', (tester) async {
+    tester.view.physicalSize = const Size(1200, 3200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final auth = await _auth(kMoomooOwnerUid);
+    final placed = <Map<String, dynamic>>[];
+    // INTC and MSFT are both winners, but INTC is owned by the momentum
+    // strategy (in /momentum/holdings) so Trim must protect it and sell only
+    // MSFT.
+    final repo = _repoWith(MockClient((req) async {
+      if (req.url.path.endsWith('/broker/moomoo/account')) {
+        return http.Response(
+          jsonEncode({
+            'total_assets': 5000.0,
+            'cash': 4000.0,
+            'buying_power': 4800.0,
+            'market_value': 1000.0,
+            'currency': 'USD',
+          }),
+          200,
+        );
+      }
+      if (req.url.path.endsWith('/broker/moomoo/positions')) {
+        return http.Response(
+          jsonEncode({
+            'positions': [
+              {
+                'code': 'US.INTC',
+                'symbol': 'INTC',
+                'quantity': 10.0,
+                'can_sell_qty': 10.0,
+                'cost_price': 30.0,
+                'last_price': 33.5,
+                'pl_val': 35.0,
+                'pl_ratio': 0.1167,
+              },
+              {
+                'code': 'US.MSFT',
+                'symbol': 'MSFT',
+                'quantity': 4.0,
+                'can_sell_qty': 4.0,
+                'cost_price': 100.0,
+                'last_price': 100.5,
+                'pl_val': 2.0,
+                'pl_ratio': 0.005,
+              },
+            ],
+          }),
+          200,
+        );
+      }
+      if (req.url.path.contains('/momentum/holdings')) {
+        return http.Response(
+          jsonEncode({
+            'holdings': [
+              {
+                'symbol': 'INTC',
+                'qty': 10.0,
+                'cost_price': 30.0,
+                'last_price': 33.5,
+                'market_value': 335.0,
+                'unrealized_pl': 35.0,
+                'unrealized_pl_ratio': 0.1167,
+                'in_top_n': true,
+                'rank': 1,
+              },
+            ],
+            'total_market_value': 335.0,
+            'total_unrealized_pl': 35.0,
+            'top_n': 10,
+            'stale_symbols': [],
+            'generated_at': '2026-07-06T00:00:00Z',
+          }),
+          200,
+        );
+      }
+      if (req.url.path.endsWith('/broker/moomoo/order/place')) {
+        placed.add(jsonDecode(req.body) as Map<String, dynamic>);
+        final b = jsonDecode(req.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode({
+            'order_id': 'x',
+            'symbol': b['symbol'],
+            'side': b['side'],
+            'quantity': b['quantity'],
+            'status': 'SUBMITTED',
+          }),
+          200,
+        );
+      }
+      if (req.url.path.contains('/broker/moomoo/manager') ||
+          req.url.path.contains('/broker/moomoo/health') ||
+          req.url.path.contains('/broker/moomoo/rebalance')) {
+        return http.Response('{"detail":"nope"}', 404);
+      }
+      return http.Response('{}', 200);
+    }));
+    final store = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await tester.pumpWidget(_wrap(
+        MoomooLivePage(
+          repository: repo,
+          secretStore: store,
+          liveBulkOrderGap: Duration.zero,
+        ),
+        auth,
+        repo));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('moomoo_trim_open')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('moomoo_trim_execute')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('moomoo_trim_confirm')));
+    await tester.pumpAndSettle();
+
+    // Only MSFT sold; INTC (momentum) protected.
+    final sells = placed
+        .where((b) => b['side'] == 'SELL')
+        .map((b) => b['symbol'])
+        .toSet();
+    expect(sells, {'MSFT'});
+    expect(sells.contains('INTC'), isFalse);
+  });
+
   testWidgets('Trim supports a dollar (P/L \$) threshold mode', (tester) async {
     tester.view.physicalSize = const Size(1200, 3200);
     tester.view.devicePixelRatio = 1.0;
