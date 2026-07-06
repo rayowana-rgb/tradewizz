@@ -182,6 +182,11 @@ class _MomentumPageState extends State<MomentumPage> {
         const SizedBox(height: TWSpace.lg),
         Text('Top ${p.picks.length} by 12-1 momentum',
             style: TWType.label.copyWith(color: TWColors.textSecondary)),
+        if (_isOwner) ...[
+          const SizedBox(height: 2),
+          Text('Tap a name to buy it individually · LIVE',
+              style: TWType.caption.copyWith(color: TWColors.textTertiary)),
+        ],
         const SizedBox(height: TWSpace.sm),
         ...p.picks.map(_pickRow),
         const SizedBox(height: TWSpace.lg),
@@ -258,39 +263,134 @@ class _MomentumPageState extends State<MomentumPage> {
 
   Widget _pickRow(MomentumPick pick) {
     final momPct = pick.momentum * 100;
+    final card = TWFloatingCard(
+      padding: const EdgeInsets.symmetric(
+          horizontal: TWSpace.lg, vertical: TWSpace.md),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 28,
+            child: Text('${pick.rank}',
+                style: TWType.label.copyWith(color: TWColors.textTertiary)),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(pick.symbol, style: TWType.label),
+                const SizedBox(height: 2),
+                Text('\$${pick.lastPrice.toStringAsFixed(2)}',
+                    style: TWType.caption
+                        .copyWith(color: TWColors.textTertiary)),
+              ],
+            ),
+          ),
+          Text(
+            '${momPct >= 0 ? '+' : ''}${momPct.toStringAsFixed(1)}%',
+            style: TWType.tabular(TWType.label).copyWith(
+                color: momPct >= 0 ? TWColors.up : TWColors.down,
+                fontWeight: FontWeight.w700),
+          ),
+          // Owner-only single-buy affordance: tap the row (or this icon) to
+          // buy just this one name on Moomoo LIVE.
+          if (_isOwner) ...[
+            const SizedBox(width: TWSpace.sm),
+            const Icon(Icons.add_shopping_cart,
+                size: 18, color: TWColors.accent),
+          ],
+        ],
+      ),
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: TWSpace.sm),
-      child: TWFloatingCard(
-        padding: const EdgeInsets.symmetric(
-            horizontal: TWSpace.lg, vertical: TWSpace.md),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 28,
-              child: Text('${pick.rank}',
-                  style: TWType.label.copyWith(color: TWColors.textTertiary)),
-            ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(pick.symbol, style: TWType.label),
-                  const SizedBox(height: 2),
-                  Text('\$${pick.lastPrice.toStringAsFixed(2)}',
-                      style: TWType.caption
-                          .copyWith(color: TWColors.textTertiary)),
-                ],
+      // Non-owners get a static read-only row; the owner can tap a name to buy
+      // that single momentum pick (in addition to the buy-all basket below).
+      child: _isOwner
+          ? Material(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(TWRadius.cardLg),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(TWRadius.cardLg),
+                onTap: () {
+                  FocusScope.of(context).unfocus();
+                  _reviewAndBuyOne(pick);
+                },
+                child: card,
               ),
-            ),
-            Text(
-              '${momPct >= 0 ? '+' : ''}${momPct.toStringAsFixed(1)}%',
-              style: TWType.tabular(TWType.label).copyWith(
-                  color: momPct >= 0 ? TWColors.up : TWColors.down,
-                  fontWeight: FontWeight.w700),
-            ),
-          ],
+            )
+          : card,
+    );
+  }
+
+  /// Owner-only: buy a SINGLE momentum name (the tapped pick) on Moomoo LIVE,
+  /// sized by the per-position amount. Mirrors the basket-buy flow (preview ->
+  /// confirm -> paced order) but for exactly one symbol. Falls back to a prompt
+  /// if the per-position amount hasn't been entered yet.
+  Future<void> _reviewAndBuyOne(MomentumPick pick) async {
+    final size = _perPosition;
+    final token = AuthScope.read(context).token;
+    final secret = widget.secretStore.secret;
+    if (token == null || secret == null || secret.isEmpty) {
+      _snack('LIVE trading unavailable (missing credentials).');
+      return;
+    }
+    if (size == null) {
+      _snack('Enter an amount per position first, then tap a name to buy it.');
+      return;
+    }
+
+    // 1) Preview (single-symbol basket).
+    MomentumBasketPreview preview;
+    try {
+      preview = await widget.repository.momentumBasketPreview(
+        symbols: [pick.symbol],
+        perPositionUsd: size,
+        token: token,
+        secret: secret,
+      );
+    } catch (e) {
+      _snack('Preview failed. $e');
+      return;
+    }
+    if (!mounted) return;
+    if (preview.legs.isEmpty) {
+      _snack('Could not size an order for ${pick.symbol} right now.');
+      return;
+    }
+    final leg = preview.legs.first;
+
+    // 2) Confirm dialog.
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: TWColors.surfaceCard,
+        title: const Text('Confirm LIVE buy', style: TWType.body),
+        content: Text(
+          'Real money. 1 MARKET BUY of ${leg.quantity.toStringAsFixed(4)} sh '
+          '${leg.symbol} (≈ \$${size.toStringAsFixed(0)}).',
+          style: TWType.caption
+              .copyWith(color: TWColors.textSecondary, height: 1.35),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text('Buy ${leg.symbol}',
+                style: const TextStyle(color: TWColors.warn)),
+          ),
+        ],
       ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    // 3) Place the single order (same paced/tagged engine as the basket).
+    await _runOrders(
+      [_MomentumOrder(symbol: leg.symbol, side: 'BUY', quantity: leg.quantity)],
+      token: token,
+      secret: secret,
     );
   }
 
