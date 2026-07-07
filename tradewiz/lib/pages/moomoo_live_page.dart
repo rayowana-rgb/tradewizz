@@ -8,6 +8,7 @@ import '../models/moomoo_live.dart';
 import '../models/phase3.dart';
 import '../models/subscription.dart';
 import '../repositories/stock_repository.dart';
+import 'momentum_page.dart';
 import '../services/api_client.dart';
 import '../services/auth_scope.dart';
 import '../services/moomoo_secret_store.dart';
@@ -1001,6 +1002,8 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
               else ...[
                 if (_error != null) _errorCard(_error!),
                 _accountCard(),
+                const SizedBox(height: TWSpace.lg),
+                _momentumEntry(),
                 if (_equity.length >= 2) ...[
                   const SizedBox(height: TWSpace.lg),
                   _growthCard(_equity),
@@ -1020,6 +1023,71 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
                 const SizedBox(height: TWSpace.lg),
                 _positionsSection(),
               ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Momentum Research entry (EXPERIMENTAL, Stage-3b). Moved here from Explore
+  /// so the 12-1 momentum picks live alongside the owner's real-money Moomoo
+  /// account. Opens the dedicated [MomentumPage]. US-only research signal.
+  Widget _momentumEntry() {
+    return Material(
+      color: TWColors.surfaceCardGlass,
+      borderRadius: BorderRadius.circular(TWRadius.card),
+      child: InkWell(
+        key: const Key('moomoo_momentum_entry'),
+        borderRadius: BorderRadius.circular(TWRadius.card),
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => MomentumPage(
+                repository: widget.repository,
+                secretStore: widget.secretStore,
+                ownerUid: AuthScope.read(context).user?.id,
+              ),
+            ),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+              horizontal: TWSpace.lg, vertical: TWSpace.md),
+          child: Row(
+            children: [
+              const Icon(Icons.trending_up, color: TWColors.accent, size: 20),
+              const SizedBox(width: TWSpace.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text('Momentum Research', style: TWType.label),
+                        const SizedBox(width: TWSpace.sm),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: TWColors.warn.withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(TWRadius.sm),
+                          ),
+                          child: Text('EXPERIMENTAL',
+                              style: TWType.overline
+                                  .copyWith(color: TWColors.warn)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text('Top US 12-1 momentum · monthly hold (Stage-3b)',
+                        style: TWType.caption
+                            .copyWith(color: TWColors.textTertiary)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right,
+                  color: TWColors.textTertiary, size: 20),
             ],
           ),
         ),

@@ -1514,6 +1514,8 @@ void main() {
     // No bracket yet -> the Protect action is offered.
     final addKey = const Key('moomoo_sltp_add_INTC');
     expect(find.byKey(addKey), findsOneWidget);
+    await tester.ensureVisible(find.byKey(addKey));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(addKey));
     await tester.pumpAndSettle();
 
@@ -1529,6 +1531,34 @@ void main() {
     // The tile now shows the active bracket (and a Remove action).
     expect(find.byKey(const Key('moomoo_sltp_active_INTC')), findsOneWidget);
     expect(find.byKey(const Key('moomoo_sltp_cancel_INTC')), findsOneWidget);
+  });
+
+  testWidgets('Momentum Research entry lives on the Moomoo Live page',
+      (tester) async {
+    final auth = await _auth(kMoomooOwnerUid);
+    final repo = _repoWith(MockClient((req) async {
+      if (req.url.path.endsWith('/broker/moomoo/account')) {
+        return http.Response(
+          jsonEncode({
+            'total_assets': 1000.0, 'cash': 1000.0, 'buying_power': 1000.0,
+            'market_value': 0.0, 'currency': 'USD', 'realized_pl': 0.0,
+          }),
+          200,
+        );
+      }
+      if (req.url.path.endsWith('/broker/moomoo/positions')) {
+        return http.Response(jsonEncode({'positions': []}), 200);
+      }
+      return http.Response('{}', 200);
+    }));
+    final store = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await tester.pumpWidget(_wrap(
+        MoomooLivePage(repository: repo, secretStore: store), auth, repo));
+    await tester.pumpAndSettle();
+
+    // Moved here from Explore: the momentum research entry is present.
+    expect(find.byKey(const Key('moomoo_momentum_entry')), findsOneWidget);
+    expect(find.text('Momentum Research'), findsOneWidget);
   });
 
   testWidgets('an active bracket shows on load and can be removed',
