@@ -8,6 +8,7 @@ import 'package:http/testing.dart';
 import 'package:tradewiz/config/app_config.dart';
 import 'package:tradewiz/models/broker.dart';
 import 'package:tradewiz/models/market.dart';
+import 'package:tradewiz/models/screener_result.dart';
 import 'package:tradewiz/pages/order_ticket_page.dart';
 import 'package:tradewiz/pages/screener_page.dart';
 import 'package:tradewiz/models/user.dart';
@@ -225,6 +226,51 @@ void main() {
   // The Explore filter store is a process-wide singleton (so selections survive
   // tab switches in the real app). Reset it before each test for isolation.
   setUp(ExploreFilterStore.instance.reset);
+
+  group('Phase 12 Explore signal transparency', () {
+    test('ScreenerMatch parses confirmation breakdown + trade_ready', () {
+      final m = ScreenerMatch.fromJson({
+        'symbol': 'ABCD',
+        'name': 'Test Co',
+        'score': 70.0,
+        'signal': 'BUY',
+        'price': 42.0,
+        'change_percent': 1.2,
+        'categories': ['bullish'],
+        'final_score': 88.2,
+        'explore_tags': ['Bullish', 'Uptrend', 'Breakout'],
+        'conviction_reasons': [
+          'Money flowing in (CMF > 0)',
+          'Uptrend structure (above key MAs)',
+        ],
+        'confirmations_fired': 5,
+        'confirmations_total': 8,
+        'trade_ready': true,
+      });
+      expect(m.confirmationsFired, 5);
+      expect(m.confirmationsTotal, 8);
+      expect(m.hasConfirmationBreakdown, isTrue);
+      expect(m.tradeReady, isTrue);
+      expect(m.convictionReasons.length, 2);
+      expect(m.convictionReasons.first, contains('CMF'));
+    });
+
+    test('ScreenerMatch defaults are backward compatible (old server)', () {
+      final m = ScreenerMatch.fromJson({
+        'symbol': 'OLD',
+        'name': 'Legacy',
+        'score': 55.0,
+        'signal': 'HOLD',
+        'price': 10.0,
+        'change_percent': 0.0,
+      });
+      expect(m.confirmationsFired, 0);
+      expect(m.confirmationsTotal, 0);
+      expect(m.hasConfirmationBreakdown, isFalse);
+      expect(m.tradeReady, isFalse);
+      expect(m.convictionReasons, isEmpty);
+    });
+  });
 
   testWidgets('Screener loads matches and shows category badges',
       (tester) async {

@@ -133,10 +133,11 @@ def test_category_bonus_lifts_final_above_base():
     ind = {}  # no conviction
     overlay = explore.compute_overlay(base, cats, ind)
     assert overlay["category_bonus"] == 8
-    # Phase 9A+: the overlay consumes headroom proportionally, so a +8 bonus on
-    # a Base of 60 lifts the final to 60 + (100-60)*(8/45) = 67.1, still above
-    # the Base (the "bonus lifts final above base" contract holds).
-    assert overlay["final_score"] == 67.1
+    # Phase 9A+: the overlay consumes headroom proportionally. With OVERLAY_MAX
+    # now 51 (CATEGORY_BONUS_CAP 25 + CONVICTION_MAX 26), a +8 bonus on a Base
+    # of 60 lifts the final to 60 + (100-60)*(8/51) = 66.3, still above the Base
+    # (the "bonus lifts final above base" contract holds).
+    assert overlay["final_score"] == 66.3
 
 
 def test_overlay_respects_liquidity_score_ceiling():
@@ -192,7 +193,7 @@ def test_conviction_score_full_and_partial():
 
 def test_conviction_is_none_safe_and_bounded():
     assert explore.conviction_score({}) == 0
-    assert 0 <= explore.conviction_score({"cmf": 1, "adx": 99}) <= 20
+    assert 0 <= explore.conviction_score({"cmf": 1, "adx": 99}) <= 26
 
 
 # --------------------------------------------------------------------------- #
@@ -280,3 +281,98 @@ def test_mock_screen_rows_have_no_overlay():
         assert m.conviction_score == 0
         assert m.final_score == m.base_score
         assert m.explore_tags == []
+
+
+# --------------------------------------------------------------------------- #
+# Phase 12 (Task B) — trend-structure + breakout confirmations                #
+# --------------------------------------------------------------------------- #
+def test_trend_structure_confirmation():
+    up = {"close": 110.0, "ema20": 105.0, "ema50": 100.0, "ema200": 90.0}
+    assert explore.conviction_signals(up)["trend"] is True
+    # Price below EMA20 -> no trend confirmation.
+    down = {"close": 99.0, "ema20": 105.0, "ema50": 100.0, "ema200": 90.0}
+    assert explore.conviction_signals(down)["trend"] is False
+    # EMA20 below EMA50 (short stack not up) -> no trend.
+    mixed = {"close": 110.0, "ema20": 98.0, "ema50": 100.0, "ema200": 90.0}
+    assert explore.conviction_signals(mixed)["trend"] is False
+    # Below the 200 -> no trend even if short stack is up.
+    below200 = {"close": 110.0, "ema20": 105.0, "ema50": 100.0, "ema200": 120.0}
+    assert explore.conviction_signals(below200)["trend"] is False
+    # EMA200 missing (young history) -> short stack alone qualifies.
+    young = {"close": 110.0, "ema20": 105.0, "ema50": 100.0, "ema200": None}
+    assert explore.conviction_signals(young)["trend"] is True
+
+
+def test_breakout_confirmation():
+    bb = {"close": 51.0, "bb_upper": 50.0}
+    assert explore.conviction_signals(bb)["breakout"] is True
+    res = {"close": 99.5, "major_resistance": 100.0}  # within 1%
+    assert explore.conviction_signals(res)["breakout"] is True
+    hi = {"close": 98.5, "high_52w": 100.0}  # within 2% of the high
+    assert explore.conviction_signals(hi)["breakout"] is True
+    inside = {"close": 40.0, "bb_upper": 50.0, "major_resistance": 60.0,
+              "high_52w": 80.0}
+    assert explore.conviction_signals(inside)["breakout"] is False
+
+
+def test_conviction_max_with_all_eight():
+    full = {
+        "cmf": 0.2, "obv": 10, "obv_prev": 5, "adx": 30,
+        "volume": 3000, "vol_mean_10": 1000, "macd": 1.0,
+        "macd_signal": 0.5, "rsi": 60,
+        "close": 110.0, "ema20": 105.0, "ema50": 100.0, "ema200": 90.0,
+        "bb_upper": 108.0,
+    }
+    # 4+4+4+3+3+2+3+3 = 26 == CONVICTION_MAX.
+    assert explore.conviction_score(full) == 26
+    assert explore.confirmations_fired(full) == 8
+    assert explore.confirmations_total() == 8
+
+
+# --------------------------------------------------------------------------- #
+# Phase 12 (Task A) — transparency: reasons + counts on the overlay           #
+# --------------------------------------------------------------------------- #
+def test_overlay_exposes_reasons_and_counts():
+    ind = {"cmf": 0.2, "adx": 30, "close": 110.0, "ema20": 105.0,
+           "ema50": 100.0, "ema200": 90.0, "rsi": 60}
+    ov = explore.compute_overlay(60.0, [C.bullish], ind)
+    assert ov["confirmations_total"] == 8
+    assert ov["confirmations_fired"] == 4  # cmf, adx, trend, rsi
+    reasons = ov["conviction_reasons"]
+    assert len(reasons) == 4
+    # Strongest-weight signals lead (cmf/adx = 4 pts before trend = 3).
+    assert reasons[0] in (
+        explore._CONVICTION_LABELS["cmf"], explore._CONVICTION_LABELS["adx"],
+    )
+
+
+def test_illiquid_overlay_has_empty_reasons():
+    ind = {"cmf": 0.2, "adx": 30}
+    ov = explore.compute_overlay(60.0, [C.bullish], ind, allow_bonus=False)
+    assert ov["conviction_reasons"] == []
+    assert ov["confirmations_fired"] == 0
+    assert ov["trade_ready"] is False
+
+
+# --------------------------------------------------------------------------- #
+# Phase 12 (Task C) — trade-ready confluence gate                             #
+# --------------------------------------------------------------------------- #
+def test_trade_ready_requires_confluence():
+    strong = {
+        "cmf": 0.2, "obv": 10, "obv_prev": 5, "adx": 30,
+        "macd": 1.0, "macd_signal": 0.5, "rsi": 60,
+        "close": 110.0, "ema20": 105.0, "ema50": 100.0, "ema200": 90.0,
+    }
+    assert explore.is_trade_ready([C.bullish], strong) is True
+    # Not bullish/pullback category -> never trade-ready.
+    assert explore.is_trade_ready([C.accumulation], strong) is False
+    # No uptrend structure -> not trade-ready.
+    notrend = dict(strong, close=95.0)
+    assert explore.is_trade_ready([C.bullish], notrend) is False
+    # Overbought (RSI outside 50-75) -> not trade-ready.
+    hot = dict(strong, rsi=85.0)
+    assert explore.is_trade_ready([C.bullish], hot) is False
+    # Too few confirmations -> not trade-ready.
+    thin = {"close": 110.0, "ema20": 105.0, "ema50": 100.0, "ema200": 90.0,
+            "rsi": 60}
+    assert explore.is_trade_ready([C.bullish], thin) is False

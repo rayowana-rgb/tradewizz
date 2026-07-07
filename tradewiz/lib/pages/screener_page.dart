@@ -116,6 +116,9 @@ class _ScreenerPageState extends State<ScreenerPage> {
   // target. Pure view-state; never changes scoring or the query.
   bool _swingMode = false;
   static const double _kSwingFitFloor = 60;
+  // Phase 12 (Task C): a lightweight, non-persisted quick filter that keeps
+  // only names clearing the strict TA confluence gate (trade_ready).
+  bool _tradeReadyOnly = false;
 
   /// Push the current filter selection into the in-memory store so it survives
   /// tab switches / widget rebuilds. View-state only; nothing scoring-related.
@@ -691,6 +694,7 @@ class _ScreenerPageState extends State<ScreenerPage> {
     final q = _query.trim().toUpperCase();
     final out = matches.where((m) {
       if (_swingMode && m.effectiveSwingFit < _kSwingFitFloor) return false;
+      if (_tradeReadyOnly && !m.tradeReady) return false;
       if (_minScore > 0 && m.score < _minScore) return false;
       if (_categoryFilter != null && !m.hasCategory(_categoryFilter!)) {
         return false;
@@ -719,6 +723,13 @@ class _ScreenerPageState extends State<ScreenerPage> {
     // server's default ranking is by Final Explore Score.
     if (_swingMode) {
       out.sort((a, b) => b.effectiveSwingFit.compareTo(a.effectiveSwingFit));
+    } else {
+      // Keep the server's Final-Score order but float trade-ready names to the
+      // top of equal-score groups so the strongest setups lead (stable sort).
+      out.sort((a, b) {
+        if (a.tradeReady != b.tradeReady) return a.tradeReady ? -1 : 1;
+        return b.effectiveFinalScore.compareTo(a.effectiveFinalScore);
+      });
     }
     return out;
   }
@@ -835,6 +846,35 @@ class _ScreenerPageState extends State<ScreenerPage> {
         ),
         // Quick market + category chips remain for fast access.
         _MarketFilterBar(selected: _market, onSelected: _selectMarket),
+        // Phase 12 (Task C): a quick "Trade-ready" filter -- names that clear
+        // the strict TA confluence gate (uptrend + healthy RSI + broad
+        // confirmation). Descriptive, not a prediction.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+          child: Row(
+            children: [
+              FilterChip(
+                key: const Key('screener_trade_ready_filter'),
+                selected: _tradeReadyOnly,
+                label: const Text('Trade-ready only'),
+                avatar: Icon(Icons.bolt,
+                    size: 15,
+                    color: _tradeReadyOnly
+                        ? TWColors.bgBase
+                        : TWColors.up),
+                selectedColor: TWColors.up,
+                checkmarkColor: TWColors.bgBase,
+                labelStyle: TWType.caption.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color:
+                      _tradeReadyOnly ? TWColors.bgBase : TWColors.textSecondary,
+                ),
+                backgroundColor: TWColors.surfaceCard,
+                onSelected: (v) => setState(() => _tradeReadyOnly = v),
+              ),
+            ],
+          ),
+        ),
         // Momentum Research entry (EXPERIMENTAL, Stage-3b). Opens the dedicated
         // 12-1 momentum picks page. US-only research signal; honestly labelled.
         _MomentumEntryBanner(
@@ -2301,12 +2341,22 @@ class _MatchCard extends StatelessWidget {
               const SizedBox(height: 10),
               _ScoreBreakdown(match: match),
             ],
+            // Phase 12 (Task A + C): technical-confirmation transparency. Show
+            // a Trade-ready chip when the strict confluence gate is cleared and
+            // an "N/M confirmations" summary with the reasons that fired, so the
+            // user can see WHY a name is bullish -- not just a score.
+            if (match.hasConfirmationBreakdown &&
+                match.confirmationsFired > 0) ...[
+              const SizedBox(height: 10),
+              _ConfirmationsBlock(match: match),
+            ],
             if (match.exploreTags.isNotEmpty) ...[
               const SizedBox(height: 10),
               Wrap(
                 spacing: 6,
                 runSpacing: 6,
                 children: [
+                  if (match.tradeReady) const _TradeReadyChip(),
                   for (final t in match.exploreTags) _ExploreTag(label: t),
                 ],
               ),
@@ -2532,6 +2582,97 @@ class _ExploreTag extends StatelessWidget {
           color: color,
         ),
       ),
+    );
+  }
+}
+
+/// Phase 12 (Task C): a distinct chip flagging a name that clears the strict
+/// TA confluence gate (bullish + uptrend structure + healthy RSI + broad
+/// confirmation). Descriptive of the current posture, NOT a prediction.
+class _TradeReadyChip extends StatelessWidget {
+  const _TradeReadyChip();
+
+  @override
+  Widget build(BuildContext context) {
+    const color = TWColors.up;
+    return Container(
+      key: const Key('screener_trade_ready_chip'),
+      padding: const EdgeInsets.symmetric(horizontal: TWSpace.sm, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.20),
+        borderRadius: TWRadius.rChip,
+        border: Border.all(color: color.withValues(alpha: 0.45)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.bolt, size: 13, color: color),
+          const SizedBox(width: 3),
+          Text(
+            'Trade-ready',
+            style: TWType.caption
+                .copyWith(fontWeight: FontWeight.w700, color: color),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Phase 12 (Task A): the technical-confirmation breakdown. A compact
+/// "N/M confirmations" header plus the human-readable reasons that fired, so
+/// the Explore card shows WHY a name is bullish instead of only a score.
+class _ConfirmationsBlock extends StatelessWidget {
+  const _ConfirmationsBlock({required this.match});
+  final ScreenerMatch match;
+
+  @override
+  Widget build(BuildContext context) {
+    final fired = match.confirmationsFired;
+    final total = match.confirmationsTotal;
+    // Strength colour: green when most confirmations fire, amber mid, grey low.
+    final ratio = total > 0 ? fired / total : 0.0;
+    final color = ratio >= 0.6
+        ? TWColors.up
+        : (ratio >= 0.35 ? TWColors.warn : TWColors.textTertiary);
+    final reasons = match.convictionReasons;
+    return Column(
+      key: const Key('screener_confirmations_block'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.verified_outlined, size: 14, color: color),
+            const SizedBox(width: 4),
+            Text(
+              '$fired/$total technical confirmations',
+              style: TWType.caption
+                  .copyWith(fontWeight: FontWeight.w700, color: color),
+            ),
+          ],
+        ),
+        if (reasons.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              for (final r in reasons)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.check,
+                        size: 12, color: TWColors.textTertiary),
+                    const SizedBox(width: 2),
+                    Text(r,
+                        style: TWType.caption
+                            .copyWith(color: TWColors.textSecondary)),
+                  ],
+                ),
+            ],
+          ),
+        ],
+      ],
     );
   }
 }

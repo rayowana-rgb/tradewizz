@@ -17,6 +17,10 @@ class ScreenerMatch {
     this.convictionScore = 0,
     this.finalScore,
     this.exploreTags = const [],
+    this.convictionReasons = const [],
+    this.confirmationsFired = 0,
+    this.confirmationsTotal = 0,
+    this.tradeReady = false,
     this.liquidityScore,
     this.participationScore,
     this.valueTradedToday,
@@ -63,6 +67,23 @@ class ScreenerMatch {
 
   /// Human-readable Explore tags (Bullish, Silent Accumulation, Strong CMF...).
   final List<String> exploreTags;
+
+  // --- Phase 12 Explore signal transparency (backward compatible) ---------
+  /// One-line reasons for each technical confirmation that fired (strongest
+  /// first), e.g. "Money flowing in (CMF > 0)". Empty on older servers.
+  final List<String> convictionReasons;
+
+  /// How many technical confirmations fired / total available (e.g. 5 / 8).
+  final int confirmationsFired;
+  final int confirmationsTotal;
+
+  /// True when the name clears the strict TA confluence gate (bullish +
+  /// uptrend structure + healthy RSI + broad confirmation). Descriptive, not a
+  /// prediction. False on older servers.
+  final bool tradeReady;
+
+  /// True when the server sent the Phase 12 confirmation breakdown.
+  bool get hasConfirmationBreakdown => confirmationsTotal > 0;
 
   // --- Phase 11B liquidity-first participation (backward compatible) -------
   /// Liquidity & participation score (0..100): the dominant scoring factor.
@@ -128,6 +149,14 @@ class ScreenerMatch {
       exploreTags: (json['explore_tags'] as List<dynamic>? ?? [])
           .map((e) => e.toString())
           .toList(),
+      convictionReasons: (json['conviction_reasons'] as List<dynamic>? ?? [])
+          .map((e) => e.toString())
+          .toList(),
+      confirmationsFired:
+          (json['confirmations_fired'] as num?)?.toInt() ?? 0,
+      confirmationsTotal:
+          (json['confirmations_total'] as num?)?.toInt() ?? 0,
+      tradeReady: json['trade_ready'] as bool? ?? false,
       liquidityScore: (json['liquidity_score'] as num?)?.toDouble(),
       participationScore: (json['participation_score'] as num?)?.toDouble(),
       valueTradedToday: (json['value_traded_today'] as num?)?.toDouble(),

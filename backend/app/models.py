@@ -112,6 +112,16 @@ class ScreenerMatch(BaseModel):
     conviction_score: int = 0
     final_score: Optional[float] = None
     explore_tags: List[str] = []
+    # --- Phase 12 Explore signal transparency (additive, optional) --------
+    # conviction_reasons: human-readable one-liners for each confirmation that
+    # fired (strongest first), so the Explore card can show WHY a name is
+    # bullish. confirmations_fired/_total drive an "N/M confirmations" badge.
+    # trade_ready flags a strict TA confluence (bullish + uptrend structure +
+    # healthy RSI + broad confirmation) -- descriptive, NOT a prediction.
+    conviction_reasons: List[str] = []
+    confirmations_fired: int = 0
+    confirmations_total: int = 0
+    trade_ready: bool = False
     # --- Phase 11B liquidity-first participation (additive, optional) ------
     # liquidity_score == participation_score (0..100): the dominant scoring
     # factor (market participation). The raw turnover/volume figures back the
