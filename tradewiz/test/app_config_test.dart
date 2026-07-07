@@ -9,7 +9,7 @@ void main() {
   // explicit-constructor behavior (which the API client actually consumes).
   const fromEnv = bool.fromEnvironment(
     'TRADEWIZ_MOCK_FALLBACK',
-    defaultValue: true,
+    defaultValue: false,
   );
 
   test('fromEnvironment() reflects the TRADEWIZ_MOCK_FALLBACK define', () {
@@ -17,12 +17,17 @@ void main() {
     expect(cfg.mockFallback, fromEnv);
   });
 
-  test('default mockFallback is true (no define)', () {
-    // With no --dart-define, the compile-time default is true.
+  test('env default mockFallback is false (honesty over mock data)', () {
+    // With no --dart-define, the compile-time env default is now false so the
+    // shipped app surfaces "backend unreachable" instead of Sample data.
     if (const bool.hasEnvironment('TRADEWIZ_MOCK_FALLBACK') == false) {
-      expect(AppConfig.fromEnvironment().mockFallback, isTrue);
+      expect(AppConfig.fromEnvironment().mockFallback, isFalse);
     }
-    // The constructor default is true regardless.
+  });
+
+  test('constructor default mockFallback is true (test convenience)', () {
+    // The bare constructor default stays true so widget tests keep working
+    // offline without every call site opting in.
     const cfg = AppConfig(baseUrl: 'x');
     expect(cfg.mockFallback, isTrue);
   });
@@ -32,14 +37,13 @@ void main() {
     expect(cfg.mockFallback, isFalse);
   });
 
-  test('TRADEWIZ_MOCK_FALLBACK=false disables fallback when defined', () {
+  test('TRADEWIZ_MOCK_FALLBACK=true re-enables fallback when defined', () {
     // Only meaningful when the suite is built with the define; otherwise the
-    // value is the default (true) and this assertion is skipped.
-    if (fromEnv == false) {
-      expect(AppConfig.fromEnvironment().mockFallback, isFalse);
-    } else {
-      // Built without the false define: confirm default remains true.
+    // value is the env default (false) and this asserts that instead.
+    if (fromEnv == true) {
       expect(AppConfig.fromEnvironment().mockFallback, isTrue);
+    } else {
+      expect(AppConfig.fromEnvironment().mockFallback, isFalse);
     }
   });
 }

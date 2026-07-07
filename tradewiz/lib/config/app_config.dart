@@ -36,15 +36,20 @@ class AppConfig {
     defaultValue: '',
   );
 
+  // Default OFF: honesty over convenience. When the backend is unreachable the
+  // app must surface a clear "backend unreachable" error instead of silently
+  // showing mocked "Sample" data that looks like real signals. Re-enable per
+  // build with --dart-define=TRADEWIZ_MOCK_FALLBACK=true only for offline demos.
   static const bool _mockFallbackFromEnv = bool.fromEnvironment(
     'TRADEWIZ_MOCK_FALLBACK',
-    defaultValue: true,
+    defaultValue: false,
   );
 
   /// Config resolved from --dart-define values (with sensible defaults).
   ///
-  /// `--dart-define=TRADEWIZ_MOCK_FALLBACK=false` disables the mock fallback so
-  /// network errors surface instead of returning mocked data.
+  /// Mock fallback defaults to OFF. Pass
+  /// `--dart-define=TRADEWIZ_MOCK_FALLBACK=true` to re-enable mocked data when
+  /// the backend is offline (e.g. an offline demo build).
   factory AppConfig.fromEnvironment() {
     return const AppConfig(
       baseUrl: _baseUrlFromEnv,
