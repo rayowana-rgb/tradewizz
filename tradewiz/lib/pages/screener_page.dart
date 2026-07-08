@@ -9,6 +9,7 @@ import '../repositories/stock_repository.dart';
 import '../services/api_client.dart';
 import '../services/auth_scope.dart';
 import '../services/data_source.dart';
+import '../services/keep_awake.dart';
 import '../services/moomoo_secret_store.dart';
 import '../services/repository_scope.dart';
 import '../state/explore_filter_store.dart';
@@ -573,6 +574,9 @@ class _ScreenerPageState extends State<ScreenerPage> {
     );
 
     var cancelled = false;
+    // Keep the screen awake for the whole paced run so the OS does not sleep
+    // the app mid-basket and abandon orders half-way.
+    await KeepAwake.guard(() async {
     for (var i = 0; i < matches.length; i++) {
       if (cancel.isCancelled) {
         cancelled = true;
@@ -666,6 +670,7 @@ class _ScreenerPageState extends State<ScreenerPage> {
       }
       progress.value = i + 1;
     }
+    });
 
     progress.dispose();
     if (!mounted) return;

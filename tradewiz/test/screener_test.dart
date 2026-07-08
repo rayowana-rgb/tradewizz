@@ -16,6 +16,7 @@ import 'package:tradewiz/repositories/stock_repository.dart';
 import 'package:tradewiz/services/api_client.dart';
 import 'package:tradewiz/services/auth_scope.dart';
 import 'package:tradewiz/services/auth_store.dart';
+import 'package:tradewiz/services/keep_awake.dart';
 import 'package:tradewiz/services/moomoo_secret_store.dart';
 import 'package:tradewiz/state/explore_filter_store.dart';
 import 'package:tradewiz/widgets/category_badge.dart';
@@ -225,7 +226,12 @@ Future<void> _loadScreener(WidgetTester tester) async {
 void main() {
   // The Explore filter store is a process-wide singleton (so selections survive
   // tab switches in the real app). Reset it before each test for isolation.
-  setUp(ExploreFilterStore.instance.reset);
+  setUp(() {
+    ExploreFilterStore.instance.reset();
+    // Wakelock needs a platform channel that isn't wired up in unit tests.
+    KeepAwake.debugToggle = (_) async {};
+  });
+  tearDown(() => KeepAwake.debugToggle = null);
 
   group('Phase 12 Explore signal transparency', () {
     test('ScreenerMatch parses confirmation breakdown + trade_ready', () {

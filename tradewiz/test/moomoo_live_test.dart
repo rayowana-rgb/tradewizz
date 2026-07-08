@@ -13,6 +13,7 @@ import 'package:tradewiz/repositories/stock_repository.dart';
 import 'package:tradewiz/services/api_client.dart';
 import 'package:tradewiz/services/auth_scope.dart';
 import 'package:tradewiz/services/auth_store.dart';
+import 'package:tradewiz/services/keep_awake.dart';
 import 'package:tradewiz/services/entitlements_scope.dart';
 import 'package:tradewiz/services/moomoo_secret_store.dart';
 import 'package:tradewiz/services/repository_scope.dart';
@@ -162,7 +163,12 @@ StockRepository _repoWithTwoPositions() => _repoWith(MockClient((req) async {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  setUp(() => SharedPreferences.setMockInitialValues({}));
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    // Wakelock needs a platform channel that isn't wired up in unit tests.
+    KeepAwake.debugToggle = (_) async {};
+  });
+  tearDown(() => KeepAwake.debugToggle = null);
 
   testWidgets('owner uid 2 sees the Moomoo Live entry on Account',
       (tester) async {

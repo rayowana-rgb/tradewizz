@@ -11,6 +11,7 @@ import '../repositories/stock_repository.dart';
 import 'momentum_page.dart';
 import '../services/api_client.dart';
 import '../services/auth_scope.dart';
+import '../services/keep_awake.dart';
 import '../services/moomoo_secret_store.dart';
 import '../theme_tradewizz.dart';
 import '../widgets/ds/tw_scaffold_background.dart';
@@ -898,6 +899,9 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
     final failures = <String>[];
     final gap = _trimOrderGap;
 
+    // Keep the screen awake for the whole paced trim run so the OS does not
+    // sleep the app mid-run and abandon sells half-way.
+    await KeepAwake.guard(() async {
     for (var i = 0; i < candidates.length; i++) {
       final p = candidates[i];
       if (i > 0 && gap > Duration.zero) {
@@ -947,6 +951,7 @@ class _MoomooLivePageState extends State<MoomooLivePage> {
         failures.add('${p.symbol}: ${failMsg ?? 'failed'}');
       }
     }
+    });
 
     if (!mounted) return;
     final msg = failed == 0
