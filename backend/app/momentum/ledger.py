@@ -99,6 +99,21 @@ class MomentumLedger:
         with self._lock:
             return symbol.upper() in self._load()
 
+    def last_rebalance_ts(self) -> Optional[int]:
+        """Epoch seconds of the most recent momentum mutation (buy/sell).
+
+        Every rebalance touches the ledger (records the buys/sells it makes), so
+        the newest ``updated_ts`` across all entries is a faithful proxy for
+        "when the strategy was last acted on". Returns None when the ledger is
+        empty (no momentum position ever taken) -- callers treat that as
+        "no rebalance clock yet" rather than fabricating a date.
+        """
+        with self._lock:
+            entries = self._load()
+        if not entries:
+            return None
+        return max(e.updated_ts for e in entries.values())
+
     # -- mutations --------------------------------------------------------
     def record_buy(self, symbol: str, qty: float) -> None:
         """Add ``qty`` shares of ``symbol`` to the momentum ledger."""

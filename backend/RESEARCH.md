@@ -39,6 +39,7 @@ metrics or citations. Failed results are kept, not hidden.
 | [Long-Term Reversal (DeBondt-Thaler)](research/atoms/longterm-reversal.md) | backtest-oos | 55 | 68 | FIRST truly orthogonal partner to momentum (corr 0.34-0.46; ~1.4/10 names shared). Standalone alpha WEAK & REGIME-DEPENDENT so a 50/50 blend DILUTES momentum. BUT a REGIME-SWITCHED crash-recovery OVERLAY (60/40 only when market < 200d SMA, ~18% of periods) IMPROVES full-sample excess-t (3.25 vs 2.92), Sharpe (0.75 vs 0.68) AND worst-DD (-14.7% vs -21.3%) vs pure momentum, with big crisis protection (TRAIN DD -8.6% vs -21.3%). Mild OOS-bull cost (TEST t 3.04 vs 3.23). First diversification that does NOT dilute -- optional overlay. |
 | [Residual Momentum (beta-adjusted)](research/atoms/residual-momentum.md) | backtest-oos | 70 | 66 | Signal UPGRADE candidate: beta-adjusted momentum beats raw 12-1 excess every split (FULL t 3.23 vs 2.94; TEST 3.03 vs 2.62), higher Sharpe, slightly tamer DD. BUT orthogonality hypothesis REFUTED -- corr(12-1,resid) 0.91 (higher than 6-1's 0.87), 7.5/10 names shared -> NOT a diversifier, blend adds nothing. Actionable as a production ranking swap pending Stage-4, not a blend partner. |
 | [Low-Volatility (long-only, unlevered)](research/atoms/low-volatility.md) | backtest-oos | 30 | 55 | **REJECTED** standalone: long-only unlevered low-vol UNDERPERFORMS the market (excess t -3.42 FULL / -3.12 TEST). The academic low-vol edge needs shorting+leverage we don't have. KNOWLEDGE RETAINED: it's ~orthogonal to momentum (corr 0.24-0.49) and a 50/50 blend raised ABSOLUTE Sharpe above both books -- but with no standalone alpha it DILUTES momentum's significance (blend excess-t 1.06/1.30 < momentum's 2.94/2.62). Wrong blend partner; decorrelation method is reusable with an alpha-bearing partner. |
+| [VPA + Wyckoff (mechanical proxy)](research/atoms/vpa-wyckoff.md) | backtest | 35 | 20 | **REJECTED as a standalone picker.** Mechanical VPA+Wyckoff accumulation score (effort-vs-result + close-strength + volume-weighted trend + spring/up-thrust), same engine as momentum-long-only (344-name max-history liquid US, monthly, 10bps/side, top-decile long-only). Excess over benchmark +0.05%/hold, excess_t **0.18** = indistinguishable from ZERO, vs momentum's +0.84%/hold t 2.17. Head-to-head VPA-momentum -0.79%/hold, t -2.18 (momentum wins, significant). VPA cum +2092% < benchmark +2436% < momentum +9345%; worse Sharpe (0.74). Consistent with lit: Wyckoff is a discretionary per-name timing lens, NOT a ranking factor. Only mild plus: shallower worst-hold excess (-10.3% vs -23.1%). Possible future use ONLY as a confirmation overlay (untested). Momentum stays the candidate. |
 | [Momentum Crash Guard](research/atoms/momentum-crash-guard.md) | **backtest-oos** | 75 | 68 | Stage-3: vol-target cut worst -65.7%->-15.1%, bear+vol gate best Sharpe 0.58. STAGE-4 OOS (thresholds frozen on TRAIN<2017, applied blind to TEST>=2017): on unseen data both guards BEAT raw (bear+vol gate Sharpe 0.60 vs raw 0.40, worst -31% vs -65.7%). Guard generalizes. Marginal sig (t 1.83); tail reduced not removed. |
 
 Legend — Stage: lit → logic → backtest → live-eval → prod.
@@ -77,6 +78,23 @@ they are populated only by atoms that pass Stage 4.
 - Net conviction: the most promising (but theoretically fragile) production
   candidate so far is SHORT-TERM (1-month) MOMENTUM behind a liquidity gate,
   pending out-of-sample and a regime guard. Nothing is production-ready yet.
+- **VPA + WYCKOFF vs MOMENTUM head-to-head** (2026-07-10, Stage 3, cost-aware):
+  built a mechanical VPA+Wyckoff accumulation score (effort-vs-result, close-
+  strength, volume-weighted trend, spring bonus, up-thrust penalty; components
+  cross-sectionally z-scored then summed) and ran it in the IDENTICAL engine as
+  momentum-long-only (same 344-name max-history liquid US set, same monthly
+  rebalance calendar & 231 holds, same 10bps/side turnover cost, same equal-
+  weight top-decile long-only). RESULT: VPA has NO cross-sectional edge — excess
+  over benchmark +0.05%/hold, excess_t 0.18 (statistically zero), vs momentum
+  +0.84%/hold t 2.17. Head-to-head VPA−momentum −0.79%/hold, t −2.18 (momentum
+  significantly better). Cumulative: momentum +9345% > benchmark +2436% > VPA
+  +2092%; VPA Sharpe 0.74 < momentum 0.89 < benchmark 0.95. Only mild plus for
+  VPA: shallower worst single-hold excess (−10.3% vs −23.1%). VERDICT: mechanical
+  VPA/Wyckoff is REJECTED as a standalone picker — matches the literature (it's a
+  discretionary per-name timing/confirmation lens, not a ranking factor).
+  Momentum stays the production candidate. Possible future use: VPA only as a
+  confirmation overlay on momentum picks (untested, own gate required).
+  `research/backtests/vpa-wyckoff/`, atom `vpa-wyckoff.md`.
 - **LONG-ONLY production form tested** (2026-07-04, Stage 3, cost-aware): buying
   the top-decile 12-1 names long-only, net of 10bps/side, BEATS the equal-weight
   market by +0.84%/hold (~4x terminal wealth, cum +93.5x vs +24.4x) across

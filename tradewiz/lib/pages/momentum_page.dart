@@ -180,6 +180,10 @@ class _MomentumPageState extends State<MomentumPage> {
         _disclaimerCard(p),
         const SizedBox(height: TWSpace.md),
         _regimeChip(p),
+        if (p.rebalance.hasClock) ...[
+          const SizedBox(height: TWSpace.md),
+          _rebalanceCard(p.rebalance),
+        ],
         const SizedBox(height: TWSpace.lg),
         Text('Top ${p.picks.length} by 12-1 momentum',
             style: TWType.label.copyWith(color: TWColors.textSecondary)),
@@ -224,6 +228,56 @@ class _MomentumPageState extends State<MomentumPage> {
                   style: TWType.caption
                       .copyWith(color: TWColors.textSecondary, height: 1.35),
                 ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _rebalanceCard(MomentumRebalanceSchedule r) {
+    final due = r.isDue;
+    final color = due ? TWColors.warn : TWColors.accentBright;
+    final rem = r.tradingDaysRemaining;
+    final String headline;
+    if (due) {
+      headline = 'REBALANCE DUE';
+    } else if (rem != null) {
+      headline = 'REBALANCE IN ${rem}D';
+    } else {
+      headline = 'REBALANCE SCHEDULE';
+    }
+    final parts = <String>[];
+    if (r.dueDate != null) parts.add('Due ${r.dueDate}');
+    if (r.lastRebalanceDate != null) {
+      parts.add('last action ${r.lastRebalanceDate}');
+    }
+    final sub = parts.isEmpty ? r.note : parts.join(' · ');
+    return TWGlassCard(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(due ? Icons.event_available : Icons.event_repeat,
+              color: color, size: 20),
+          const SizedBox(width: TWSpace.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(headline,
+                    style: TWType.caption
+                        .copyWith(color: color, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                Text(r.note,
+                    style: TWType.caption.copyWith(
+                        color: TWColors.textSecondary, height: 1.35)),
+                if (sub != r.note) ...[
+                  const SizedBox(height: 2),
+                  Text(sub,
+                      style: TWType.caption
+                          .copyWith(color: TWColors.textTertiary)),
+                ],
               ],
             ),
           ),

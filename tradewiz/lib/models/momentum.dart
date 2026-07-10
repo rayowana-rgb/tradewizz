@@ -32,6 +32,39 @@ class MomentumPick {
       );
 }
 
+/// When the next monthly momentum rebalance is due, derived from the local
+/// momentum ledger (the last real BUY/SELL) on the actual exchange calendar.
+class MomentumRebalanceSchedule {
+  const MomentumRebalanceSchedule({
+    required this.status,
+    this.lastRebalanceDate,
+    this.dueDate,
+    this.tradingDaysRemaining,
+    required this.note,
+  });
+
+  /// "none" (no position yet), "due" (rebalance now), or "upcoming".
+  final String status;
+  final String? lastRebalanceDate; // ISO date
+  final String? dueDate; // ISO date
+  final int? tradingDaysRemaining; // <= 0 means due/overdue
+  final String note;
+
+  bool get isDue => status == 'due';
+  bool get hasClock => status != 'none';
+
+  factory MomentumRebalanceSchedule.fromJson(Map<String, dynamic> j) =>
+      MomentumRebalanceSchedule(
+        status: (j['status'] ?? 'none').toString(),
+        lastRebalanceDate: j['last_rebalance_date']?.toString(),
+        dueDate: j['due_date']?.toString(),
+        tradingDaysRemaining: (j['trading_days_remaining'] as num?)?.toInt(),
+        note: (j['note'] ?? '').toString(),
+      );
+
+  static const none = MomentumRebalanceSchedule(status: 'none', note: '');
+}
+
 class MomentumPicks {
   const MomentumPicks({
     required this.picks,
@@ -43,6 +76,7 @@ class MomentumPicks {
     required this.stage,
     required this.disclaimer,
     required this.generatedAt,
+    this.rebalance = MomentumRebalanceSchedule.none,
   });
 
   final List<MomentumPick> picks;
@@ -56,6 +90,7 @@ class MomentumPicks {
   final String stage;
   final String disclaimer;
   final String generatedAt;
+  final MomentumRebalanceSchedule rebalance;
 
   bool get isStress => regime == 'stress';
 
@@ -72,6 +107,10 @@ class MomentumPicks {
         stage: (j['stage'] ?? '').toString(),
         disclaimer: (j['disclaimer'] ?? '').toString(),
         generatedAt: (j['generated_at'] ?? '').toString(),
+        rebalance: j['rebalance'] is Map<String, dynamic>
+            ? MomentumRebalanceSchedule.fromJson(
+                j['rebalance'] as Map<String, dynamic>)
+            : MomentumRebalanceSchedule.none,
       );
 }
 

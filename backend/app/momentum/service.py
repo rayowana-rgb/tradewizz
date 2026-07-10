@@ -76,6 +76,28 @@ class MomentumPick:
     median_dollar_vol: float
 
 
+# Rebalance cadence: the production spec is a MONTHLY hold (~21 trading days).
+REBALANCE_TRADING_DAYS = 21
+
+
+@dataclass(frozen=True)
+class RebalanceSchedule:
+    """When the next monthly momentum rebalance is due.
+
+    All dates are honest: `last_rebalance` comes from the real ledger mutation
+    time (None if no momentum position was ever taken), and the due date is
+    computed on the actual exchange calendar (21 TRADING days, not 21 calendar
+    days) drawn from the cached OHLCV series. When there is no ledger clock yet,
+    `status` is "none" and no date is fabricated.
+    """
+
+    status: str                 # "none" | "due" | "upcoming"
+    last_rebalance_date: Optional[str]   # ISO date of last momentum action
+    due_date: Optional[str]              # ISO date the next rebalance is due
+    trading_days_remaining: Optional[int]  # <=0 means due/overdue
+    note: str
+
+
 @dataclass(frozen=True)
 class MomentumPicks:
     picks: List[MomentumPick]
@@ -196,6 +218,139 @@ class MomentumService:
             stage=STAGE,
             disclaimer=DISCLAIMER,
             generated_at=datetime.now(timezone.utc).isoformat(),
+        )
+
+    # -- rebalance schedule ------------------------------------------------ #
+    def _trading_calendar(self, max_symbols: int = 30):
+        """A recent exchange-trading-day calendar from the cached liquid names.
+
+        Uses the SAME cache-only reads as the picks (no network). Unions the
+        recent index dates across a handful of the deepest series so a single
+        symbol's gap cannot distort the calendar. Returns a sorted list of
+        `datetime.date`.
+        """
+        from datetime import date as _date
+        seen: set = set()
+        count = 0
+        for sym in self._universe.symbols(Market.US):
+            df = self._frame(sym)
+            if df is None:
+                continue
+            try:
+                for ts in df.index[-400:]:
+                    seen.add(pd.Timestamp(ts).date())
+            except Exception:  # noqa: BLE001
+                continue
+            count += 1
+            if count >= max_symbols:
+                break
+        return sorted(d for d in seen if isinstance(d, _date))
+
+    def rebalance_schedule(self, last_rebalance_ts: Optional[int]) -> RebalanceSchedule:
+        """Compute the next monthly rebalance date from the last ledger action.
+
+        `last_rebalance_ts` is epoch seconds (from the momentum ledger), or None
+        when no momentum position has ever been taken. The due date is the
+        trading day that is REBALANCE_TRADING_DAYS exchange sessions after the
+        session containing the last action -- computed on the real cached
+        exchange calendar, never a naive +30 calendar days.
+        """
+        from datetime import datetime, timezone, date as _date
+
+        if not last_rebalance_ts:
+            return RebalanceSchedule(
+                status="none",
+                last_rebalance_date=None,
+                due_date=None,
+                trading_days_remaining=None,
+                note=(
+                    "No momentum position taken yet. The monthly-rebalance clock "
+                    "starts on your first momentum buy."
+                ),
+            )
+
+        last_dt = datetime.fromtimestamp(int(last_rebalance_ts), tz=timezone.utc).date()
+        cal = self._trading_calendar()
+        if len(cal) < REBALANCE_TRADING_DAYS + 2:
+            return RebalanceSchedule(
+                status="none",
+                last_rebalance_date=last_dt.isoformat(),
+                due_date=None,
+                trading_days_remaining=None,
+                note="Not enough cached trading history to project the due date.",
+            )
+
+        today = datetime.now(timezone.utc).date()
+
+        # Index of the session on/after the last action within the calendar.
+        def _idx_on_or_after(d: _date) -> int:
+            for i, cd in enumerate(cal):
+                if cd >= d:
+                    return i
+            return len(cal) - 1
+
+        import datetime as _dt
+
+        def _weekday_sessions_between(a: _date, b: _date) -> int:
+            """Approx trading sessions from a to b (exclusive) counting weekdays."""
+            if b <= a:
+                return 0
+            n = 0
+            d = a
+            while d < b:
+                d = d + _dt.timedelta(days=1)
+                if d.weekday() < 5:
+                    n += 1
+            return n
+
+        # A single "virtual" session-index function that works both inside the
+        # cached calendar AND past its end (the daily backfill can lag the real
+        # clock by a few days). Past the end we extend by counting weekdays, so
+        # last-action, today, and due dates are all measured on ONE consistent
+        # session axis and stay ordered correctly.
+        last_cal = cal[-1]
+
+        def _session_index(d: _date) -> int:
+            if d <= last_cal:
+                return _idx_on_or_after(d)
+            return (len(cal) - 1) + _weekday_sessions_between(last_cal, d)
+
+        def _date_for_index(i: int) -> _date:
+            if i < len(cal):
+                return cal[max(0, i)]
+            over = i - (len(cal) - 1)
+            d = last_cal
+            added = 0
+            while added < over:
+                d = d + _dt.timedelta(days=1)
+                if d.weekday() < 5:
+                    added += 1
+            return d
+
+        last_idx = _session_index(last_dt)
+        due_idx = last_idx + REBALANCE_TRADING_DAYS
+        today_idx = _session_index(today)
+
+        due_date = _date_for_index(due_idx)
+        remaining = due_idx - today_idx  # trading sessions from today to due
+
+        status = "due" if remaining <= 0 else "upcoming"
+        if status == "due":
+            note = (
+                "Monthly rebalance is due. Review the current top-N and rebalance "
+                "to keep the book aligned with the signal."
+            )
+        else:
+            note = (
+                f"Next monthly rebalance in ~{remaining} trading day"
+                f"{'s' if remaining != 1 else ''}."
+            )
+        return RebalanceSchedule(
+            status=status,
+            last_rebalance_date=last_dt.isoformat(),
+            due_date=due_date.isoformat(),
+            trading_days_remaining=int(remaining),
+            note=note,
         )
 
     def _scan(self, symbols):

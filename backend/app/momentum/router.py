@@ -52,6 +52,15 @@ class MomentumPickModel(BaseModel):
     median_dollar_vol: float
 
 
+class RebalanceScheduleModel(BaseModel):
+    # "none" (no clock yet) | "due" (rebalance now) | "upcoming"
+    status: str
+    last_rebalance_date: Optional[str] = None
+    due_date: Optional[str] = None
+    trading_days_remaining: Optional[int] = None
+    note: str
+
+
 class MomentumPicksModel(BaseModel):
     picks: List[MomentumPickModel]
     universe_size: int
@@ -62,6 +71,8 @@ class MomentumPicksModel(BaseModel):
     stage: str
     disclaimer: str
     generated_at: str
+    # When the next monthly rebalance is due (from the local momentum ledger).
+    rebalance: RebalanceScheduleModel
 
 
 class BasketBuyRequest(BaseModel):
@@ -178,7 +189,18 @@ class SleevesModel(BaseModel):
 # -- read-only picks -------------------------------------------------------- #
 @router.get("/picks", response_model=MomentumPicksModel)
 def momentum_picks(top_n: int = 10) -> MomentumPicksModel:
-    p = get_service().picks(top_n=top_n)
+    svc = get_service()
+    p = svc.picks(top_n=top_n)
+
+    # Rebalance clock from the local momentum ledger (honest: None -> "none").
+    from .ledger import MomentumLedger
+    try:
+        last_ts = MomentumLedger().last_rebalance_ts()
+    except Exception as exc:  # noqa: BLE001 - never fail picks over the clock
+        logger.info("rebalance ledger read failed: %s", exc)
+        last_ts = None
+    sched = svc.rebalance_schedule(last_ts)
+
     return MomentumPicksModel(
         picks=[MomentumPickModel(**vars(x)) for x in p.picks],
         universe_size=p.universe_size,
@@ -189,6 +211,13 @@ def momentum_picks(top_n: int = 10) -> MomentumPicksModel:
         stage=p.stage,
         disclaimer=p.disclaimer,
         generated_at=p.generated_at,
+        rebalance=RebalanceScheduleModel(
+            status=sched.status,
+            last_rebalance_date=sched.last_rebalance_date,
+            due_date=sched.due_date,
+            trading_days_remaining=sched.trading_days_remaining,
+            note=sched.note,
+        ),
     )
 
 
