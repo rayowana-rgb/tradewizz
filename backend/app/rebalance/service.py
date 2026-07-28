@@ -84,6 +84,11 @@ TAKE_PROFIT_SCORE_CEILING = 80.0
 # A holding qualifies when its last close sits within SUPPORT_NEAR_PCT ABOVE
 # either the immediate (10d low) or major (50d low) support.
 SUPPORT_NEAR_PCT = 3.0
+# Cap on how many support-based average-down ADDs may fire in one rebalance
+# cycle. Averaging down should be SELECTIVE -- only the strongest few names
+# testing support, not every loser near a floor. Excess candidates (ranked by
+# engine score) are downgraded to HOLD.
+AVERAGE_DOWN_MAX = 3
 # If price has broken BELOW major support by more than this, support is
 # considered failed -> do NOT average down (avoid catching a falling knife).
 SUPPORT_BROKEN_PCT = 3.0
@@ -124,53 +129,49 @@ def _target_weight(score: float, profile_cap: float) -> float:
 
 
 def _support_context(support: Optional[dict]) -> tuple:
-    """Classify a holding's price vs its support levels.
+    """Classify a holding's price vs its TESTED swing support.
 
-    Returns ``(near_support: bool, broken: bool, level: float|None)``.
+    Returns ``(near_support: bool, broken: bool, level: float|None,
+    touches: int)``.
 
-    * ``near_support`` == price is within SUPPORT_NEAR_PCT ABOVE the immediate
-      (10d) or major (50d) support -> the tape is testing a floor.
-    * ``broken`` == price is more than SUPPORT_BROKEN_PCT BELOW major support
-      -> support has failed; do not buy the dip.
-    * ``level`` == the nearest qualifying support used (for the reason text).
+    Keys on ``swing_support`` -- a level the tape has bounced off >=2x (see
+    engine._tested_swing_support) -- NOT a rolling minimum. A falling stock
+    always hugs its rolling low, so keying on that flagged almost everything;
+    a tested swing low is a real floor.
+
+    * ``near_support`` == price within SUPPORT_NEAR_PCT ABOVE the swing level
+      (testing the floor from above).
+    * ``broken``       == price more than SUPPORT_BROKEN_PCT BELOW the swing
+      level (the floor gave way -> falling knife; do not buy).
+    * ``level``        == the tested swing level (for the reason text).
+    * ``touches``      == how many times the level was tested.
     """
     if not support:
-        return (False, False, None)
+        return (False, False, None, 0)
     try:
         price = float(support.get("price") or 0.0)
     except (TypeError, ValueError):
         price = 0.0
     if price <= 0:
-        return (False, False, None)
-    imm = support.get("immediate_support")
-    maj = support.get("major_support")
+        return (False, False, None, 0)
+    lvl = support.get("swing_support")
+    if lvl is None:
+        return (False, False, None, 0)
+    try:
+        level = float(lvl)
+    except (TypeError, ValueError):
+        return (False, False, None, 0)
+    if level <= 0:
+        return (False, False, None, 0)
+    try:
+        touches = int(support.get("touches") or 0)
+    except (TypeError, ValueError):
+        touches = 0
 
-    broken = False
-    if maj is not None:
-        try:
-            if price < float(maj) * (1.0 - SUPPORT_BROKEN_PCT / 100.0):
-                broken = True
-        except (TypeError, ValueError):
-            pass
-
-    near = False
-    level = None
-    for lvl in (imm, maj):
-        if lvl is None:
-            continue
-        try:
-            lvl_f = float(lvl)
-        except (TypeError, ValueError):
-            continue
-        if lvl_f <= 0:
-            continue
-        # Within the band from the level up to level*(1+near%): testing support.
-        upper = lvl_f * (1.0 + SUPPORT_NEAR_PCT / 100.0)
-        if lvl_f <= price <= upper:
-            near = True
-            if level is None or lvl_f > level:
-                level = lvl_f
-    return (near, broken, level)
+    broken = price < level * (1.0 - SUPPORT_BROKEN_PCT / 100.0)
+    upper = level * (1.0 + SUPPORT_NEAR_PCT / 100.0)
+    near = (level <= price <= upper)
+    return (near, broken, level, touches)
 
 
 class RebalanceService:
@@ -275,7 +276,8 @@ class RebalanceService:
             pnl_pct = _position_pnl_pct(p)
             pnl_value = _position_pnl_value(p)
             target = _target_weight(score, profile_cap)
-            near_support, support_broken, support_level = _support_context(
+            (near_support, support_broken, support_level,
+             support_touches) = _support_context(
                 self._safe_support(p.symbol, p.market)
             )
 
@@ -287,6 +289,7 @@ class RebalanceService:
                 near_support=near_support,
                 support_broken=support_broken,
                 support_level=support_level,
+                support_touches=support_touches,
             )
             actions.append(RebalanceAction(
                 symbol=p.symbol,
@@ -302,6 +305,32 @@ class RebalanceService:
                 pnl_pct=round(pnl_pct, 1),
                 pnl_value=round(pnl_value, 2),
             ))
+
+        # CAP average-down ADDs (AVERAGE_DOWN_MAX). Averaging down must be
+        # selective: keep only the top-N candidates by engine score (tie-break:
+        # deeper loss first -> more cost-basis benefit) and downgrade the rest
+        # to HOLD so a single dip doesn't turn a third of the book into buys.
+        avg_down_idx = [
+            i for i, a in enumerate(actions)
+            if a.action == ACTION_ADD and "averaging down" in a.reason.lower()
+        ]
+        if len(avg_down_idx) > AVERAGE_DOWN_MAX:
+            ranked = sorted(
+                avg_down_idx,
+                key=lambda i: (actions[i].score, -actions[i].pnl_pct),
+                reverse=True,
+            )
+            for i in ranked[AVERAGE_DOWN_MAX:]:
+                a = actions[i]
+                actions[i] = a.model_copy(update={
+                    "action": ACTION_HOLD,
+                    "priority": PRIORITY_LOW,
+                    "target_weight": round(a.current_weight, 1),
+                    "reason": (
+                        "Near tested support with thesis intact, but not among "
+                        "the top average-down candidates this cycle — hold."
+                    ),
+                })
 
         # Sort HIGH first, then by how far off target (largest gaps first).
         order = {PRIORITY_HIGH: 0, PRIORITY_MEDIUM: 1, PRIORITY_LOW: 2}
@@ -366,6 +395,7 @@ def _decide(
     *, score, signal, quality, weight, regime, pnl_pct, target,
     avg_weight=0.0, low_confidence=False,
     near_support=False, support_broken=False, support_level=None,
+    support_touches=0,
 ):
     sig = (signal or "HOLD").upper()
     bearish = regime == REGIME_BEAR
@@ -472,14 +502,15 @@ def _decide(
         )
 
     # AVERAGE DOWN (SUPPORT-BASED). A holding whose price is TESTING a technical
-    # support level (near a rolling 10d/50d low), that the engine is NOT trying
-    # to exit/reduce and whose score still holds above the floor, is a
-    # buy-the-dip candidate: adding shares near support lowers the cost basis
-    # where the tape actually finds a floor. Gated so we never average into a
-    # name the engine dislikes (those already fell through EXIT/REDUCE above),
-    # never when support has BROKEN (falling knife), never while sitting on a
-    # gain (averaging down only makes sense on a loss), and never in a bear
-    # regime.
+    # support level -- a TESTED swing low the tape bounced off >=2x, NOT a mere
+    # rolling minimum -- that the engine is NOT trying to exit/reduce and whose
+    # score still holds above the floor, is a buy-the-dip candidate: adding
+    # shares near a real floor lowers the cost basis. Gated so we never average
+    # into a name the engine dislikes (those already fell through EXIT/REDUCE
+    # above), never when support has BROKEN (falling knife), never while
+    # sitting on a gain (averaging down only makes sense on a loss), and never
+    # in a bear regime. NOTE: the caller additionally CAPS how many of these
+    # fire per cycle (top-N by score) -- see AVERAGE_DOWN_MAX.
     average_down = (
         real
         and near_support
@@ -491,16 +522,19 @@ def _decide(
     )
     if average_down:
         level_txt = (
-            f"near support {support_level:.2f}"
+            f"tested support {support_level:.2f}"
             if support_level is not None
-            else "near support"
+            else "tested support"
+        )
+        touch_txt = (
+            f" ({support_touches}x tested)" if support_touches >= 2 else ""
         )
         return (
             ACTION_ADD,
             (
-                f"Testing {level_txt} with thesis intact (score {score:.0f}, "
-                f"down {pnl_pct:.0f}%) — consider averaging down to lower your "
-                f"cost basis."
+                f"Testing {level_txt}{touch_txt} with thesis intact "
+                f"(score {score:.0f}, down {pnl_pct:.0f}%) — consider averaging "
+                f"down to lower your cost basis."
             ),
             PRIORITY_MEDIUM,
         )

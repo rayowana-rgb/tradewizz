@@ -1025,19 +1025,81 @@ class AnalysisEngine:
                 return price
         return None
 
+    @staticmethod
+    def _tested_swing_support(df, price: float) -> Optional[dict]:
+        """Nearest TESTED swing-low support at/below ``price`` from daily bars.
+
+        A *pivot low* is a bar whose Low is the local minimum over a +/- window
+        of bars (fractal). A pivot level becomes a *tested support* only when
+        at least two pivot lows cluster within a small price tolerance -- i.e.
+        the tape has bounced off it more than once. This deliberately avoids
+        treating a mere rolling minimum (which every falling stock hugs) as
+        support.
+
+        Returns ``{"swing_support": float, "touches": int}`` for the highest
+        tested level that sits at or below ``price`` (the floor the price is
+        currently resting on / approaching), or None when no tested level
+        exists below price.
+        """
+        try:
+            lows = df["Low"].dropna().astype(float)
+        except Exception:  # noqa: BLE001
+            return None
+        n = len(lows)
+        if n < 25 or price <= 0:
+            return None
+        vals = lows.tolist()
+        w = 3  # fractal half-window: pivot = min over +/- 3 bars
+        pivots: list[float] = []
+        for i in range(w, n - w):
+            v = vals[i]
+            if v <= 0:
+                continue
+            window = vals[i - w:i + w + 1]
+            if v == min(window):
+                pivots.append(v)
+        if len(pivots) < 2:
+            return None
+        # Cluster pivots within TOL of each other; a cluster with >=2 members
+        # is a tested support level (its representative = the cluster mean).
+        tol = 0.015  # 1.5% price tolerance for "same level"
+        pivots_sorted = sorted(pivots)
+        clusters: list[list[float]] = []
+        for p in pivots_sorted:
+            if clusters and p <= clusters[-1][0] * (1.0 + tol):
+                clusters[-1].append(p)
+            else:
+                clusters.append([p])
+        best_level: Optional[float] = None
+        best_touches = 0
+        for c in clusters:
+            if len(c) < 2:
+                continue
+            level = sum(c) / len(c)
+            # Only levels at/below current price act as support the price is
+            # resting on / approaching from above.
+            if level <= price * (1.0 + tol):
+                if best_level is None or level > best_level:
+                    best_level = level
+                    best_touches = len(c)
+        if best_level is None:
+            return None
+        return {"swing_support": float(best_level), "touches": int(best_touches)}
+
     def support_levels_cached(
         self, symbol: str, market: Market
     ) -> Optional[dict]:
         """Support levels + last close from CACHED OHLCV only (no network).
 
-        Returns ``{"immediate_support": float|None, "major_support":
-        float|None, "price": float}`` computed from on-disk daily bars, or
-        None when nothing usable is cached. Latency-safe (never fetches) so
-        the Rebalance path can decide "price near support" without risking a
-        slow/blocked provider call.
-
-        ``immediate_support`` == rolling 10-day low, ``major_support`` ==
-        rolling 50-day low (same definitions as indicators.compute_all).
+        Returns a dict with:
+          * ``swing_support`` -- nearest TESTED swing-low support at/below the
+            last close (a level bounced off >=2x), or None. This is the level
+            the Rebalance average-down rule keys on.
+          * ``touches`` -- how many pivot lows formed that tested level.
+          * ``immediate_support`` / ``major_support`` -- rolling 10d/50d lows
+            (kept for context / fallback only).
+          * ``price`` -- last cached close.
+        Latency-safe (never fetches); returns None when nothing usable cached.
         """
         cache = getattr(self._fetch, "cache", None)
         if cache is None:
@@ -1059,10 +1121,14 @@ class AnalysisEngine:
                 price = ind.get("close")
             if price is None or price <= 0:
                 continue
+            price = float(price)
+            swing = self._tested_swing_support(df, price)
             return {
+                "swing_support": (swing or {}).get("swing_support"),
+                "touches": (swing or {}).get("touches", 0),
                 "immediate_support": ind.get("immediate_support"),
                 "major_support": ind.get("major_support"),
-                "price": float(price),
+                "price": price,
             }
         return None
 

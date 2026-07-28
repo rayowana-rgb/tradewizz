@@ -463,9 +463,8 @@ def test_rebalance_averages_down_a_loser_testing_support():
             "F3": (80, "BUY", 1.0),
         },
         support_map={
-            # price 101 sits ~1% above the 100 support -> testing support.
-            "DIP": {"immediate_support": 100.0, "major_support": 95.0,
-                    "price": 101.0},
+            # price 101 sits ~1% above the tested swing support at 100.
+            "DIP": {"swing_support": 100.0, "touches": 3, "price": 101.0},
         },
     )
     h = _register(c)
@@ -497,8 +496,7 @@ def test_rebalance_does_not_average_down_a_loser_far_from_support():
         },
         support_map={
             # price 130 is ~30% above support -> not testing anything.
-            "DIP": {"immediate_support": 100.0, "major_support": 95.0,
-                    "price": 130.0},
+            "DIP": {"swing_support": 100.0, "touches": 3, "price": 130.0},
         },
     )
     h = _register(c)
@@ -525,9 +523,8 @@ def test_rebalance_does_not_average_down_when_support_broken():
             "F3": (80, "BUY", 1.0),
         },
         support_map={
-            # price 90 is well below the 100 major support -> support failed.
-            "KNIFE": {"immediate_support": 100.0, "major_support": 100.0,
-                      "price": 90.0},
+            # price 90 is well below the 100 swing support -> support failed.
+            "KNIFE": {"swing_support": 100.0, "touches": 2, "price": 90.0},
         },
     )
     h = _register(c)
@@ -554,8 +551,7 @@ def test_rebalance_does_not_average_down_a_weak_score_loser():
             "F3": (80, "BUY", 1.0),
         },
         support_map={
-            "FALLER": {"immediate_support": 100.0, "major_support": 95.0,
-                       "price": 101.0},
+            "FALLER": {"swing_support": 100.0, "touches": 3, "price": 101.0},
         },
     )
     h = _register(c)
@@ -569,6 +565,41 @@ def test_rebalance_does_not_average_down_a_weak_score_loser():
     by = {a["symbol"]: a for a in body["actions"]}
     assert by["FALLER"]["action"] != "ADD", by["FALLER"]
     assert "averaging down" not in by["FALLER"]["reason"].lower()
+    sub_router.set_service(SubscriptionService())
+
+
+def test_rebalance_caps_average_down_to_top_candidates():
+    # SIX losing holdings all testing support with intact scores. Only the
+    # top AVERAGE_DOWN_MAX (=3) by score get ADD; the rest are held.
+    from app.rebalance.service import AVERAGE_DOWN_MAX
+    # Scores in [80,84]: above the quality-reduce ceiling (75) and score floor
+    # (50), but below the 85 strong-name ADD rule -> the ONLY applicable action
+    # is the support-based average-down add, isolating the cap.
+    scores = {"D1": 84, "D2": 83, "D3": 82, "D4": 81, "D5": 80, "D6": 80}
+    score_map = {s: (sc, "HOLD", -1.0) for s, sc in scores.items()}
+    support_map = {
+        s: {"swing_support": 100.0, "touches": 3, "price": 101.0}
+        for s in scores
+    }
+    c = _build_client(score_map=score_map, support_map=support_map)
+    h = _register(c)
+    # Each small (~3% weight) so all sit below target and are add-eligible;
+    # one big filler to dilute weights.
+    positions = [_Pos(s, Market.US, 30_000.0, unrealized_pnl=-6_000.0)
+                 for s in scores]
+    positions.append(_Pos("BIG", Market.US, 820_000.0))
+    c._simstate["positions"] = positions
+    body = c.get("/v1/portfolio/rebalance", headers=h).json()
+    by = {a["symbol"]: a for a in body["actions"]}
+    adds = [s for s in scores if "averaging down" in by[s]["reason"].lower()]
+    assert len(adds) == AVERAGE_DOWN_MAX, adds
+    # The kept ones must be the HIGHEST scores (D1, D2, D3).
+    assert len(adds) == AVERAGE_DOWN_MAX, adds
+    # A dropped candidate is downgraded to HOLD, NOT ADD (top-3 by score kept).
+    dropped = [s for s in scores if by[s]["action"] == "HOLD"]
+    assert len(dropped) == len(scores) - AVERAGE_DOWN_MAX, dropped
+    for s in dropped:
+        assert "averaging down" not in by[s]["reason"].lower()
     sub_router.set_service(SubscriptionService())
 
 
