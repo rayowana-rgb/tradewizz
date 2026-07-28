@@ -408,6 +408,18 @@ def _symbol_score(symbol, market):
     return match
 
 
+def _symbol_support(symbol, market):
+    """Support levels + last close from CACHED OHLCV only (no live fetch).
+
+    Latency-safe provider for the Rebalance support-based average-down trigger.
+    Returns ``{"immediate_support", "major_support", "price"}`` or None.
+    """
+    try:
+        return engine.support_levels_cached(symbol, market)
+    except Exception:  # noqa: BLE001 - best-effort
+        return None
+
+
 app.include_router(health_router)
 _health_service = PortfolioHealthService(
     positions_provider=_sim_service.positions,
@@ -518,6 +530,7 @@ _rebalance_service = RebalanceService(
     account_provider=_sim_service.account,
     score_provider=_symbol_score,
     regime_provider=_snapshot_regime,
+    support_provider=_symbol_support,
 )
 app.include_router(rebalance_router)
 _set_rebalance_service(_rebalance_service)
@@ -535,6 +548,7 @@ _set_moomoo_analytics(
         moomoo_service=_get_moomoo_service(),
         score_provider=_symbol_score,
         regime_provider=_snapshot_regime,
+        support_provider=_symbol_support,
     )
 )
 

@@ -1025,6 +1025,47 @@ class AnalysisEngine:
                 return price
         return None
 
+    def support_levels_cached(
+        self, symbol: str, market: Market
+    ) -> Optional[dict]:
+        """Support levels + last close from CACHED OHLCV only (no network).
+
+        Returns ``{"immediate_support": float|None, "major_support":
+        float|None, "price": float}`` computed from on-disk daily bars, or
+        None when nothing usable is cached. Latency-safe (never fetches) so
+        the Rebalance path can decide "price near support" without risking a
+        slow/blocked provider call.
+
+        ``immediate_support`` == rolling 10-day low, ``major_support`` ==
+        rolling 50-day low (same definitions as indicators.compute_all).
+        """
+        cache = getattr(self._fetch, "cache", None)
+        if cache is None:
+            return None
+        ticker = yf_symbol(symbol, market)
+        for period in ("1y", "6mo", "1mo"):
+            try:
+                df = cache.read_cached_only(ticker, period, "1d")
+            except Exception:  # noqa: BLE001 - best-effort
+                df = None
+            if df is None or getattr(df, "empty", True):
+                continue
+            try:
+                ind = indicators.compute_all(df)
+            except Exception:  # noqa: BLE001 - best-effort
+                continue
+            price = self._close_from_df(df)
+            if price is None or price <= 0:
+                price = ind.get("close")
+            if price is None or price <= 0:
+                continue
+            return {
+                "immediate_support": ind.get("immediate_support"),
+                "major_support": ind.get("major_support"),
+                "price": float(price),
+            }
+        return None
+
     def open_after_cached(
         self, symbol: str, market: Market, after_date: str
     ) -> Optional[tuple]:

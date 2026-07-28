@@ -77,13 +77,18 @@ EXIT_LOSS_THRESHOLD = -20.0
 # profit. A still-strong winner (score >= ceiling) keeps running untouched.
 TAKE_PROFIT_PCT = 30.0
 TAKE_PROFIT_SCORE_CEILING = 80.0
-# Average-down: a holding sitting on an unrealized loss worse than this (more
-# negative) is flagged to consider adding to the position at a better cost
-# basis -- but only when the name is NOT an exit candidate (we never average
-# into a falling knife the engine wants gone).
-AVERAGE_DOWN_PCT = -15.0
+# Average-down (SUPPORT-BASED). A holding is flagged to consider adding at a
+# better cost basis when its price is TESTING a technical support level (near a
+# rolling low), not merely because of an arbitrary drawdown depth. This buys
+# the dip where the tape actually finds a floor, and skips names in free-fall.
+# A holding qualifies when its last close sits within SUPPORT_NEAR_PCT ABOVE
+# either the immediate (10d low) or major (50d low) support.
+SUPPORT_NEAR_PCT = 3.0
+# If price has broken BELOW major support by more than this, support is
+# considered failed -> do NOT average down (avoid catching a falling knife).
+SUPPORT_BROKEN_PCT = 3.0
 # A holding may average down only while its engine score stays at or above this
-# floor; below it the loss is treated as a warning, not a buy-the-dip.
+# floor; below it the weakness is treated as a warning, not a buy-the-dip.
 AVERAGE_DOWN_SCORE_FLOOR = 50.0
 # Relative-concentration REDUCE: a holding whose weight exceeds the average
 # holding weight by more than 100% (i.e. more than 2x the average position) is
@@ -118,6 +123,56 @@ def _target_weight(score: float, profile_cap: float) -> float:
     return min(band, profile_cap)
 
 
+def _support_context(support: Optional[dict]) -> tuple:
+    """Classify a holding's price vs its support levels.
+
+    Returns ``(near_support: bool, broken: bool, level: float|None)``.
+
+    * ``near_support`` == price is within SUPPORT_NEAR_PCT ABOVE the immediate
+      (10d) or major (50d) support -> the tape is testing a floor.
+    * ``broken`` == price is more than SUPPORT_BROKEN_PCT BELOW major support
+      -> support has failed; do not buy the dip.
+    * ``level`` == the nearest qualifying support used (for the reason text).
+    """
+    if not support:
+        return (False, False, None)
+    try:
+        price = float(support.get("price") or 0.0)
+    except (TypeError, ValueError):
+        price = 0.0
+    if price <= 0:
+        return (False, False, None)
+    imm = support.get("immediate_support")
+    maj = support.get("major_support")
+
+    broken = False
+    if maj is not None:
+        try:
+            if price < float(maj) * (1.0 - SUPPORT_BROKEN_PCT / 100.0):
+                broken = True
+        except (TypeError, ValueError):
+            pass
+
+    near = False
+    level = None
+    for lvl in (imm, maj):
+        if lvl is None:
+            continue
+        try:
+            lvl_f = float(lvl)
+        except (TypeError, ValueError):
+            continue
+        if lvl_f <= 0:
+            continue
+        # Within the band from the level up to level*(1+near%): testing support.
+        upper = lvl_f * (1.0 + SUPPORT_NEAR_PCT / 100.0)
+        if lvl_f <= price <= upper:
+            near = True
+            if level is None or lvl_f > level:
+                level = lvl_f
+    return (near, broken, level)
+
+
 class RebalanceService:
     def __init__(
         self,
@@ -127,17 +182,30 @@ class RebalanceService:
         score_provider: ScoreProvider,
         regime_provider: Optional[RegimeProvider] = None,
         profile: str = PROFILE_BALANCED,
+        support_provider=None,
     ):
         self._health = health_service
         self._positions = positions_provider
         self._account = account_provider
         self._score = score_provider
+        # Optional: symbol -> {"immediate_support", "major_support", "price"}
+        # from CACHED OHLCV only (no live fetch). Drives the support-based
+        # average-down trigger. When absent, average-down is simply skipped.
+        self._support = support_provider
         self._regime = regime_provider
         self._profile = profile
 
     def _safe_match(self, symbol: str, market: Market):
         try:
             return self._score(symbol, market)
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _safe_support(self, symbol: str, market: Market):
+        if self._support is None:
+            return None
+        try:
+            return self._support(symbol, market)
         except Exception:  # noqa: BLE001
             return None
 
@@ -207,12 +275,18 @@ class RebalanceService:
             pnl_pct = _position_pnl_pct(p)
             pnl_value = _position_pnl_value(p)
             target = _target_weight(score, profile_cap)
+            near_support, support_broken, support_level = _support_context(
+                self._safe_support(p.symbol, p.market)
+            )
 
             action, reason, priority = _decide(
                 score=score, signal=signal, quality=quality, weight=weight,
                 regime=regime, pnl_pct=pnl_pct, target=target,
                 avg_weight=avg_weight,
                 low_confidence=low_conf,
+                near_support=near_support,
+                support_broken=support_broken,
+                support_level=support_level,
             )
             actions.append(RebalanceAction(
                 symbol=p.symbol,
@@ -291,6 +365,7 @@ def _position_pnl_value(p) -> float:
 def _decide(
     *, score, signal, quality, weight, regime, pnl_pct, target,
     avg_weight=0.0, low_confidence=False,
+    near_support=False, support_broken=False, support_level=None,
 ):
     sig = (signal or "HOLD").upper()
     bearish = regime == REGIME_BEAR
@@ -396,24 +471,36 @@ def _decide(
             PRIORITY_MEDIUM,
         )
 
-    # AVERAGE DOWN. A holding nursing a loss worse than AVERAGE_DOWN_PCT, that
-    # the engine is NOT trying to exit/reduce and whose score still holds above
-    # the floor, is a buy-the-dip candidate: adding shares lowers the cost
-    # basis. Gated by score so we never average into a name the engine dislikes
-    # (those already fell through EXIT/REDUCE above), and never in a bear regime.
+    # AVERAGE DOWN (SUPPORT-BASED). A holding whose price is TESTING a technical
+    # support level (near a rolling 10d/50d low), that the engine is NOT trying
+    # to exit/reduce and whose score still holds above the floor, is a
+    # buy-the-dip candidate: adding shares near support lowers the cost basis
+    # where the tape actually finds a floor. Gated so we never average into a
+    # name the engine dislikes (those already fell through EXIT/REDUCE above),
+    # never when support has BROKEN (falling knife), never while sitting on a
+    # gain (averaging down only makes sense on a loss), and never in a bear
+    # regime.
     average_down = (
         real
-        and pnl_pct <= AVERAGE_DOWN_PCT
+        and near_support
+        and not support_broken
+        and pnl_pct < 0.0
         and score >= AVERAGE_DOWN_SCORE_FLOOR
         and weight < target
         and not bearish
     )
     if average_down:
+        level_txt = (
+            f"near support {support_level:.2f}"
+            if support_level is not None
+            else "near support"
+        )
         return (
             ACTION_ADD,
             (
-                f"Down {pnl_pct:.0f}% but thesis intact (score {score:.0f}) — "
-                f"consider averaging down to lower your cost basis."
+                f"Testing {level_txt} with thesis intact (score {score:.0f}, "
+                f"down {pnl_pct:.0f}%) — consider averaging down to lower your "
+                f"cost basis."
             ),
             PRIORITY_MEDIUM,
         )

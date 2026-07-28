@@ -49,6 +49,7 @@ class MoomooAnalytics:
         moomoo_service,
         score_provider: Callable,
         regime_provider: Callable,
+        support_provider: Callable = None,
     ):
         self._moomoo = moomoo_service
         # The providers ignore user_id: the live account is single-user (owner).
@@ -62,6 +63,7 @@ class MoomooAnalytics:
             account_provider=self._account,
             score_provider=score_provider,
             regime_provider=regime_provider,
+            support_provider=support_provider,
         )
         # AI Portfolio Manager over the SAME live holdings, reusing the exact
         # simulation service (no snapshot history for the live book).

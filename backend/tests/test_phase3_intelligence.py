@@ -119,12 +119,19 @@ class _Acct:
         self.equity = equity
 
 
-def _build_client(*, score_map=None):
+def _build_client(*, score_map=None, support_map=None):
     """Preview-mode client with Phase-3 services injected (in-memory).
 
     ``score_map`` overrides per-symbol engine scores for the rebalance rules:
     a dict {symbol: (score, signal, change)}.
+    ``support_map`` overrides per-symbol support levels for the support-based
+    average-down rule: a dict {symbol: {"immediate_support", "major_support",
+    "price"}}.
     """
+    support_map = support_map or {}
+
+    def _support(symbol, market):
+        return support_map.get(symbol)
     sub = SubscriptionService(
         store=SqliteSubscriptionStore(":memory:"), preview_mode=True
     )
@@ -173,6 +180,7 @@ def _build_client(*, score_map=None):
         account_provider=lambda uid: state["account"],
         score_provider=_score,
         regime_provider=radar.market_regime,
+        support_provider=_support,
     )
     rebal_router.set_service(rebal)
 
@@ -443,19 +451,27 @@ def test_rebalance_strong_winner_not_take_profited():
     sub_router.set_service(SubscriptionService())
 
 
-def test_rebalance_averages_down_a_loser_with_intact_thesis():
-    # A holding down 18% whose engine score still holds (60) and that the engine
-    # is NOT exiting/reducing -> ADD, suggesting averaging down to lower cost.
-    c = _build_client(score_map={
-        "DIP": (70, "HOLD", -1.0),
-        "F1": (80, "BUY", 1.0),
-        "F2": (80, "BUY", 1.0),
-        "F3": (80, "BUY", 1.0),
-    })
+def test_rebalance_averages_down_a_loser_testing_support():
+    # A losing holding whose engine score still holds (70), that the engine is
+    # NOT exiting/reducing, and whose PRICE IS TESTING SUPPORT (within 3% above
+    # a rolling low) -> ADD, suggesting averaging down near support.
+    c = _build_client(
+        score_map={
+            "DIP": (70, "HOLD", -1.0),
+            "F1": (80, "BUY", 1.0),
+            "F2": (80, "BUY", 1.0),
+            "F3": (80, "BUY", 1.0),
+        },
+        support_map={
+            # price 101 sits ~1% above the 100 support -> testing support.
+            "DIP": {"immediate_support": 100.0, "major_support": 95.0,
+                    "price": 101.0},
+        },
+    )
     h = _register(c)
     c._simstate["positions"] = [
-        # -18%: market_value 41k, cost 50k -> pnl -9k. Small weight (~4%) so it
-        # sits below its 10% watch-band target and is eligible to add.
+        # Loss (pnl < 0). Small weight (~4%) so it sits below its watch-band
+        # target and is eligible to add.
         _Pos("DIP", Market.US, 41_000.0, unrealized_pnl=-9_000.0),
         _Pos("F1", Market.US, 320_000.0),
         _Pos("F2", Market.US, 320_000.0),
@@ -465,19 +481,83 @@ def test_rebalance_averages_down_a_loser_with_intact_thesis():
     by = {a["symbol"]: a for a in body["actions"]}
     assert by["DIP"]["action"] == "ADD"
     assert "averaging down" in by["DIP"]["reason"].lower()
-    assert by["DIP"]["pnl_pct"] == -18.0
+    assert "support" in by["DIP"]["reason"].lower()
+    sub_router.set_service(SubscriptionService())
+
+
+def test_rebalance_does_not_average_down_a_loser_far_from_support():
+    # Same intact score + loss, but the price is NOWHERE NEAR support (well
+    # above the rolling lows) -> no support test, so NO buy-the-dip.
+    c = _build_client(
+        score_map={
+            "DIP": (70, "HOLD", -1.0),
+            "F1": (80, "BUY", 1.0),
+            "F2": (80, "BUY", 1.0),
+            "F3": (80, "BUY", 1.0),
+        },
+        support_map={
+            # price 130 is ~30% above support -> not testing anything.
+            "DIP": {"immediate_support": 100.0, "major_support": 95.0,
+                    "price": 130.0},
+        },
+    )
+    h = _register(c)
+    c._simstate["positions"] = [
+        _Pos("DIP", Market.US, 41_000.0, unrealized_pnl=-9_000.0),
+        _Pos("F1", Market.US, 320_000.0),
+        _Pos("F2", Market.US, 320_000.0),
+        _Pos("F3", Market.US, 320_000.0),
+    ]
+    body = c.get("/v1/portfolio/rebalance", headers=h).json()
+    by = {a["symbol"]: a for a in body["actions"]}
+    assert "averaging down" not in by["DIP"]["reason"].lower()
+    sub_router.set_service(SubscriptionService())
+
+
+def test_rebalance_does_not_average_down_when_support_broken():
+    # Price has broken BELOW major support (falling knife) -> even with an
+    # intact score and a loss, NOT offered as a buy-the-dip.
+    c = _build_client(
+        score_map={
+            "KNIFE": (70, "HOLD", -3.0),
+            "F1": (80, "BUY", 1.0),
+            "F2": (80, "BUY", 1.0),
+            "F3": (80, "BUY", 1.0),
+        },
+        support_map={
+            # price 90 is well below the 100 major support -> support failed.
+            "KNIFE": {"immediate_support": 100.0, "major_support": 100.0,
+                      "price": 90.0},
+        },
+    )
+    h = _register(c)
+    c._simstate["positions"] = [
+        _Pos("KNIFE", Market.US, 41_000.0, unrealized_pnl=-9_000.0),
+        _Pos("F1", Market.US, 320_000.0),
+        _Pos("F2", Market.US, 320_000.0),
+        _Pos("F3", Market.US, 320_000.0),
+    ]
+    body = c.get("/v1/portfolio/rebalance", headers=h).json()
+    by = {a["symbol"]: a for a in body["actions"]}
+    assert "averaging down" not in by["KNIFE"]["reason"].lower()
     sub_router.set_service(SubscriptionService())
 
 
 def test_rebalance_does_not_average_down_a_weak_score_loser():
-    # Same big loss but a collapsing score (40) -> the engine EXITs/leaves it,
-    # it is NOT offered as a buy-the-dip.
-    c = _build_client(score_map={
-        "FALLER": (40, "HOLD", -3.0),
-        "F1": (80, "BUY", 1.0),
-        "F2": (80, "BUY", 1.0),
-        "F3": (80, "BUY", 1.0),
-    })
+    # A weak/collapsing score (40) at support -> the engine EXITs/leaves it,
+    # it is NOT offered as a buy-the-dip regardless of the support test.
+    c = _build_client(
+        score_map={
+            "FALLER": (40, "HOLD", -3.0),
+            "F1": (80, "BUY", 1.0),
+            "F2": (80, "BUY", 1.0),
+            "F3": (80, "BUY", 1.0),
+        },
+        support_map={
+            "FALLER": {"immediate_support": 100.0, "major_support": 95.0,
+                       "price": 101.0},
+        },
+    )
     h = _register(c)
     c._simstate["positions"] = [
         _Pos("FALLER", Market.US, 41_000.0, unrealized_pnl=-9_000.0),
