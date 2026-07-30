@@ -399,6 +399,13 @@ def _decide(
 ):
     sig = (signal or "HOLD").upper()
     bearish = regime == REGIME_BEAR
+    # A bear regime is a REASON to trim risk, but only where there is risk to
+    # trim: a name already sitting AT or ABOVE its target weight. It must NOT
+    # force a REDUCE on a name held far below target (you can't "reduce" a
+    # 0.1% position whose target is 20%). Without this gate a bear read swept
+    # the ENTIRE book into REDUCE with contradictory "reduce" labels on
+    # below-target holdings. Small epsilon so rounding doesn't trip it.
+    bearish_trim = bearish and weight >= max(target - 0.5, 0.0) and weight > 0
     # When there is no live engine score, BOTH `score` and `quality` are
     # neutral PLACEHOLDERS (50). Treat the score- and quality-based triggers as
     # inactive so an "unknown" name is never auto-EXITed / auto-REDUCEd on a
@@ -457,7 +464,7 @@ def _decide(
         or score_reduce
         or quality_reduce
         or take_profit
-        or bearish
+        or bearish_trim
     ):
         reasons = []
         if weight > CONCENTRATION_REDUCE:
@@ -477,7 +484,7 @@ def _decide(
             reasons.append(
                 f"secure profit (+{pnl_pct:.0f}%) as momentum fades"
             )
-        if bearish:
+        if bearish_trim:
             reasons.append("market regime bearish")
         priority = (
             PRIORITY_HIGH

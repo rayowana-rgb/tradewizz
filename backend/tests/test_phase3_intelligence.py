@@ -795,6 +795,31 @@ def test_rotation_bearish_no_elites_is_avoid(client):
     assert by["VIETNAM"]["recommendation"] == "AVOID"
 
 
+def test_rebalance_bearish_does_not_reduce_below_target_holding():
+    # REGRESSION: a BEAR market regime must NOT force a REDUCE on a name held
+    # far below its target weight. Previously `bearish` alone swept the whole
+    # book into REDUCE (even 0.1% positions with a 20% target) -- illogical.
+    c = _build_client(
+        # Give the Vietnam name a strong score so its target is high; it is
+        # held at a tiny weight -> nothing to trim -> must NOT reduce.
+        score_map={"VNSMALL": (90, "HOLD", -1.0),
+                   "VNBIG": (90, "HOLD", -1.0)},
+    )
+    h = _register(c)
+    c._simstate["positions"] = [
+        _Pos("VNSMALL", Market.VIETNAM, 5_000.0),      # ~0.5% -> below target
+        _Pos("VNBIG", Market.VIETNAM, 500_000.0),      # ~50% -> above target
+        _Pos("FILL", Market.US, 495_000.0),
+    ]
+    body = c.get("/v1/portfolio/rebalance", headers=h).json()
+    by = {a["symbol"]: a for a in body["actions"]}
+    # The tiny below-target holding is NOT reduced by the bear regime alone.
+    assert by["VNSMALL"]["action"] != "REDUCE", by["VNSMALL"]
+    # The oversized above-target holding IS trimmed (there is risk to cut).
+    assert by["VNBIG"]["action"] == "REDUCE", by["VNBIG"]
+    sub_router.set_service(SubscriptionService())
+
+
 def test_rotation_supports_all_9_markets():
     c = _build_client()
     # Rewire rotation with the full market list so all 9 appear.
