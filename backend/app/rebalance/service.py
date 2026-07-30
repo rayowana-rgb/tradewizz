@@ -40,6 +40,7 @@ from .models import (
     ACTION_EXIT,
     ACTION_HOLD,
     ACTION_REDUCE,
+    ACTION_REVIEW,
     PRIORITY_HIGH,
     PRIORITY_LOW,
     PRIORITY_MEDIUM,
@@ -95,6 +96,9 @@ SUPPORT_BROKEN_PCT = 3.0
 # A holding may average down only while its engine score stays at or above this
 # floor; below it the weakness is treated as a warning, not a buy-the-dip.
 AVERAGE_DOWN_SCORE_FLOOR = 50.0
+# REVIEW trigger: an unscored (low-confidence) holding sitting on a loss at or
+# beyond this magnitude is surfaced for a manual look instead of a silent HOLD.
+REVIEW_LOSS_THRESHOLD = -10.0
 # Relative-concentration REDUCE: a holding whose weight exceeds the average
 # holding weight by more than 100% (i.e. more than 2x the average position) is
 # flagged to trim/take-profit, independent of the absolute concentration cap.
@@ -546,6 +550,21 @@ def _decide(
             PRIORITY_MEDIUM,
         )
 
+    # REVIEW. We have NO real engine score for this name (low_confidence) and it
+    # is sitting on a meaningful loss. We will not fabricate an EXIT/REDUCE on
+    # data we do not have, but a silent HOLD would bury a losing position the
+    # user ought to look at. Surface it honestly for a manual review.
+    if low_confidence and pnl_pct <= REVIEW_LOSS_THRESHOLD:
+        return (
+            ACTION_REVIEW,
+            (
+                f"No engine score for this name and it is down {pnl_pct:.0f}% — "
+                f"outside the scored universe, so review it manually rather "
+                f"than trust an automated call."
+            ),
+            PRIORITY_MEDIUM,
+        )
+
     # HOLD (default; score 65-84 with no concentration issue).
     return (
         ACTION_HOLD,
@@ -578,6 +597,7 @@ def _summary(actions, score: float, cash_alloc: float) -> str:
     n_exit = sum(1 for a in actions if a.action == ACTION_EXIT)
     n_reduce = sum(1 for a in actions if a.action == ACTION_REDUCE)
     n_add = sum(1 for a in actions if a.action == ACTION_ADD)
+    n_review = sum(1 for a in actions if a.action == ACTION_REVIEW)
     n_hold = sum(1 for a in actions if a.action == ACTION_HOLD)
     bits = []
     if n_exit:
@@ -586,6 +606,8 @@ def _summary(actions, score: float, cash_alloc: float) -> str:
         bits.append(f"{n_reduce} reduce")
     if n_add:
         bits.append(f"{n_add} add")
+    if n_review:
+        bits.append(f"{n_review} review")
     if n_hold:
         bits.append(f"{n_hold} hold")
     actions_txt = ", ".join(bits) if bits else "no actions"

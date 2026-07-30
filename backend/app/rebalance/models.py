@@ -18,6 +18,12 @@ ACTION_ADD = "ADD"
 ACTION_HOLD = "HOLD"
 ACTION_REDUCE = "REDUCE"
 ACTION_EXIT = "EXIT"
+# REVIEW: the engine has NO real score for this name (unknown / not in the
+# scored universe) AND it is sitting on a meaningful loss. We refuse to
+# fabricate an EXIT/REDUCE on data we do not have, but staying silent (HOLD)
+# would hide a losing position the user should look at. REVIEW surfaces it
+# for a manual look without inventing a recommendation.
+ACTION_REVIEW = "REVIEW"
 
 # Priorities.
 PRIORITY_HIGH = "HIGH"

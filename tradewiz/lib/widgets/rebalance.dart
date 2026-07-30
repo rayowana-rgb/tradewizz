@@ -19,6 +19,7 @@ Color actionColor(String action) => {
       'ADD': AppColors.up,
       'REDUCE': Colors.orange,
       'EXIT': AppColors.down,
+      'REVIEW': TWColors.warn,
     }[action] ??
     Colors.blueGrey;
 
@@ -27,6 +28,7 @@ IconData actionIcon(String action) => {
       'REDUCE': Icons.remove_circle_outline,
       'EXIT': Icons.logout,
       'HOLD': Icons.check_circle_outline,
+      'REVIEW': Icons.flag_outlined,
     }[action] ??
     Icons.info_outline;
 

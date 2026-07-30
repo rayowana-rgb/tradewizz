@@ -795,6 +795,30 @@ def test_rotation_bearish_no_elites_is_avoid(client):
     assert by["VIETNAM"]["recommendation"] == "AVOID"
 
 
+def test_rebalance_flags_unscored_loser_for_review():
+    # An UNSCORED holding (no engine score -> low_confidence placeholder) that is
+    # sitting on a meaningful loss must be surfaced as REVIEW, not buried in a
+    # silent HOLD. We deliberately do NOT fabricate an EXIT/REDUCE on data we
+    # don't have.
+    c = _build_client(
+        # UNKNOWN -> None => no live engine score (low_confidence placeholder).
+        # GOODLOSS -> real score, small loss -> normal HOLD path.
+        score_map={"UNKNOWN": None, "GOODLOSS": (78, "HOLD", -2.0)},
+    )
+    h = _register(c)
+    c._simstate["positions"] = [
+        _Pos("UNKNOWN", Market.US, 50_000.0, unrealized_pnl=-8_000.0),  # -14%
+        _Pos("GOODLOSS", Market.US, 450_000.0),
+    ]
+    body = c.get("/v1/portfolio/rebalance", headers=h).json()
+    by = {a["symbol"]: a for a in body["actions"]}
+    assert by["UNKNOWN"]["action"] == "REVIEW", by["UNKNOWN"]
+    assert "review" in by["UNKNOWN"]["reason"].lower()
+    # A small unscored loss (or a scored name) should NOT trip REVIEW.
+    assert by["GOODLOSS"]["action"] != "REVIEW", by["GOODLOSS"]
+    sub_router.set_service(SubscriptionService())
+
+
 def test_rebalance_bearish_does_not_reduce_below_target_holding():
     # REGRESSION: a BEAR market regime must NOT force a REDUCE on a name held
     # far below its target weight. Previously `bearish` alone swept the whole
