@@ -795,6 +795,27 @@ def test_rotation_bearish_no_elites_is_avoid(client):
     assert by["VIETNAM"]["recommendation"] == "AVOID"
 
 
+def test_rebalance_warns_on_over_diversification():
+    # A book with far more names than a concentrated portfolio can manage must
+    # surface an over-diversification warning (not block).
+    c = _build_client()
+    h = _register(c)
+    c._simstate["positions"] = [
+        _Pos(f"SYM{i}", Market.US, 100.0) for i in range(70)
+    ]
+    body = c.get("/v1/portfolio/rebalance", headers=h).json()
+    warns = " ".join(body.get("warnings", []))
+    assert "over-diversified" in warns.lower(), body.get("warnings")
+    # A small book must NOT warn.
+    c._simstate["positions"] = [
+        _Pos(f"SYM{i}", Market.US, 100.0) for i in range(10)
+    ]
+    body2 = c.get("/v1/portfolio/rebalance", headers=h).json()
+    assert "over-diversified" not in " ".join(
+        body2.get("warnings", [])).lower()
+    sub_router.set_service(SubscriptionService())
+
+
 def test_rebalance_flags_unscored_loser_for_review():
     # An UNSCORED holding (no engine score -> low_confidence placeholder) that is
     # sitting on a meaningful loss must be surfaced as REVIEW, not buried in a

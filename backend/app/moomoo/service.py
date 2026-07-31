@@ -50,6 +50,34 @@ def _max_notional() -> float:
     return float(os.environ.get("TRADEWIZZ_MOOMOO_MAX_NOTIONAL", "1000"))
 
 
+def _min_buy_score() -> float:
+    """Minimum engine score required to OPEN a new name (top-tier guard).
+
+    Opt-A: only buy top-tier names. A BUY that opens a brand-new position whose
+    engine score is below this floor is blocked. Adding to a name already held
+    is always allowed (managed by the Rebalancing AI). 0/negative disables it.
+    Scored on a 0-100 scale; 80 = 'Strong' band and above.
+    """
+    try:
+        return float(os.environ.get("TRADEWIZZ_MOOMOO_MIN_BUY_SCORE", "80"))
+    except (TypeError, ValueError):
+        return 80.0
+
+
+def _max_positions() -> int:
+    """Cap on the number of DISTINCT held names (Opt-A consolidation).
+
+    A BUY that would OPEN a brand-new name beyond this count is blocked so the
+    book stays concentrated enough for the Rebalancing AI to manage (its band
+    targets cannot be met across hundreds of names). Adding to a name already
+    held is always allowed. 0/negative disables the cap.
+    """
+    try:
+        return int(os.environ.get("TRADEWIZZ_MOOMOO_MAX_POSITIONS", "50"))
+    except (TypeError, ValueError):
+        return 50
+
+
 def _live_disabled() -> bool:
     return os.environ.get("TRADEWIZZ_MOOMOO_LIVE_DISABLED", "") in ("1", "true", "True")
 
@@ -129,6 +157,27 @@ class MoomooService:
         self._ctx = None  # type: ignore
         from app.moomoo.equity_tracker import EquityTracker
         self._equity = EquityTracker()
+        # Optional engine score lookup (symbol, market) -> score|None. Used for
+        # the top-tier BUY guard. Set from main once the engine is wired; None
+        # disables the guard (score unknown -> not blocked, never fabricated).
+        self._score_provider = None
+
+    def set_score_provider(self, provider) -> None:
+        """Inject a (symbol, market)->score|None lookup for the top-tier guard."""
+        self._score_provider = provider
+
+    def _lookup_score(self, sym: str):
+        """Engine score for a US symbol, or None when unknown (never faked)."""
+        if self._score_provider is None:
+            return None
+        try:
+            from app.models import Market
+            m = self._score_provider(sym, Market.US)
+            if m is None:
+                return None
+            return float(getattr(m, "score", None))
+        except Exception:
+            return None
 
     @property
     def equity_tracker(self):
@@ -574,6 +623,33 @@ class MoomooService:
             )
         est = self._est_notional(code, qty, price or 0.0)
         cap = _max_notional()
+        # Position-count cap (Opt-A). A BUY that OPENS a new name beyond the cap
+        # is flagged so the app can warn before confirm and the place() call
+        # can hard-block. Adding to a held name never trips it.
+        pos_cap = _max_positions()
+        held_symbols = {p.symbol.upper() for p in self.positions()}
+        held_count = len(held_symbols)
+        is_new_position = sym.upper() not in held_symbols
+        at_position_cap = (
+            side.upper() == "BUY"
+            and is_new_position
+            and pos_cap > 0
+            and held_count >= pos_cap
+        )
+        # Top-tier guard: opening a NEW name requires a top-tier engine score.
+        # Score unknown (None) => not blocked (we never fabricate a rejection).
+        min_score = _min_buy_score()
+        new_buy_score = (
+            self._lookup_score(sym)
+            if (side.upper() == "BUY" and is_new_position) else None
+        )
+        below_min_score = (
+            side.upper() == "BUY"
+            and is_new_position
+            and min_score > 0
+            and new_buy_score is not None
+            and new_buy_score < min_score
+        )
         return {
             "code": code,
             "symbol": sym,
@@ -584,6 +660,15 @@ class MoomooService:
             "est_notional": round(est, 2),
             "max_notional": cap,
             "within_cap": (est <= cap) or est == 0.0,
+            "held_count": held_count,
+            "max_positions": pos_cap,
+            "is_new_position": is_new_position,
+            "at_position_cap": at_position_cap,
+            "min_buy_score": min_score,
+            "new_buy_score": (
+                round(new_buy_score, 1) if new_buy_score is not None else None
+            ),
+            "below_min_score": below_min_score,
             "live": True,
             "currency": "USD",
         }
@@ -617,6 +702,22 @@ class MoomooService:
             raise MoomooError(
                 f"Order notional ${pv['est_notional']:.2f} exceeds the "
                 f"per-order cap of ${pv['max_notional']:.2f}.",
+                403,
+            )
+        if pv.get("at_position_cap"):
+            raise MoomooError(
+                f"Position cap reached: you already hold "
+                f"{pv['held_count']} names (max {pv['max_positions']}). "
+                f"This BUY would open a new one. Consolidate first "
+                f"(sell a weaker name) before adding a new position.",
+                403,
+            )
+        if pv.get("below_min_score"):
+            raise MoomooError(
+                f"Not top-tier: {pv['symbol']} scores "
+                f"{pv['new_buy_score']:.0f}, below the "
+                f"{pv['min_buy_score']:.0f} minimum to open a new name. "
+                f"Only buy top-tier names.",
                 403,
             )
         from moomoo import (  # type: ignore

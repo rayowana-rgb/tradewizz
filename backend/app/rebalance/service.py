@@ -96,6 +96,13 @@ SUPPORT_BROKEN_PCT = 3.0
 # A holding may average down only while its engine score stays at or above this
 # floor; below it the weakness is treated as a warning, not a buy-the-dip.
 AVERAGE_DOWN_SCORE_FLOOR = 50.0
+# Over-diversification: holding far more names than a concentrated book can be
+# managed as dilutes every winner and spreads capital too thin (a $8k book
+# across 400 names is ~$20/position -- indistinguishable from an index, but
+# paying per-name friction). Warn (not block) above this many held names so the
+# user can consolidate toward the top-scored names. The band targets (Elite
+# 20%, Strong 15%, Watch 10%, Weak 5%) simply cannot be met beyond ~20 names.
+OVER_DIVERSIFICATION_COUNT = 60
 # REVIEW trigger: an unscored (low-confidence) holding sitting on a loss at or
 # beyond this magnitude is surfaced for a manual look instead of a silent HOLD.
 REVIEW_LOSS_THRESHOLD = -10.0
@@ -353,6 +360,14 @@ class RebalanceService:
         if not positions:
             warnings.append(
                 "No simulated holdings yet — buy a few names to rebalance."
+            )
+        n_held = sum(1 for v in values.values() if v > 0)
+        if n_held > OVER_DIVERSIFICATION_COUNT:
+            avg_dollar = (invested / n_held) if n_held > 0 else 0.0
+            warnings.append(
+                f"Over-diversified: {n_held} holdings (~${avg_dollar:,.0f} "
+                f"each). This dilutes every winner and pays per-name friction. "
+                f"Consider consolidating toward your top-scored names."
             )
 
         improvement = _estimated_improvement(actions, health.health_score)

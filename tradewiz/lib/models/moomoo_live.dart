@@ -184,6 +184,13 @@ class MoomooLivePreview {
     this.estNotional = 0,
     this.maxNotional = 0,
     this.withinCap = false,
+    this.heldCount = 0,
+    this.maxPositions = 0,
+    this.isNewPosition = false,
+    this.atPositionCap = false,
+    this.minBuyScore = 0,
+    this.newBuyScore,
+    this.belowMinScore = false,
     this.currency = 'USD',
   });
 
@@ -196,6 +203,13 @@ class MoomooLivePreview {
   final double estNotional;
   final double maxNotional;
   final bool withinCap;
+  final int heldCount;
+  final int maxPositions;
+  final bool isNewPosition;
+  final bool atPositionCap;
+  final double minBuyScore;
+  final double? newBuyScore;
+  final bool belowMinScore;
   final String currency;
 
   factory MoomooLivePreview.fromJson(Map<String, dynamic> j) =>
@@ -209,6 +223,13 @@ class MoomooLivePreview {
         estNotional: (j['est_notional'] as num?)?.toDouble() ?? 0,
         maxNotional: (j['max_notional'] as num?)?.toDouble() ?? 0,
         withinCap: j['within_cap'] as bool? ?? false,
+        heldCount: (j['held_count'] as num?)?.toInt() ?? 0,
+        maxPositions: (j['max_positions'] as num?)?.toInt() ?? 0,
+        isNewPosition: j['is_new_position'] as bool? ?? false,
+        atPositionCap: j['at_position_cap'] as bool? ?? false,
+        minBuyScore: (j['min_buy_score'] as num?)?.toDouble() ?? 0,
+        newBuyScore: (j['new_buy_score'] as num?)?.toDouble(),
+        belowMinScore: j['below_min_score'] as bool? ?? false,
         currency: j['currency'] as String? ?? 'USD',
       );
 }

@@ -91,6 +91,20 @@ class MoomooOrderPreview(BaseModel):
     est_notional: float
     max_notional: float
     within_cap: bool
+    # Position-count cap (Opt-A consolidation). held_count = distinct names
+    # currently held; max_positions = the cap; is_new_position = this BUY would
+    # open a name not already held; at_position_cap = the BUY is blocked because
+    # it would open a NEW name beyond the cap.
+    held_count: int = 0
+    max_positions: int = 0
+    is_new_position: bool = False
+    at_position_cap: bool = False
+    # Top-tier BUY guard: min_buy_score = the score floor to OPEN a new name;
+    # new_buy_score = this new name's engine score (None when unknown);
+    # below_min_score = the BUY is blocked because the new name scores too low.
+    min_buy_score: float = 0.0
+    new_buy_score: Optional[float] = None
+    below_min_score: bool = False
     live: bool = True
     currency: str = "USD"
 

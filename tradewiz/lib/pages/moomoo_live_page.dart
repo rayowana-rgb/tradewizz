@@ -3144,6 +3144,9 @@ class _MoomooOrderTicketPageState extends State<MoomooOrderTicketPage> {
   Widget _confirmStage() {
     final pv = _preview!;
     final overCap = !pv.withinCap && pv.estNotional > 0;
+    final atPosCap = pv.atPositionCap;
+    final belowScore = pv.belowMinScore;
+    final blocked = overCap || atPosCap || belowScore;
     return ListView(
       children: [
         Container(
@@ -3178,12 +3181,27 @@ class _MoomooOrderTicketPageState extends State<MoomooOrderTicketPage> {
           _row('Limit price', '\$${pv.price.toStringAsFixed(2)}'),
         _row('Est. notional', '\$${pv.estNotional.toStringAsFixed(2)}'),
         _row('Per-order cap', '\$${pv.maxNotional.toStringAsFixed(2)}'),
+        if (pv.side == 'BUY' && pv.maxPositions > 0)
+          _row('Holdings', '${pv.heldCount} / ${pv.maxPositions}'),
         const SizedBox(height: TWSpace.xl),
         if (overCap)
           _errorBox(
             'Order exceeds the per-order cap. Reduce size and try again.',
           ),
-        if (!overCap)
+        if (atPosCap)
+          _errorBox(
+            'Position cap reached: you already hold ${pv.heldCount} names '
+            '(max ${pv.maxPositions}). This BUY would open a new one. '
+            'Sell a weaker name first, then add this one.',
+          ),
+        if (belowScore)
+          _errorBox(
+            'Not top-tier: ${pv.symbol} scores '
+            '${pv.newBuyScore?.toStringAsFixed(0) ?? '?'}, below the '
+            '${pv.minBuyScore.toStringAsFixed(0)} minimum to open a new '
+            'name. Only buy top-tier names.',
+          ),
+        if (!blocked)
           FilledButton(
             key: const Key('moomoo_confirm_button'),
             style: FilledButton.styleFrom(

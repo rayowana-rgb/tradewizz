@@ -551,6 +551,10 @@ _set_moomoo_analytics(
         support_provider=_symbol_support,
     )
 )
+# Wire the engine score lookup into the live trade service so the top-tier BUY
+# guard can reject opening a NEW name whose score is below the floor. Uses the
+# same fast, cache-backed _symbol_score as the rest of the app (no live fetch).
+_get_moomoo_service().set_score_provider(_symbol_score)
 
 # Server-managed stop-loss / take-profit monitor. Moomoo's OpenD SDK has no
 # native bracket/OCO for stocks (and native STOP/LIMIT need whole shares,
