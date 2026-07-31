@@ -901,6 +901,48 @@ void main() {
     expect(symbols.contains('AAPL1'), isFalse);
   });
 
+  testWidgets(
+      'LIVE Buy-all skips all new names when at the position cap',
+      (tester) async {
+    final placed = <Map<String, dynamic>>[];
+    // The account already holds 50 (unrelated) names -> at the cap. The 3
+    // matches (AAPL0/1/2) are all NEW names, so the whole run is skipped
+    // client-side WITHOUT firing any place() (no 403 round-trips).
+    final atCap = {for (var i = 0; i < 50; i++) 'HELD$i'};
+    final repo = _liveBulkRepo(3, placed: placed, held: atCap);
+    final secret = MoomooSecretStore(persistence: _MemSecret('topsecret'));
+    await secret.load();
+
+    tester.view.physicalSize = const Size(1200, 3200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      _wrapOwner(
+        ScreenerPage(
+          market: Market.us,
+          repository: repo,
+          secretStore: secret,
+          liveBulkOrderGap: Duration.zero,
+        ),
+        repo,
+      ),
+    );
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pumpAndSettle();
+    }
+
+    await tester.tap(find.byKey(const Key('screener_buy_all_live_button')));
+    await tester.pumpAndSettle();
+
+    // No config sheet: the run bails out with a cap message and places nothing.
+    expect(find.byKey(const Key('live_bulk_qty_field')), findsNothing);
+    expect(find.textContaining('at the 50-name limit'), findsOneWidget);
+    expect(placed, isEmpty);
+  });
+
   testWidgets('LIVE Buy-all skips stocks bought today even if not held',
       (tester) async {
     final placed = <Map<String, dynamic>>[];

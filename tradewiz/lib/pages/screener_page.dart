@@ -69,6 +69,14 @@ const Duration _kLiveBulkRetryBackoff = Duration(seconds: 8);
 /// Attempts per order (1 try + retries) when the broker rate-limits us.
 const int _kLiveBulkMaxRetries = 3;
 
+/// Client-side mirror of the backend position cap
+/// (TRADEWIZZ_MOOMOO_MAX_POSITIONS, default 50). Opening a NEW name beyond this
+/// is blocked. The backend is the source of truth and enforces it on every
+/// place(); this constant only lets a bulk run skip doomed new-name orders up
+/// front instead of firing each one just to be rejected 403. 0 disables the
+/// client-side shortcut (the backend still enforces whatever it is set to).
+const int _kLiveMaxPositions = 50;
+
 class _ScreenerPageState extends State<ScreenerPage> {
   late final StockRepository _repo = widget.repository ?? StockRepository();
   Duration get _liveBulkOrderGap =>
@@ -484,14 +492,19 @@ class _ScreenerPageState extends State<ScreenerPage> {
     // skip less rather than spending nothing).
     final repo = widget.repository ?? RepositoryScope.of(context);
     final skipSymbols = <String>{};
+    // Held-name count for the position cap (see [_kLiveMaxPositions]). null =
+    // the positions fetch failed, so we do NOT enforce the cap client-side
+    // (the backend still enforces it on every place() — this is a UX shortcut,
+    // not the source of truth).
+    int? heldCount;
     try {
       final positions = await repo.moomooPositions(
         token: token,
         secret: secret,
       );
-      skipSymbols.addAll(positions
-          .where((p) => p.quantity > 0)
-          .map((p) => p.symbol.toUpperCase()));
+      final held = positions.where((p) => p.quantity > 0).toList();
+      heldCount = held.length;
+      skipSymbols.addAll(held.map((p) => p.symbol.toUpperCase()));
     } catch (_) {
       /* proceed without held-skip on a positions fetch failure */
     }
@@ -512,6 +525,27 @@ class _ScreenerPageState extends State<ScreenerPage> {
             .where((m) => !skipSymbols.contains(m.symbol.toUpperCase()))
             .toList();
     final alreadyHeld = matches.length - buyable.length;
+
+    // Position cap: if the account already holds >= the max, opening a NEW
+    // name is blocked (adding to a held name is fine, but those are already in
+    // skipSymbols). Every remaining `buyable` name is new, so skip the whole
+    // run locally instead of firing place() per name only to be rejected 403.
+    if (heldCount != null &&
+        _kLiveMaxPositions > 0 &&
+        heldCount >= _kLiveMaxPositions &&
+        buyable.isNotEmpty) {
+      final n = buyable.length;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '$n new ${n == 1 ? 'name' : 'names'} skipped: you already hold '
+            '$heldCount names, at the $_kLiveMaxPositions-name limit. Sell a '
+            'weaker name first, then buy a new one.',
+          ),
+        ),
+      );
+      return;
+    }
 
     if (buyable.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
