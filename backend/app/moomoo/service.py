@@ -317,6 +317,15 @@ class MoomooService:
                 except Exception:
                     return 0.0
 
+            # Moomoo keeps CLOSED positions in the account's position list as
+            # rows with qty == 0 (a booking artefact, not a real holding).
+            # These ghost rows must NOT count as held names: otherwise the
+            # position cap (held_count) is inflated and BUYs get wrongly
+            # rejected with 403 "position cap reached" even when the book is
+            # actually flat. Skip any row that carries no shares.
+            if _f("qty") == 0.0:
+                continue
+
             # --- Cost basis / unrealized P/L selection -------------------
             # The Moomoo SDK exposes TWO cost bases per position:
             #   * diluted_cost / cost_price / pl_val / pl_ratio
